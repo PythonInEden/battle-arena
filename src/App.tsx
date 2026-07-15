@@ -6,6 +6,16 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 🛠️ Dynamic Image Link Generator (Points to 'hero-images' bucket)
+const getGameAssetUrl = (type: 'avatar' | 'skill', className: string, skillName?: string) => {
+  const cleanClass = className.toLowerCase().trim();
+  if (type === 'avatar') {
+    return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_avatar.webp`;
+  }
+  const cleanSkill = skillName ? skillName.toLowerCase().trim().replace(/\s+/g, '_') : '';
+  return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
+};
+
 // 2. Master Translations Dictionary (Dân Dã Layout)
 const LANG = {
   en: {
@@ -115,13 +125,11 @@ export default function App() {
   const [characters, setCharacters] = useState<any[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   
-  // Dynamic Player Registration Engine (Using LocalStorage memory)
   const [currentPlayerName, setCurrentPlayerName] = useState<string>(() => {
     return localStorage.getItem('forest_game_username') || '';
   });
   const [typedName, setTypedName] = useState<string>('');
 
-  // Form Creation State
   const [name, setName] = useState('');
   const [jobClass, setJobClass] = useState('Fighter');
   const [might, setMight] = useState(0);
@@ -185,13 +193,11 @@ export default function App() {
     }
   };
 
-  // Find if this specific player device currently holds a locked character
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
 
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
       
-      {/* 💥 GLOBAL CSS DESKTOP BUG CRUSHER */}
       <style>{`
         body, html, #root { background-color: #000 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
       `}</style>
@@ -206,10 +212,9 @@ export default function App() {
         </button>
       </header>
 
-      {/* DYNAMIC REGISTRATION & LOBBY SYSTEM */}
+      {/* LOBBY SYSTEM */}
       <section style={{ margin: '30px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
         {!currentPlayerName ? (
-          // Registration Phase: For anyone opening the link
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
             <label style={{ fontWeight: 'bold' }}>{t.nameInputLabel}</label>
             <input 
@@ -219,30 +224,32 @@ export default function App() {
               onChange={(e) => setTypedName(e.target.value)} 
               style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} 
             />
-            <button 
-              onClick={() => savePlayerIdentity(typedName)} 
-              disabled={!typedName.trim()}
-              style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
+            <button onClick={() => savePlayerIdentity(typedName)} disabled={!typedName.trim()} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>
               Join Lobby
             </button>
           </div>
         ) : myClaimedCharacter ? (
-          // Logged In + Hero Locked In State
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            <div>
-              <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
-              <p style={{ margin: 0 }}>
-                Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}
-              </p>
-              <p style={{ color: '#ff0', marginTop: '5px', fontSize: '14px' }}>Skills: {myClaimedCharacter.skills?.join(', ')}</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <img 
+                src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} 
+                alt={myClaimedCharacter.job_class}
+                style={{ width: '80px', height: '80px', border: '2px solid #0f0', borderRadius: '4px', backgroundColor: '#111', objectFit: 'cover' }}
+                onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/80x80/000000/00ff00?text=' + myClaimedCharacter.job_class; }}
+              />
+              <div>
+                <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
+                <p style={{ margin: 0 }}>
+                  Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}
+                </p>
+                <p style={{ color: '#ff0', marginTop: '5px', fontSize: '14px' }}>Skills: {myClaimedCharacter.skills?.join(', ')}</p>
+              </div>
             </div>
             <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>
               {t.releaseBtn}
             </button>
           </div>
         ) : (
-          // Logged In but still browsing for a hero
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
             <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
@@ -278,7 +285,7 @@ export default function App() {
               ))}
             </select>
 
-            {/* ATTRIBUTE POINT DISTRIBUTOR */}
+            {/* ATTRIBUTES */}
             <div>
               <h3>{t.pointsLeft} <span style={{ color: pointsLeft === 0 ? '#0f0' : '#ff0', fontSize: '22px' }}>{pointsLeft}</span></h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -300,7 +307,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* SKILLS BOX WITH EXPLANATIONS */}
+            {/* SKILLS PANEL */}
             <div style={{ marginTop: '10px' }}>
               <h3>{t.skillsLabel} ({selectedSkills.length}/2)</h3>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
@@ -319,10 +326,20 @@ export default function App() {
                   const isSelected = selectedSkills.includes(skill);
                   const details = SKILLS_LIBRARY[skill] || { en: "", vi: "" };
                   return (
-                    <div key={skill} style={{ margin: '10px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
-                      <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
-                      <span style={{ fontStyle: 'italic' }}>{locale === 'en' ? details.en : details.vi}</span>
-                      {isSelected && <span style={{ marginLeft: '10px', color: '#ff0' }}>[SELECTED]</span>}
+                    <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
+                      {isSelected && (
+                        <img 
+                          src={getGameAssetUrl('skill', jobClass, skill)} 
+                          alt={skill}
+                          style={{ width: '60px', height: '60px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/60x60/000000/00ff00?text=Skill'; }}
+                        />
+                      )}
+                      <div>
+                        <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
+                        <span style={{ fontStyle: 'italic' }}>{locale === 'en' ? details.en : details.vi}</span>
+                        {isSelected && <span style={{ marginLeft: '10px', color: '#ff0' }}>[SELECTED]</span>}
+                      </div>
                     </div>
                   );
                 })}
