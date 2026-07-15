@@ -6,7 +6,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🛠️ Dynamic Image Link Generator (Handles Avatars, Skills, Win, and Lost Poses)
+// 🛠️ Dynamic Image Link Generator
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
   if (type === 'avatar') {
@@ -22,7 +22,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
-// 2. Master Translations Dictionary (Dân Dã Layout)
+// 2. Master Translations Dictionary
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY ⚔️",
@@ -38,6 +38,7 @@ const LANG = {
     classLabel: "Class / Job:",
     pointsLeft: "Attribute Points Left:",
     saveBtn: "Save Character to Cloud",
+    savingBtn: "Saving to Cloud... Please Wait...",
     might: "Might (Sức mạnh - +1 Dam/pt)",
     vit: "Vitality (Thể lực - +5 HP/pt)",
     reflex: "Reflex (Phản xạ - +1 Init/pt)",
@@ -45,6 +46,9 @@ const LANG = {
     taken: "Claimed by",
     previewTitle: "👁️ Hero Preview",
     classPreview: "Class Portrait Preview:",
+    rosterTitle: "🗃️ Server Character Roster (Maintenance Panel)",
+    deleteBtn: "Delete",
+    protectedText: "Protected",
   },
   vi: {
     title: "⚔️ PHÒNG CHỜ ANH HÙNG ⚔️",
@@ -60,6 +64,7 @@ const LANG = {
     classLabel: "Hệ Phái / Nghề Nghiệp:",
     pointsLeft: "Điểm tiềm năng còn lại:",
     saveBtn: "Lưu Anh Hùng Lên Mây",
+    savingBtn: "Đang tải lên mây... Đợi chút nhé...",
     might: "Sức mạnh (+1 Đám đấm/điểm)",
     vit: "Thể lực (+5 Máu trâu/điểm)",
     reflex: "Phản xạ (+1 Tốc đánh/điểm)",
@@ -67,6 +72,9 @@ const LANG = {
     taken: "Đã có chủ:",
     previewTitle: "👁️ Xem Trước Tướng",
     classPreview: "Ảnh Đại Diện Hệ Phái:",
+    rosterTitle: "🗃️ Danh Sách Máy Chủ (Bảo Trì & Dọn Dẹp)",
+    deleteBtn: "Xóa Tướng",
+    protectedText: "Đang Vào Trận (Khóa)",
   }
 };
 
@@ -140,12 +148,16 @@ export default function App() {
   });
   const [typedName, setTypedName] = useState<string>('');
 
+  // Form Creation State
   const [name, setName] = useState('');
   const [jobClass, setJobClass] = useState('Fighter');
   const [might, setMight] = useState(0);
   const [vitality, setVitality] = useState(0);
   const [reflex, setReflex] = useState(0);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  
+  // 💥 NEW: Network Submit Lock Engines (Crushes Duplicate Creation)
+  const [isSaving, setIsSaving] = useState(false);
 
   const t = LANG[locale];
   const totalPointsSpent = might + vitality + reflex;
@@ -163,7 +175,7 @@ export default function App() {
   }, []);
 
   const fetchCharacters = async () => {
-    const { data } = await supabase.from('characters').select('*');
+    const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
     if (data) setCharacters(data);
   };
 
@@ -176,23 +188,56 @@ export default function App() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || selectedSkills.length !== 2 || pointsLeft !== 0) {
-      alert("Please enter a name, allocate exactly 10 points, and pick 2 skills!");
+    if (!name || selectedSkills.length !== 2 || pointsLeft !== 0 || isSaving) {
+      alert("Check fields again!");
       return;
     }
-    await supabase.from('characters').insert([
-      { name, job_class: jobClass, might, vitality, reflex, skills: selectedSkills }
-    ]);
-    setName(''); setMight(0); setVitality(0); setReflex(0); setSelectedSkills([]);
+
+    // 🔒 Lock button immediately
+    setIsSaving(true);
+
+    try {
+      await supabase.from('characters').insert([
+        { name, job_class: jobClass, might, vitality, reflex, skills: selectedSkills }
+      ]);
+      
+      // Clean Form Values
+      setName(''); setMight(0); setVitality(0); setReflex(0); setSelectedSkills([]);
+      await fetchCharacters(); // Forced reload guarantee
+    } catch (err) {
+      console.error(err);
+    } finally {
+      // 🔓 Release lock
+      setIsSaving(false);
+    }
   };
 
   const handleClaim = async () => {
     if (!selectedCharId || !currentPlayerName) return;
     await supabase.from('characters').update({ assigned_to: currentPlayerName }).eq('id', selectedCharId);
+    setSelectedCharId('');
   };
 
   const handleRelease = async (charId: number) => {
     await supabase.from('characters').update({ assigned_to: null }).eq('id', charId);
+  };
+
+  // 🗑️ SECURE DELETION ENGINE (Housecleaning Maintenance tool)
+  const handleDeleteCharacter = async (charId: number, assignedTo: string | null) => {
+    // 1. Confirm choice
+    const msg = locale === 'en' ? "Permanently destroy this hero data?" : "Xóa vĩnh viễn anh hùng này khỏi máy chủ?";
+    if (!window.confirm(msg)) return;
+
+    // 2. Validate Security Boundaries
+    if (assignedTo && assignedTo !== currentPlayerName) {
+      const errorMsg = locale === 'en' ? `Cannot delete! This hero is locked by ${assignedTo}` : `Không thể xóa! Tướng này đang được chọn bởi ${assignedTo}`;
+      alert(errorMsg);
+      return;
+    }
+
+    // 3. Fire delete command
+    await supabase.from('characters').delete().eq('id', charId);
+    await fetchCharacters();
   };
 
   const toggleSkill = (skill: string) => {
@@ -223,7 +268,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* LOBBY SYSTEM */}
+      {/* LOBBY CONNECTION INTERFACE */}
       <section style={{ margin: '30px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
         {!currentPlayerName ? (
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -291,7 +336,7 @@ export default function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
-              <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
+              <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); setSelectedCharId(''); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
               
               <label style={{ marginLeft: '10px' }}>{t.selectLabel}</label>
               <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
@@ -331,7 +376,7 @@ export default function App() {
 
       {/* CREATE HERO SECTION */}
       {!myClaimedCharacter && (
-        <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px' }}>
+        <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px', marginBottom: '40px' }}>
           <h2>[ {t.createTitle} ]</h2>
           <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <input type="text" placeholder={t.namePlace} value={name} onChange={(e) => setName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} required />
@@ -344,7 +389,7 @@ export default function App() {
                 ))}
               </select>
 
-              {/* 📸 LIVE CLASS AVATAR PREVIEW CRADLE */}
+              {/* LIVE PORTRAIT PREVIEW */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
                 <img 
                   src={getGameAssetUrl('avatar', jobClass)} 
@@ -420,12 +465,58 @@ export default function App() {
               </div>
             </div>
 
-            <button type="submit" disabled={pointsLeft !== 0 || selectedSkills.length !== 2} style={{ background: '#0f0', color: '#000', padding: '15px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', opacity: (pointsLeft === 0 && selectedSkills.length === 2) ? 1 : 0.5, marginTop: '15px' }}>
-              {t.saveBtn}
+            <button 
+              type="submit" 
+              disabled={pointsLeft !== 0 || selectedSkills.length !== 2 || isSaving} 
+              style={{ background: '#0f0', color: '#000', padding: '15px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', opacity: (pointsLeft === 0 && selectedSkills.length === 2 && !isSaving) ? 1 : 0.5, marginTop: '15px' }}
+            >
+              {isSaving ? t.savingBtn : t.saveBtn}
             </button>
           </form>
         </section>
       )}
+
+      {/* 🗃️ SERVER MAINTENANCE PANEL & ROSTER LIST */}
+      <section style={{ border: '1px solid #500', padding: '20px', backgroundColor: '#0a0000' }}>
+        <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.rosterTitle}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {characters.length === 0 ? (
+            <p style={{ color: '#555' }}>-- No characters on server database --</p>
+          ) : (
+            characters.map(char => {
+              const isLockedBySomeoneElse = char.assigned_to && char.assigned_to !== currentPlayerName;
+              return (
+                <div key={char.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #300', padding: '10px', flexWrap: 'wrap', gap: '10px', backgroundColor: '#000' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <img 
+                      src={getGameAssetUrl('avatar', char.job_class)} 
+                      alt="avatar" 
+                      style={{ width: '40px', height: '40px', border: '1px solid #ff3333', objectFit: 'cover' }}
+                      onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/40x40/000000/ff0000?text=?'; }}
+                    />
+                    <div>
+                      <strong style={{ color: '#fff' }}>{char.name}</strong> <span style={{ color: '#888' }}>({char.job_class})</span>
+                      {char.assigned_to && <span style={{ marginLeft: '10px', color: '#ff0', fontSize: '12px' }}>★ {t.taken} {char.assigned_to}</span>}
+                    </div>
+                  </div>
+                  
+                  {isLockedBySomeoneElse ? (
+                    <span style={{ color: '#555', fontStyle: 'italic', fontSize: '13px' }}>[{t.protectedText}]</span>
+                  ) : (
+                    <button 
+                      onClick={() => handleDeleteCharacter(char.id, char.assigned_to)}
+                      style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer', fontFamily: 'monospace' }}
+                    >
+                      {t.deleteBtn}
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+
     </div>
   );
 }
