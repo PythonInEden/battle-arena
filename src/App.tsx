@@ -6,7 +6,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🛠️ Upgraded Dynamic Image Link Generator (Handles Avatars, Skills, Win, and Lost Poses)
+// 🛠️ Dynamic Image Link Generator (Handles Avatars, Skills, Win, and Lost Poses)
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
   if (type === 'avatar') {
@@ -44,6 +44,7 @@ const LANG = {
     skillsLabel: "Select 2 Skills:",
     taken: "Claimed by",
     previewTitle: "👁️ Hero Preview",
+    classPreview: "Class Portrait Preview:",
   },
   vi: {
     title: "⚔️ PHÒNG CHỜ ANH HÙNG ⚔️",
@@ -65,6 +66,7 @@ const LANG = {
     skillsLabel: "Chọn 2 Kỹ năng bổ trợ:",
     taken: "Đã có chủ:",
     previewTitle: "👁️ Xem Trước Tướng",
+    classPreview: "Ảnh Đại Diện Hệ Phái:",
   }
 };
 
@@ -238,15 +240,14 @@ export default function App() {
             </button>
           </div>
         ) : myClaimedCharacter ? (
-          // ACTIVE GAME CONTROL DECK (Shows Avatar, Win Pose, and Lost Pose)
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid #030', paddingBottom: '15px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                 <img 
                   src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} 
                   alt={myClaimedCharacter.job_class}
-                  style={{ width: '90px', height: '90px', border: '2px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/90x90/000000/00ff00?text=' + myClaimedCharacter.job_class; }}
+                  style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + myClaimedCharacter.job_class; }}
                 />
                 <div>
                   <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
@@ -261,7 +262,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* 📸 VISUAL BATTLE POSES PREVIEW GRID */}
+            {/* BATTLE POSES MONITOR */}
             <div>
               <h3 style={{ color: '#888', margin: '0 0 10px 0' }}>[ Battle Poses Assets Monitor ]</h3>
               <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
@@ -270,8 +271,8 @@ export default function App() {
                   <img 
                     src={getGameAssetUrl('win', myClaimedCharacter.job_class)} 
                     alt="Win Pose" 
-                    style={{ width: '120px', height: '120px', border: '1px dashed #0f0', backgroundColor: '#111', objectFit: 'cover' }}
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=🏆+Win'; }}
+                    style={{ width: '150px', height: '150px', border: '1px dashed #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=🏆+Win'; }}
                   />
                 </div>
                 <div style={{ textAlign: 'center' }}>
@@ -279,15 +280,14 @@ export default function App() {
                   <img 
                     src={getGameAssetUrl('lost', myClaimedCharacter.job_class)} 
                     alt="Lost Pose" 
-                    style={{ width: '120px', height: '120px', border: '1px dashed #ff0000', backgroundColor: '#111', objectFit: 'cover' }}
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/ff0000?text=💀+Lost'; }}
+                    style={{ width: '150px', height: '150px', border: '1px dashed #ff0000', backgroundColor: '#111', objectFit: 'cover' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/ff0000?text=💀+Lost'; }}
                   />
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          // BROWSING STATE
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
@@ -308,14 +308,14 @@ export default function App() {
               </button>
             </div>
 
-            {/* 📸 LIVE SELECTION PREVIEW BOX (Shows portrait before claiming) */}
+            {/* SELECTION PREVIEW BOX */}
             {currentlyBrowsingCharacter && (
               <div style={{ display: 'flex', gap: '20px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#000', maxWidth: '500px', alignItems: 'center' }}>
                 <img 
                   src={getGameAssetUrl('avatar', currentlyBrowsingCharacter.job_class)} 
                   alt="Browsing Avatar"
-                  style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover', backgroundColor: '#111' }}
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + currentlyBrowsingCharacter.job_class; }}
+                  style={{ width: '120px', height: '120px', border: '2px solid #0f0', objectFit: 'cover', backgroundColor: '#111' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + currentlyBrowsingCharacter.job_class; }}
                 />
                 <div>
                   <h3 style={{ color: '#fff', margin: '0 0 5px 0' }}>{t.previewTitle}: {currentlyBrowsingCharacter.name}</h3>
@@ -337,11 +337,27 @@ export default function App() {
             <input type="text" placeholder={t.namePlace} value={name} onChange={(e) => setName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} required />
             
             <label>{t.classLabel}</label>
-            <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
-              {Object.keys(CLASSES_DATA).map(cls => (
-                <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
+                {Object.keys(CLASSES_DATA).map(cls => (
+                  <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>
+                ))}
+              </select>
+
+              {/* 📸 LIVE CLASS AVATAR PREVIEW CRADLE */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
+                <img 
+                  src={getGameAssetUrl('avatar', jobClass)} 
+                  alt="Live Class Preview" 
+                  style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover', backgroundColor: '#111' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }}
+                />
+                <div>
+                  <span style={{ color: '#888', fontSize: '12px', display: 'block' }}>{t.classPreview}</span>
+                  <strong style={{ color: '#fff', fontSize: '16px' }}>{jobClass}</strong>
+                </div>
+              </div>
+            </div>
 
             {/* ATTRIBUTES */}
             <div>
@@ -389,8 +405,8 @@ export default function App() {
                         <img 
                           src={getGameAssetUrl('skill', jobClass, skill)} 
                           alt={skill}
-                          style={{ width: '60px', height: '60px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
-                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/60x60/000000/00ff00?text=Skill'; }}
+                          style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }}
                         />
                       )}
                       <div>
