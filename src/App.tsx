@@ -6,13 +6,19 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🛠️ Dynamic Image Link Generator (Points to 'hero-images' bucket)
-const getGameAssetUrl = (type: 'avatar' | 'skill', className: string, skillName?: string) => {
+// 🛠️ Upgraded Dynamic Image Link Generator (Handles Avatars, Skills, Win, and Lost Poses)
+const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
   if (type === 'avatar') {
     return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_avatar.webp`;
   }
-  const cleanSkill = skillName ? skillName.toLowerCase().trim().replace(/\s+/g, '_') : '';
+  if (type === 'win') {
+    return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_win.webp`;
+  }
+  if (type === 'lost') {
+    return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_lost.webp`;
+  }
+  const cleanSkill = skillName ? skillName.toLowerCase().trim().replace(/[\s-]+/g, '_') : '';
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
@@ -37,6 +43,7 @@ const LANG = {
     reflex: "Reflex (Phản xạ - +1 Init/pt)",
     skillsLabel: "Select 2 Skills:",
     taken: "Claimed by",
+    previewTitle: "👁️ Hero Preview",
   },
   vi: {
     title: "⚔️ PHÒNG CHỜ ANH HÙNG ⚔️",
@@ -57,6 +64,7 @@ const LANG = {
     reflex: "Phản xạ (+1 Tốc đánh/điểm)",
     skillsLabel: "Chọn 2 Kỹ năng bổ trợ:",
     taken: "Đã có chủ:",
+    previewTitle: "👁️ Xem Trước Tướng",
   }
 };
 
@@ -194,6 +202,7 @@ export default function App() {
   };
 
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
+  const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
 
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
@@ -229,44 +238,93 @@ export default function App() {
             </button>
           </div>
         ) : myClaimedCharacter ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <img 
-                src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} 
-                alt={myClaimedCharacter.job_class}
-                style={{ width: '80px', height: '80px', border: '2px solid #0f0', borderRadius: '4px', backgroundColor: '#111', objectFit: 'cover' }}
-                onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/80x80/000000/00ff00?text=' + myClaimedCharacter.job_class; }}
-              />
-              <div>
-                <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
-                <p style={{ margin: 0 }}>
-                  Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}
-                </p>
-                <p style={{ color: '#ff0', marginTop: '5px', fontSize: '14px' }}>Skills: {myClaimedCharacter.skills?.join(', ')}</p>
+          // ACTIVE GAME CONTROL DECK (Shows Avatar, Win Pose, and Lost Pose)
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid #030', paddingBottom: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <img 
+                  src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} 
+                  alt={myClaimedCharacter.job_class}
+                  style={{ width: '90px', height: '90px', border: '2px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/90x90/000000/00ff00?text=' + myClaimedCharacter.job_class; }}
+                />
+                <div>
+                  <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
+                  <p style={{ margin: 0 }}>
+                    Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}
+                  </p>
+                  <p style={{ color: '#ff0', marginTop: '5px', fontSize: '14px' }}>Skills: {myClaimedCharacter.skills?.join(', ')}</p>
+                </div>
+              </div>
+              <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {t.releaseBtn}
+              </button>
+            </div>
+
+            {/* 📸 VISUAL BATTLE POSES PREVIEW GRID */}
+            <div>
+              <h3 style={{ color: '#888', margin: '0 0 10px 0' }}>[ Battle Poses Assets Monitor ]</h3>
+              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ display: 'block', color: '#0f0', marginBottom: '5px' }}>🏆 WIN POSE</span>
+                  <img 
+                    src={getGameAssetUrl('win', myClaimedCharacter.job_class)} 
+                    alt="Win Pose" 
+                    style={{ width: '120px', height: '120px', border: '1px dashed #0f0', backgroundColor: '#111', objectFit: 'cover' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=🏆+Win'; }}
+                  />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <span style={{ display: 'block', color: '#ff0000', marginBottom: '5px' }}>💀 LOST POSE</span>
+                  <img 
+                    src={getGameAssetUrl('lost', myClaimedCharacter.job_class)} 
+                    alt="Lost Pose" 
+                    style={{ width: '120px', height: '120px', border: '1px dashed #ff0000', backgroundColor: '#111', objectFit: 'cover' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/ff0000?text=💀+Lost'; }}
+                  />
+                </div>
               </div>
             </div>
-            <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>
-              {t.releaseBtn}
-            </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
-            <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
-            
-            <label style={{ marginLeft: '10px' }}>{t.selectLabel}</label>
-            <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
-              <option value="">-- Select --</option>
-              {characters.map(char => (
-                <option key={char.id} value={char.id} disabled={char.assigned_to !== null}>
-                  {char.name} [{CLASSES_DATA[char.job_class as keyof typeof CLASSES_DATA]?.[locale] || char.job_class}] 
-                  {char.assigned_to ? ` (${t.taken} ${char.assigned_to})` : ''}
-                </option>
-              ))}
-            </select>
-            <button onClick={handleClaim} disabled={!selectedCharId} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>
-              {t.claimBtn}
-            </button>
+          // BROWSING STATE
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
+              <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
+              
+              <label style={{ marginLeft: '10px' }}>{t.selectLabel}</label>
+              <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
+                <option value="">-- Select --</option>
+                {characters.map(char => (
+                  <option key={char.id} value={char.id} disabled={char.assigned_to !== null}>
+                    {char.name} [{CLASSES_DATA[char.job_class as keyof typeof CLASSES_DATA]?.[locale] || char.job_class}] 
+                    {char.assigned_to ? ` (${t.taken} ${char.assigned_to})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button onClick={handleClaim} disabled={!selectedCharId} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {t.claimBtn}
+              </button>
+            </div>
+
+            {/* 📸 LIVE SELECTION PREVIEW BOX (Shows portrait before claiming) */}
+            {currentlyBrowsingCharacter && (
+              <div style={{ display: 'flex', gap: '20px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#000', maxWidth: '500px', alignItems: 'center' }}>
+                <img 
+                  src={getGameAssetUrl('avatar', currentlyBrowsingCharacter.job_class)} 
+                  alt="Browsing Avatar"
+                  style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover', backgroundColor: '#111' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + currentlyBrowsingCharacter.job_class; }}
+                />
+                <div>
+                  <h3 style={{ color: '#fff', margin: '0 0 5px 0' }}>{t.previewTitle}: {currentlyBrowsingCharacter.name}</h3>
+                  <p style={{ margin: '3px 0' }}>Job: {currentlyBrowsingCharacter.job_class}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px', color: '#888' }}>HP: {40 + currentlyBrowsingCharacter.vitality * 5} | Might: +{currentlyBrowsingCharacter.might} | Speed: +{currentlyBrowsingCharacter.reflex}</p>
+                  <p style={{ margin: '3px 0', fontSize: '13px', color: '#ff0' }}>Skills: {currentlyBrowsingCharacter.skills?.join(', ')}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
