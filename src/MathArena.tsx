@@ -11,12 +11,50 @@ interface ScoreRecord {
   attempts: number;
 }
 
+interface MonsterData {
+  id: number;
+  name: string;
+  imageKey: string; // Follows the lowercase + underscore rule
+  tier: 'TRASH' | 'ELITE' | 'BOSS' | 'LEGENDARY';
+  maxHp: number;
+}
+
+const MONSTER_ROSTER: MonsterData[] = [
+  // 🟢 TIER 1: TRASH MOBS (Score 0 - 30)
+  { id: 1, name: "Kobold", imageKey: "kobold", tier: "TRASH", maxHp: 30 },
+  { id: 2, name: "Goblin", imageKey: "goblin", tier: "TRASH", maxHp: 40 },
+  { id: 3, name: "Zombie", imageKey: "zombie", tier: "TRASH", maxHp: 50 },
+  { id: 4, name: "Skeleton Warrior", imageKey: "skeleton_warrior", tier: "TRASH", maxHp: 60 },
+  { id: 5, name: "Gelatinous Cube", imageKey: "gelatinous_cube", tier: "TRASH", maxHp: 70 },
+
+  // 🟡 TIER 2: ELITES (Score 30 - 70)
+  { id: 6, name: "Orc Berserker", imageKey: "orc_berserker", tier: "ELITE", maxHp: 80 },
+  { id: 7, name: "Bugbear", imageKey: "bugbear", tier: "ELITE", maxHp: 90 },
+  { id: 8, name: "Gargoyle", imageKey: "gargoyle", tier: "ELITE", maxHp: 100 },
+  { id: 9, name: "Mimic Chest", imageKey: "mimic_chest", tier: "ELITE", maxHp: 110 },
+  { id: 10, name: "Owlbear", imageKey: "owlbear", tier: "ELITE", maxHp: 120 },
+
+  // 🟠 TIER 3: MINI-BOSSES (Score 70 - 120)
+  { id: 11, name: "Displacer Beast", imageKey: "displacer_beast", tier: "BOSS", maxHp: 140 },
+  { id: 12, name: "Cave Troll", imageKey: "cave_troll", tier: "BOSS", maxHp: 160 },
+  { id: 13, name: "Chimera", imageKey: "chimera", tier: "BOSS", maxHp: 180 },
+  { id: 14, name: "Mind Flayer", imageKey: "mind_flayer", tier: "BOSS", maxHp: 200 },
+  { id: 15, name: "Iron Golem", imageKey: "iron_golem", tier: "BOSS", maxHp: 220 },
+
+  // 🔴 TIER 4: LEGENDARY BOSSES (Score 120+)
+  { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 250 },
+  { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 300 },
+  { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 350 },
+  { id: 19, name: "Ancient Red Dragon", imageKey: "ancient_red_dragon", tier: "LEGENDARY", maxHp: 400 },
+  { id: 20, name: "The Tarrasque", imageKey: "the_tarrasque", tier: "LEGENDARY", maxHp: 500 },
+];
+
 const MATH_LANG = {
   en: {
     title: "⚔️ MATH BATTLE ARENA ⚔️",
     sub: "Defeat monsters in 60 seconds!",
     loginTitle: "[ IDENTIFY PLAYER ]",
-    loginLabel: "Enter Brother Name:",
+    loginLabel: "Enter Player Name:",
     loginBtn: "INITIALIZE ARENA",
     time: "⏳ Time:",
     score: "🏆 Score:",
@@ -27,7 +65,7 @@ const MATH_LANG = {
     btnAgain: "LAUNCH NEXT ATTACK",
     ladderTitle: "📊 DAILY LADDER SCOREBOARD 📊",
     colRank: "RANK",
-    colName: "BROTHER",
+    colName: "PLAYER",
     colScore: "MAX SCORE",
     colTries: "TRIES"
   },
@@ -35,7 +73,7 @@ const MATH_LANG = {
     title: "⚔️ ĐẤU TRƯỜNG TOÁN HỌC ⚔️",
     sub: "Hạ gục quái vật trong 60 giây!",
     loginTitle: "[ XÁC MINH DANH TÍNH ]",
-    loginLabel: "Nhập Tên Của Anh Em:",
+    loginLabel: "Nhập Tên Của Chiến Binh:",
     loginBtn: "KÍCH HOẠT ĐẤU TRƯỜNG",
     time: "⏳ Thời gian:",
     score: "🏆 Điểm số:",
@@ -46,7 +84,7 @@ const MATH_LANG = {
     btnAgain: "TIẾP TỤC TẤN CÔNG",
     ladderTitle: "📊 BẢNG XẾP HẠNG HÔM NAY 📊",
     colRank: "HẠNG",
-    colName: "ANH EM",
+    colName: "CHIẾN BINH",
     colScore: "ĐIỂM CAO",
     colTries: "SỐ LƯỢT"
   }
@@ -68,7 +106,8 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const [userInput, setUserInput] = useState('');
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [monsterHp, setMonsterHp] = useState(100);
+  const [currentMonsterIdx, setCurrentMonsterIdx] = useState(0);
+  const [monsterHp, setMonsterHp] = useState(MONSTER_ROSTER[0].maxHp);
   const [timeLeft, setTimeLeft] = useState(60);
   const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
   
@@ -100,7 +139,8 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const startGame = () => {
     setScore(0);
     setStreak(0);
-    setMonsterHp(100);
+    setCurrentMonsterIdx(0);
+    setMonsterHp(MONSTER_ROSTER[0].maxHp);
     setTimeLeft(60);
     setQuestion(generateQuestion());
     setGameState('BATTLE');
@@ -126,7 +166,17 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
       const newStreak = streak + 1;
       setStreak(newStreak);
       setScore(score + 10 + (newStreak > 3 ? 5 : 0));
-      setMonsterHp((prev) => (prev - 20 <= 0 ? 100 : prev - 20));
+      
+      setMonsterHp((prev) => {
+        const nextHp = prev - 20;
+        if (nextHp <= 0) {
+          const nextIdx = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
+          setCurrentMonsterIdx(nextIdx);
+          return MONSTER_ROSTER[nextIdx].maxHp;
+        }
+        return nextHp;
+      });
+
       setQuestion(generateQuestion());
       setUserInput('');
     }
@@ -135,7 +185,6 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const handleGameOver = async () => {
     setGameState('GAMEOVER');
     
-    // Read the current record for this brother today
     const { data } = await supabase
       .from('math_scores')
       .select('*')
@@ -146,7 +195,6 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     const currentAttempts = existingRow ? parseInt(existingRow.attempts) : 0;
     const currentHighScore = existingRow ? parseInt(existingRow.score) : 0;
 
-    // Upsert tracking state
     await supabase.from('math_scores').upsert(
       {
         username: username,
@@ -207,12 +255,33 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
               <span style={{ color: '#0f0' }}>{t.score} {score}</span>
             </div>
 
-            <div style={{ padding: '10px', background: '#000', border: '1px dashed #0f0', marginBottom: '20px' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '5px' }}>{monsterHp > 40 ? '👹' : '💥'}</div>
-              <div style={{ background: '#000', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
-                <div style={{ background: '#0f0', height: '100%', width: `${monsterHp}%`, transition: 'width 0.1s' }}></div>
-              </div>
-            </div>
+            {/* Dynamic Monster Display Sub-engine */}
+            {(() => {
+              const activeMonster = MONSTER_ROSTER[currentMonsterIdx];
+              const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+              const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
+              const hpPercentage = (monsterHp / activeMonster.maxHp) * 100;
+
+              return (
+                <div style={{ padding: '15px', background: '#000', border: '1px solid #0f0', marginBottom: '20px' }}>
+                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '15px', marginBottom: '10px', textTransform: 'uppercase' }}>
+                    TARGET: {activeMonster.name} [{activeMonster.tier}]
+                  </div>
+                  <img 
+                    src={monsterImgUrl} 
+                    alt={activeMonster.name} 
+                    style={{ width: '150px', height: '150px', objectFit: 'cover', border: '2px solid #0f0', marginBottom: '10px', backgroundColor: '#111' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=' + activeMonster.name; }}
+                  />
+                  <div style={{ background: '#000', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
+                    <div style={{ background: '#0f0', height: '100%', width: `${hpPercentage}%`, transition: 'width 0.1s' }}></div>
+                  </div>
+                  <div style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>
+                    HP: {monsterHp} / {activeMonster.maxHp}
+                  </div>
+                </div>
+              );
+            })()}
 
             {streak >= 3 && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
 
