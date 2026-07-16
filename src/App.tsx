@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import MathArena from './MathArena';
 
 // 1. Initialize Cloud Brain
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -140,6 +141,20 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
 
 export default function App() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
+  
+  // Detects if URL has ?mode=math
+  const [currentScreen, setCurrentScreen] = useState<'LOBBY' | 'MATH'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mode') === 'math' ? 'MATH' : 'LOBBY';
+  });
+
+  // Changes screen and updates the browser address bar cleanly
+  const handleScreenChange = (screen: 'LOBBY' | 'MATH') => {
+    setCurrentScreen(screen);
+    const newUrl = screen === 'MATH' ? '?mode=math' : window.location.pathname;
+    window.history.pushState({}, '', newUrl);
+  };
+
   const [characters, setCharacters] = useState<any[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   
@@ -251,6 +266,19 @@ export default function App() {
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
   const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
 
+  if (currentScreen === 'MATH') {
+    return (
+      <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
+        <header style={{ display: 'flex', justifyContent: 'right', borderBottom: '2px solid #0f0', paddingBottom: '10px', marginBottom: '20px' }}>
+          <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
+            {locale === 'en' ? "Tiếng Việt 🇻🇳" : "English 🇬🇧"}
+          </button>
+        </header>
+        <MathArena locale={locale} onBack={() => handleScreenChange('LOBBY')} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
       
@@ -263,9 +291,14 @@ export default function App() {
           <h1>{t.title}</h1>
           <p style={{ color: '#888' }}>{t.sub}</p>
         </div>
-        <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
-          {t.langBtn}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => handleScreenChange('MATH')} style={{ background: '#ff0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
+            🧮 Math Arena Mode
+          </button>
+          <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
+            {t.langBtn}
+          </button>
+        </div>
       </header>
 
       {/* LOBBY CONNECTION INTERFACE */}
