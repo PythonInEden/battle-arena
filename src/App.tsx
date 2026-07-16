@@ -143,7 +143,7 @@ export default function App() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
   
   // Detects if URL has ?mode=math
-  const [currentScreen, setCurrentScreen] = useState<'LOBBY' | 'MATH'>(() => {
+  const [currentScreen] = useState<'LOBBY' | 'MATH'>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('mode') === 'math' ? 'MATH' : 'LOBBY';
   });
@@ -164,7 +164,7 @@ export default function App() {
   const [reflex, setReflex] = useState(0);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   
-  // 💥 NEW: Network Submit Lock Engines (Crushes Duplicate Creation)
+  // Network Submit Lock Engines
   const [isSaving, setIsSaving] = useState(false);
 
   const t = LANG[locale];
@@ -201,7 +201,6 @@ export default function App() {
       return;
     }
 
-    // 🔒 Lock button immediately
     setIsSaving(true);
 
     try {
@@ -209,13 +208,11 @@ export default function App() {
         { name, job_class: jobClass, might, vitality, reflex, skills: selectedSkills }
       ]);
       
-      // Clean Form Values
       setName(''); setMight(0); setVitality(0); setReflex(0); setSelectedSkills([]);
-      await fetchCharacters(); // Forced reload guarantee
+      await fetchCharacters();
     } catch (err) {
       console.error(err);
     } finally {
-      // 🔓 Release lock
       setIsSaving(false);
     }
   };
@@ -230,20 +227,16 @@ export default function App() {
     await supabase.from('characters').update({ assigned_to: null }).eq('id', charId);
   };
 
-  // 🗑️ SECURE DELETION ENGINE (Housecleaning Maintenance tool)
   const handleDeleteCharacter = async (charId: number, assignedTo: string | null) => {
-    // 1. Confirm choice
     const msg = locale === 'en' ? "Permanently destroy this hero data?" : "Xóa vĩnh viễn anh hùng này khỏi máy chủ?";
     if (!window.confirm(msg)) return;
 
-    // 2. Validate Security Boundaries
     if (assignedTo && assignedTo !== currentPlayerName) {
       const errorMsg = locale === 'en' ? `Cannot delete! This hero is locked by ${assignedTo}` : `Không thể xóa! Tướng này đang được chọn bởi ${assignedTo}`;
       alert(errorMsg);
       return;
     }
 
-    // 3. Fire delete command
     await supabase.from('characters').delete().eq('id', charId);
     await fetchCharacters();
   };
