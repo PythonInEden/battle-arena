@@ -148,13 +148,6 @@ export default function App() {
     return params.get('mode') === 'math' ? 'MATH' : 'LOBBY';
   });
 
-  // Changes screen and updates the browser address bar cleanly
-  const handleScreenChange = (screen: 'LOBBY' | 'MATH') => {
-    setCurrentScreen(screen);
-    const newUrl = screen === 'MATH' ? '?mode=math' : window.location.pathname;
-    window.history.pushState({}, '', newUrl);
-  };
-
   const [characters, setCharacters] = useState<any[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   
