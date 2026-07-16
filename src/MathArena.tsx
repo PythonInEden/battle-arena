@@ -140,8 +140,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
       .from('math_scores')
       .select('*')
       .eq('username', username)
-      .eq('score_date', todayStr)
-      .substring();
+      .eq('score_date', todayStr);
 
     const existingRow = data && data.length > 0 ? data[0] : null;
     const currentAttempts = existingRow ? parseInt(existingRow.attempts) : 0;
