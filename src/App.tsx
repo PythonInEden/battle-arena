@@ -274,7 +274,7 @@ export default function App() {
             {locale === 'en' ? "Tiếng Việt 🇻🇳" : "English 🇬🇧"}
           </button>
         </header>
-        <MathArena locale={locale} onBack={() => handleScreenChange('LOBBY')} />
+        <MathArena locale={locale} supabase={supabase} />
       </div>
     );
   }
@@ -291,14 +291,9 @@ export default function App() {
           <h1>{t.title}</h1>
           <p style={{ color: '#888' }}>{t.sub}</p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => handleScreenChange('MATH')} style={{ background: '#ff0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
-            🧮 Math Arena Mode
-          </button>
-          <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
-            {t.langBtn}
-          </button>
-        </div>
+        <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
+          {t.langBtn}
+        </button>
       </header>
 
       {/* LOBBY CONNECTION INTERFACE */}
