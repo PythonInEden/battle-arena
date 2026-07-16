@@ -5,46 +5,62 @@ interface Question {
   answer: number;
 }
 
+interface ScoreRecord {
+  username: string;
+  score: number;
+  attempts: number;
+}
+
 const MATH_LANG = {
   en: {
     title: "⚔️ MATH BATTLE ARENA ⚔️",
     sub: "Defeat monsters in 60 seconds!",
-    highScore: "Daily High Score:",
-    btnStart: "ENTER THE ARENA",
-    btnAgain: "BATTLE AGAIN",
+    loginTitle: "[ IDENTIFY PLAYER ]",
+    loginLabel: "Enter Brother Name:",
+    loginBtn: "INITIALIZE ARENA",
     time: "⏳ Time:",
     score: "🏆 Score:",
-    combo: "🔥 COMBO HIT! 🔥",
+    combo: "🔥 BEYOND GODLIKE COMBO! 🔥",
     timesUp: "⌛ TIME'S UP!",
-    newRecord: "🎉 NEW HIGH SCORE! 🎉",
     points: "points!",
-    backLobby: "⬅️ Go to Heroes Lobby"
+    btnAgain: "LAUNCH NEXT ATTACK",
+    ladderTitle: "📊 DAILY LADDER SCOREBOARD 📊",
+    colRank: "RANK",
+    colName: "BROTHER",
+    colScore: "MAX SCORE",
+    colTries: "TRIES"
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG TOÁN HỌC ⚔️",
     sub: "Hạ gục quái vật trong 60 giây!",
-    highScore: "Kỷ lục cao nhất:",
-    btnStart: "BẮT ĐẦU CHIẾN",
-    btnAgain: "VÀO TRẬN MỚI",
+    loginTitle: "[ XÁC MINH DANH TÍNH ]",
+    loginLabel: "Nhập Tên Của Anh Em:",
+    loginBtn: "KÍCH HOẠT ĐẤU TRƯỜNG",
     time: "⏳ Thời gian:",
-    score: "🏆 Điểm:",
-    combo: "🔥 BẠO KÍCH LIÊN HOÀN! 🔥",
+    score: "🏆 Điểm số:",
+    combo: "🔥 LIÊN HOÀN BẠO KÍCH! 🔥",
     timesUp: "⌛ HẾT GIỜ!",
-    newRecord: "🎉 PHÁ KỶ LỤC RỒI! 🎉",
     points: "điểm!",
-    backLobby: "⬅️ Quay lại Phòng Chờ"
+    btnAgain: "TIẾP TỤC TẤN CÔNG",
+    ladderTitle: "📊 BẢNG XẾP HẠNG HÔM NAY 📊",
+    colRank: "HẠNG",
+    colName: "ANH EM",
+    colScore: "ĐIỂM CAO",
+    colTries: "SỐ LƯỢT"
   }
 };
 
 const generateQuestion = (): Question => {
-  const num1 = Math.floor(Math.random() * 8) + 2; // 2 to 9
-  const num2 = Math.floor(Math.random() * 8) + 2; // 2 to 9
+  const num1 = Math.floor(Math.random() * 8) + 2; 
+  const num2 = Math.floor(Math.random() * 8) + 2; 
   return Math.random() > 0.5 
     ? { text: `${num1 * num2} ÷ ${num1}`, answer: num2 }
     : { text: `${num1} × ${num2}`, answer: num1 * num2 };
 };
 
-export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onBack: () => void }) {
+export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; supabase: any }) {
+  const [username, setUsername] = useState(() => localStorage.getItem('math_brother_name') || '');
+  const [typedName, setTypedName] = useState('');
   const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'GAMEOVER'>('START');
   const [question, setQuestion] = useState<Question>({ text: '', answer: 0 });
   const [userInput, setUserInput] = useState('');
@@ -52,10 +68,32 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
   const [streak, setStreak] = useState(0);
   const [monsterHp, setMonsterHp] = useState(100);
   const [timeLeft, setTimeLeft] = useState(60);
-  const [highScore, setHighScore] = useState(() => parseInt(localStorage.getItem('math_arena_highscore') || '0'));
+  const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const t = MATH_LANG[locale];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, []);
+
+  const fetchLeaderboard = async () => {
+    const { data } = await supabase
+      .from('math_scores')
+      .select('username, score, attempts')
+      .eq('score_date', todayStr)
+      .order('score', { ascending: false });
+    if (data) setLeaderboard(data);
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = typedName.trim().toUpperCase();
+    if (!clean) return;
+    setUsername(clean);
+    localStorage.setItem('math_brother_name', clean);
+  };
 
   const startGame = () => {
     setScore(0);
@@ -71,16 +109,12 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
   useEffect(() => {
     if (gameState !== 'BATTLE') return;
     if (timeLeft <= 0) {
-      setGameState('GAMEOVER');
-      if (score > highScore) {
-        setHighScore(score);
-        localStorage.setItem('math_arena_highscore', score.toString());
-      }
+      handleGameOver();
       return;
     }
     const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
     return () => clearTimeout(timer);
-  }, [timeLeft, gameState, score, highScore]);
+  }, [timeLeft, gameState]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -96,20 +130,73 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
     }
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
-      <h1 style={{ color: '#0f0', fontSize: '2.5rem', textShadow: '0 0 10px #0f0', marginBottom: '5px', textAlign: 'center' }}>{t.title}</h1>
-      <p style={{ color: '#888', marginBottom: '20px' }}>{t.sub}</p>
+  const handleGameOver = async () => {
+    setGameState('GAMEOVER');
+    
+    // Read the current record for this brother today
+    const { data } = await supabase
+      .from('math_scores')
+      .select('*')
+      .eq('username', username)
+      .eq('score_date', todayStr)
+      .substring();
 
-      <div style={{ border: '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '400px', backgroundColor: '#050505', textAlign: 'center', boxShadow: '0 0 15px rgba(0,255,0,0.2)' }}>
-        
-        {gameState === 'START' && (
-          <div>
-            <p style={{ fontSize: '18px', color: '#fff', marginBottom: '20px' }}>{t.highScore} <strong style={{color: '#ff0'}}>{highScore} pts</strong></p>
-            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%' }}>
-              {t.btnStart}
+    const existingRow = data && data.length > 0 ? data[0] : null;
+    const currentAttempts = existingRow ? parseInt(existingRow.attempts) : 0;
+    const currentHighScore = existingRow ? parseInt(existingRow.score) : 0;
+
+    // Upsert tracking state
+    await supabase.from('math_scores').upsert(
+      {
+        username: username,
+        score: Math.max(currentHighScore, score),
+        attempts: currentAttempts + 1,
+        score_date: todayStr
+      },
+      { onConflict: 'username,score_date' }
+    );
+
+    fetchLeaderboard();
+  };
+
+  if (!username) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px' }}>
+        <div style={{ border: '2px dashed #0f0', padding: '30px', width: '100%', maxWidth: '400px', backgroundColor: '#000', textAlign: 'center' }}>
+          <h2 style={{ color: '#ff0', marginBottom: '20px' }}>{t.loginTitle}</h2>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <label style={{ color: '#0f0', textAlign: 'left', fontWeight: 'bold' }}>{t.loginLabel}</label>
+            <input
+              type="text"
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '12px', fontSize: '18px', fontFamily: 'monospace', textTransform: 'uppercase', outline: 'none' }}
+              required
+            />
+            <button type="submit" style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace' }}>
+              {t.loginBtn}
             </button>
-          </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '800px', margin: '0 auto', gap: '30px', boxSizing: 'border-box' }}>
+      
+      {/* Title Layout */}
+      <div style={{ textAlign: 'center' }}>
+        <h1 style={{ color: '#0f0', fontSize: '2.5rem', textShadow: '0 0 8px #0f0', marginBottom: '5px' }}>{t.title}</h1>
+        <p style={{ color: '#888', margin: '0' }}>{t.sub} | USER: <span style={{color: '#ff0'}}>{username}</span></p>
+      </div>
+
+      {/* Main Play Arena Box */}
+      <div style={{ border: '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '450px', backgroundColor: '#000', textAlign: 'center', boxSizing: 'border-box' }}>
+        {gameState === 'START' && (
+          <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
+            {t.btnStart}
+          </button>
         )}
 
         {gameState === 'BATTLE' && (
@@ -119,14 +206,14 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
               <span style={{ color: '#0f0' }}>{t.score} {score}</span>
             </div>
 
-            <div style={{ padding: '10px', background: '#111', border: '1px solid #333', marginBottom: '20px' }}>
+            <div style={{ padding: '10px', background: '#000', border: '1px dashed #0f0', marginBottom: '20px' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '5px' }}>{monsterHp > 40 ? '👹' : '💥'}</div>
-              <div style={{ background: '#222', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
+              <div style={{ background: '#000', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
                 <div style={{ background: '#0f0', height: '100%', width: `${monsterHp}%`, transition: 'width 0.1s' }}></div>
               </div>
             </div>
 
-            {streak >= 3 && <div style={{ color: '#ff0055', fontWeight: 'bold', animation: 'blink 0.5s infinite', marginBottom: '10px' }}>{t.combo}</div>}
+            {streak >= 3 && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
 
             <div style={{ fontSize: '4rem', fontWeight: 'bold', color: '#fff', margin: '20px 0' }}>{question.text}</div>
 
@@ -135,7 +222,7 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
               type="number"
               value={userInput}
               onChange={handleInputChange}
-              style={{ background: '#000', color: '#0f0', border: '2px solid #0f0', fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none' }}
+              style={{ background: '#000', color: '#0f0', border: '2px solid #0f0', fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }}
               placeholder="?"
             />
           </div>
@@ -143,19 +230,36 @@ export default function MathArena({ locale, onBack }: { locale: 'en' | 'vi'; onB
 
         {gameState === 'GAMEOVER' && (
           <div>
-            <h2 style={{ color: '#ff3333' }}>{t.timesUp}</h2>
-            <p style={{ fontSize: '18px', color: '#fff' }}>Score: <strong>{score}</strong> {t.points}</p>
-            {score >= highScore && score > 0 && <p style={{ color: '#ff0' }}>{t.newRecord}</p>}
-            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', marginTop: '15px' }}>
+            <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.timesUp}</h2>
+            <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}</p>
+            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
               {t.btnAgain}
             </button>
           </div>
         )}
       </div>
 
-      <button onClick={onBack} style={{ background: 'transparent', color: '#555', border: 'none', marginTop: '30px', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'monospace' }}>
-        {t.backLobby}
-      </button>
+      {/* Cyberpunk Daily Ladder Scoreboard Table */}
+      <div style={{ width: '100%', maxWidth: '600px', border: '1px solid #0f0', padding: '20px', backgroundColor: '#000', boxSizing: 'border-box' }}>
+        <h3 style={{ color: '#ff0', textAlign: 'center', marginTop: 0, borderBottom: '1px solid #0f0', paddingBottom: '10px' }}>{t.ladderTitle}</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#0f0', borderBottom: '1px dashed #0f0', paddingBottom: '5px', fontSize: '14px' }}>
+            <span style={{ width: '15%' }}>{t.colRank}</span>
+            <span style={{ width: '45%' }}>{t.colName}</span>
+            <span style={{ width: '25%', textAlign: 'right' }}>{t.colScore}</span>
+            <span style={{ width: '15%', textAlign: 'right' }}>{t.colTries}</span>
+          </div>
+          {leaderboard.map((row, idx) => (
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: row.username === username ? '#ff0' : '#fff', fontSize: '15px', padding: '4px 0' }}>
+              <span style={{ width: '15%' }}>#{idx + 1}</span>
+              <span style={{ width: '45%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.username}</span>
+              <span style={{ width: '25%', textAlign: 'right', fontWeight: 'bold' }}>{row.score}</span>
+              <span style={{ width: '15%', textAlign: 'right', color: '#888' }}>{row.attempts}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      
     </div>
   );
 }
