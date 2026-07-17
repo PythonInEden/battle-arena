@@ -25,7 +25,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
-// 2. Master Translations Dictionary
+// 2. Master Translations Dictionary (100% Sync)
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY & ARENA ⚔️",
@@ -68,6 +68,7 @@ const LANG = {
     deckTitle: "📜 CHOOSE YOUR COMBAT ACTION:",
     optAttack: "⚔️ Basic Attack",
     optDefend: "🛡️ Defend Stance",
+    noDice: "Waiting...",
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -110,6 +111,7 @@ const LANG = {
     deckTitle: "📜 CHỌN CHIÊU THỨC CHIẾN ĐẤU:",
     optAttack: "⚔️ Tấn Công Thường",
     optDefend: "🛡️ Thủ Thế Toàn Diện",
+    noDice: "Đang đợi...",
   }
 };
 
@@ -155,7 +157,7 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Holy Smite": { en: "Holy bolt. Deals double damage against Undead monsters or Necromancers.", vi: "Sét đánh thiên lôi, sát thương nhân đôi nếu gặp Quỷ hoặc Thầy pháp bóng tối." },
   "Blessing": { en: "Divine buff. Adds +3 to all your attribute dice rolls for 3 turns.", vi: "Phép ban phước, tăng +3 công lực cho mọi lần đổ xúc xắc trong 3 lượt." },
   "Divine Shield": { en: "Holy protection shield. Blocks the next magical spell completely.", vi: "Khiên ánh sáng, chặn đứng hoàn toàn chiêu phép thuật tiếp theo của địch." },
-  "Resurrection": { en: "Cheats death. If you die this round, revive once with 10 HP.", vi: "Hồi sinh từ cõi chết, nếu hẻo lượt này sẽ bật dậy sống lại with 10 máu." },
+  "Resurrection": { en: "Cheats death. If you die this round, revive once with 10 HP.", vi: "Hồi sinh từ cõi chết, nếu hẻo lượt này sẽ bật dậy sống lại với 10 máu." },
   "Divine Aura": { en: "Holy protection aura. Permanently cuts all incoming magical/dark damage by 50%.", vi: "Hào quang hộ thể, tự động giảm nửa sát thương phép hoặc bóng tối." },
   "Holy Charge": { en: "Shield bash charge. Deals damage scaled directly from your Vitality stat.", vi: "Húc vai thần thánh, lấy máu trâu đè người gây sát thương cực lớn." },
   "Lay on Hands": { en: "Quick touch healing. Instantly restores a medium amount of health.", vi: "Đặt tay chữa lành, hồi phục nhanh một lượng máu vừa phải để cầm cự." },
@@ -364,13 +366,14 @@ export default function App() {
     let h1 = baseState.hp1;
     let h2 = baseState.hp2;
     let rNum = baseState.round;
-    let nextLogs = [...baseState.logs];
 
     const actionP1 = playerActions[matchId] || 'attack';
     const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
     const actionP2 = p2.isBot ? botOptions[Math.floor(Math.random() * botOptions.length)] : 'attack';
 
-    nextLogs.push(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
+    // 📜 CREATE A LOCAL ROUND LOGGER BLOCK
+    let roundLogs: string[] = [];
+    roundLogs.push(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
 
     const idx1 = Math.floor(Math.random() * 6);
     const idx2 = Math.floor(Math.random() * 6);
@@ -426,24 +429,24 @@ export default function App() {
     };
 
     const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
-    nextLogs.push(locale === 'vi' 
+    roundLogs.push(locale === 'vi' 
       ? `🎲 ${first.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
       : `🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
     );
-    nextLogs.push(strike1.log);
+    roundLogs.push(strike1.log);
     if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
 
     if (h1 > 0 && h2 > 0) {
       const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
-      nextLogs.push(locale === 'vi' 
+      roundLogs.push(locale === 'vi' 
         ? `🎲 ${second.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
         : `🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
       );
-      nextLogs.push(strike2.log);
+      roundLogs.push(strike2.log);
       if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg;
     }
 
-    nextLogs.push(locale === 'vi' 
+    roundLogs.push(locale === 'vi' 
       ? `❤️ MÁU CÒN LẠI -> ${p1.name}: ${Math.max(0, h1)} HP | ${p2.name}: ${Math.max(0, h2)} HP`
       : `❤️ HP REMAINING -> ${p1.name}: ${Math.max(0, h1)} HP | ${p2.name}: ${Math.max(0, h2)} HP`
     );
@@ -451,8 +454,11 @@ export default function App() {
     let finalWinner = null;
     if (h1 <= 0 || h2 <= 0) {
       finalWinner = h1 > h2 ? p1.name : p2.name;
-      nextLogs.push(locale === 'vi' ? `🎉 CHIẾN THẮNG: ${finalWinner} đã hạ gục đối thủ!` : `🎉 TOURNAMENT WINNER: ${finalWinner} clear victory!`);
+      roundLogs.push(locale === 'vi' ? `🎉 CHIẾN THẮNG: ${finalWinner} đã hạ gục đối thủ!` : `🎉 TOURNAMENT WINNER: ${finalWinner} clear victory!`);
     }
+
+    // 🔄 REVERSE PREPEND ENGINE: Splices the whole new round at the absolute front of array stack
+    const updatedHistory = [...roundLogs, ...baseState.logs];
 
     setArenaState(prev => ({
       ...prev,
@@ -460,7 +466,7 @@ export default function App() {
         hp1: h1,
         hp2: h2,
         round: rNum + 1,
-        logs: nextLogs,
+        logs: updatedHistory,
         winner: finalWinner,
         isRolling: false,
         displayDice1: finalIcon1,
@@ -589,8 +595,8 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                      {/* 🎲 REPOSITIONED DYNAMIC SHUFFLING DICE BAY */}
-                      <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
+                      {/* 🎲 MAGNIFIED DICE BAY FRAME (Fills out the dotted boundary box completely) */}
+                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                         {liveState.displayDice1}
                       </div>
                     </div>
@@ -604,8 +610,8 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
 
-                      {/* 🎲 REPOSITIONED DYNAMIC SHUFFLING DICE BAY */}
-                      <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #ff0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
+                      {/* 🎲 MAGNIFIED DICE BAY FRAME (Fills out the dotted boundary box completely) */}
+                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                         {liveState.displayDice2}
                       </div>
                     </div>
@@ -707,7 +713,7 @@ export default function App() {
                   return (
                     <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
                       {isSelected && (
-                        <img src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
+                        src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
                       )}
                       <div>
                         <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
