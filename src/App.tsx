@@ -6,6 +6,15 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 🛠️ IMMUTABLE SYSTEM BOSSES (Hardcoded, un-deletable, immune to pool depletion)
+const IMMUTABLE_SYSTEM_BOTS = [
+  { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam"], assigned_to: "[System Bot]", isBot: true },
+  { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Counter-Stance"], assigned_to: "[System Bot]", isBot: true }
+];
+
+// 🛠️ Retro Unicode Dice Map
+const DICE_ICONS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+
 // 🛠️ Dynamic Image Link Generator
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
@@ -20,7 +29,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY & ARENA ⚔️",
-    sub: "Enter your name, pick a hero, or enter the combat tournament",
+    sub: "Enter your name, pick a hero, or enter the ready room to fight",
     langBtn: "Tiếng Việt 🇻🇳",
     nameInputLabel: "Your Player Name:",
     nameInputPlace: "Type your real name...",
@@ -44,14 +53,21 @@ const LANG = {
     deleteBtn: "Delete",
     protectedText: "Fighting",
     arenaTitle: "🏆 LIVE TOURNAMENT MATCHUPS 🏆",
-    rollBtn: "🎲 Fight & Roll Dice",
+    rollBtn: "🎲 Roll Round",
     vsText: "VS",
-    botLabel: "AI Shadow Bot",
+    botLabel: "AI System Bot",
     creatorLabel: "Created by",
+    readyBtn: "🟢 MARK AS READY",
+    unreadyBtn: "🔴 CANCEL READY",
+    waitingRoomTitle: "⏳ ARENA WAITING LOBBY (READY CHECK) ⏳",
+    statusWaiting: "WAITING...",
+    statusReady: "READY TO FIGHT!",
+    lobbyLockAlert: "Tournament is currently active! Please wait until the match ends.",
+    matchOverBtn: "💥 COMBAT CONCLUDED",
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
-    sub: "Nhập tên của bạn, chọn tướng hoặc tiến vào giải đấu",
+    sub: "Nhập tên của bạn, chọn tướng hoặc tiến vào phòng chờ sẵn sàng",
     langBtn: "English 🇬🇧",
     nameInputLabel: "Tên Người Chơi:",
     nameInputPlace: "Nhập tên thật của bạn...",
@@ -75,10 +91,17 @@ const LANG = {
     deleteBtn: "Xóa Tướng",
     protectedText: "Đang Chiến Đấu",
     arenaTitle: "🏆 BẢNG ĐẤU GIẢI TOURNAMENT LIVE 🏆",
-    rollBtn: "🎲 Giao Trận & Đổ Xúc Xắc",
+    rollBtn: "🎲 Đổ Xúc Xắc Hiệp",
     vsText: "ĐẤU VỚI",
     botLabel: "Quái Vật Máy (AI)",
     creatorLabel: "Tạo bởi",
+    readyBtn: "🟢 SẴN SÀNG ĐẤU",
+    unreadyBtn: "🔴 HỦY SẴN SÀNG",
+    waitingRoomTitle: "⏳ PHÒNG CHỜ ĐẤU TRƯỜNG (KIỂM TRA SĨ SỐ) ⏳",
+    statusWaiting: "ĐANG CHỜ TỔ ĐỘI...",
+    statusReady: "SẴN SÀNG KHÔ MÁU!",
+    lobbyLockAlert: "Trận đấu đang diễn ra! Vui lòng đợi các đấu sĩ đánh xong.",
+    matchOverBtn: "💥 TRẬN ĐẤU KẾT THÚC",
   }
 };
 
@@ -124,7 +147,7 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Holy Smite": { en: "Holy bolt. Deals double damage against Undead monsters or Necromancers.", vi: "Sét đánh thiên lôi, sát thương nhân đôi nếu gặp Quỷ hoặc Thầy pháp bóng tối." },
   "Blessing": { en: "Divine buff. Adds +3 to all your attribute dice rolls for 3 turns.", vi: "Phép ban phước, tăng +3 công lực cho mọi lần đổ xúc xắc trong 3 lượt." },
   "Divine Shield": { en: "Holy protection shield. Blocks the next magical spell completely.", vi: "Khiên ánh sáng, chặn đứng hoàn toàn chiêu phép thuật tiếp theo của địch." },
-  "Resurrection": { en: "Cheats death. If you die this round, revive once with 10 HP.", vi: "Hồi sinh từ cõi chết, nếu hẻo lượt này sẽ bật dậy sống lại với 10 máu." },
+  "Resurrection": { en: "Cheats death. If you die this round, revive once with 10 HP.", vi: "Hồi sinh từ cõi chết, nếu hẻo lượt này sẽ bật dậy sống lại with 10 máu." },
   "Divine Aura": { en: "Holy protection aura. Permanently cuts all incoming magical/dark damage by 50%.", vi: "Hào quang hộ thể, tự động giảm nửa sát thương phép hoặc bóng tối." },
   "Holy Charge": { en: "Shield bash charge. Deals damage scaled directly from your Vitality stat.", vi: "Húc vai thần thánh, lấy máu trâu đè người gây sát thương cực lớn." },
   "Lay on Hands": { en: "Quick touch healing. Instantly restores a medium amount of health.", vi: "Đặt tay chữa lành, hồi phục nhanh một lượng máu vừa phải để cầm cự." },
@@ -151,7 +174,7 @@ interface Combatant {
   reflex: number;
   skills: string[];
   assigned_to: string | null;
-  created_by?: string | null;
+  is_ready?: boolean;
   isBot?: boolean;
 }
 
@@ -173,8 +196,13 @@ export default function App() {
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [combatLogs, setCombatLogs] = useState<Record<string, string[]>>({});
-  const [combatWinners, setCombatWinners] = useState<Record<string, string>>({});
+  const [arenaState, setArenaState] = useState<Record<string, {
+    hp1: number;
+    hp2: number;
+    round: number;
+    logs: string[];
+    winner: string | null;
+  }>>({});
 
   const t = LANG[locale];
   const totalPointsSpent = might + vitality + reflex;
@@ -208,16 +236,7 @@ export default function App() {
     if (!name || selectedSkills.length !== 2 || pointsLeft !== 0 || isSaving) return;
     setIsSaving(true);
     try {
-      // 🔒 LOCK IN IDENTITY: Injects 'created_by' with active terminal player name
-      await supabase.from('characters').insert([{ 
-        name, 
-        job_class: jobClass, 
-        might, 
-        vitality, 
-        reflex, 
-        skills: selectedSkills,
-        created_by: currentPlayerName 
-      }]);
+      await supabase.from('characters').insert([{ name, job_class: jobClass, might, vitality, reflex, skills: selectedSkills, created_by: currentPlayerName }]);
       setName(''); setMight(0); setVitality(0); setReflex(0); setSelectedSkills([]);
       await fetchCharacters();
     } catch (err) { console.error(err); } finally { setIsSaving(false); }
@@ -225,28 +244,23 @@ export default function App() {
 
   const handleClaim = async () => {
     if (!selectedCharId || !currentPlayerName) return;
-    await supabase.from('characters').update({ assigned_to: currentPlayerName }).eq('id', selectedCharId);
+    if (isTournamentActive) return alert(t.lobbyLockAlert);
+    await supabase.from('characters').update({ assigned_to: currentPlayerName, is_ready: false }).eq('id', selectedCharId);
     setSelectedCharId('');
   };
 
   const handleRelease = async (charId: number) => {
-    await supabase.from('characters').update({ assigned_to: null }).eq('id', charId);
+    await supabase.from('characters').update({ assigned_to: null, is_ready: false }).eq('id', charId);
   };
 
-  // 🗑️ SECURE CREATOR-LOCK DELETION ENGINE
+  const handleToggleReady = async (charId: number, currentReadyState: boolean) => {
+    await supabase.from('characters').update({ is_ready: !currentReadyState }).eq('id', charId);
+  };
+
   const handleDeleteCharacter = async (charId: number, createdBy: string | null) => {
     const msg = locale === 'en' ? "Permanently destroy this hero data?" : "Xóa vĩnh viễn anh hùng này khỏi máy chủ?";
     if (!window.confirm(msg)) return;
-    
-    // Security verification check: matches browser signature with cloud data
-    if (createdBy && createdBy !== currentPlayerName) {
-      const errorMsg = locale === 'en' 
-        ? `Access Denied! Only the creator (${createdBy}) can delete this hero.` 
-        : `Từ chối lệnh! Chỉ người tạo tướng (${createdBy}) mới có quyền xóa.`;
-      alert(errorMsg);
-      return;
-    }
-    
+    if (createdBy && createdBy !== currentPlayerName) return alert("Access Denied!");
     await supabase.from('characters').delete().eq('id', charId);
     await fetchCharacters();
   };
@@ -259,13 +273,14 @@ export default function App() {
     }
   };
 
+  const activeClaimed = characters
+    .filter(c => c.assigned_to !== null && c.assigned_to !== '')
+    .sort((a, b) => a.assigned_to.localeCompare(b.assigned_to));
+
+  const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
+
   const generateTournamentPairs = () => {
-    const activeClaimed = characters
-      .filter(c => c.assigned_to !== null && c.assigned_to !== '')
-      .sort((a, b) => a.assigned_to.localeCompare(b.assigned_to));
-
-    if (activeClaimed.length === 0) return [];
-
+    if (!isTournamentActive) return [];
     const pairs: [Combatant, Combatant][] = [];
     
     for (let i = 0; i < activeClaimed.length; i += 2) {
@@ -273,17 +288,18 @@ export default function App() {
         pairs.push([activeClaimed[i], activeClaimed[i + 1]]);
       } else {
         const unclaimedPool = characters.filter(c => c.assigned_to === null || c.assigned_to === '');
-        let botTemplate = unclaimedPool[0] || activeClaimed[0];
+        let botTemplate = unclaimedPool[0] || IMMUTABLE_SYSTEM_BOTS[i % IMMUTABLE_SYSTEM_BOTS.length];
         
         const shadowBot: Combatant = {
-          id: `bot_${botTemplate.id}_${i}`,
-          name: `${botTemplate.name}`,
+          id: botTemplate.id.toString().includes('sys') ? botTemplate.id : `bot_${botTemplate.id}_${i}`,
+          name: botTemplate.name,
           job_class: botTemplate.job_class,
           might: botTemplate.might,
           vitality: botTemplate.vitality,
           reflex: botTemplate.reflex,
           skills: botTemplate.skills,
           assigned_to: `[${t.botLabel}]`,
+          is_ready: true,
           isBot: true
         };
         pairs.push([activeClaimed[i], shadowBot]);
@@ -292,42 +308,55 @@ export default function App() {
     return pairs;
   };
 
-  const runDiceBattleSimulation = (matchId: string, p1: Combatant, p2: Combatant) => {
-    let logs: string[] = [];
-    let h1 = 40 + p1.vitality * 5;
-    let h2 = 40 + p2.vitality * 5;
+  const runInteractiveRound = (matchId: string, p1: Combatant, p2: Combatant) => {
+    const current = arenaState[matchId] || {
+      hp1: 40 + p1.vitality * 5,
+      hp2: 40 + p2.vitality * 5,
+      round: 1,
+      logs: [`🏁 Battle Commenced! ${p1.name} vs ${p2.name}`],
+      winner: null
+    };
+
+    if (current.winner) return;
+
+    let h1 = current.hp1;
+    let h2 = current.hp2;
+    let rNum = current.round;
+    let nextLogs = [...current.logs];
+
+    nextLogs.push(`⚔️ --- Round ${rNum} ---`);
+
+    // Dynamic Retro Roll Icon Spin Simulation
+    const icon1 = DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)];
+    const icon2 = DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)];
+
+    const r1 = Math.floor(Math.random() * 20) + 1 + p1.reflex;
+    const r2 = Math.floor(Math.random() * 20) + 1 + p2.reflex;
+    const first = r1 >= r2 ? p1 : p2;
+    const second = r1 >= r2 ? p2 : p1;
     
-    logs.push(`🏁 Battle Commenced! ${p1.name} (${p1.assigned_to}) vs ${p2.name} (${p2.assigned_to})`);
-    logs.push(`📊 [Health Roster] ${p1.name}: ${h1} HP | ${p2.name}: ${h2} HP`);
+    const d1 = Math.floor(Math.random() * 10) + 1 + first.might;
+    if (first.id === p1.id) { h2 -= d1; nextLogs.push(`💥 ${first.name} rolls ${icon1} Initiative: ${r1} -> Strikes for ${d1} DMG.`); }
+    else { h1 -= d1; nextLogs.push(`💥 ${first.name} rolls ${icon2} Initiative: ${r2} -> Strikes for ${d1} DMG.`); }
 
-    let round = 1;
-    while (h1 > 0 && h2 > 0 && round <= 10) {
-      logs.push(`⚔️ --- Round ${round} ---`);
-      
-      const r1 = Math.floor(Math.random() * 20) + 1 + p1.reflex;
-      const r2 = Math.floor(Math.random() * 20) + 1 + p2.reflex;
-      
-      const first = r1 >= r2 ? p1 : p2;
-      const second = r1 >= r2 ? p2 : p1;
-      
-      const d1 = Math.floor(Math.random() * 10) + 1 + first.might;
-      if (first === p1) { h2 -= d1; logs.push(`💥 ${first.name} strikes first (Roll: ${r1}) and deals ${d1} DMG to ${second.name}.`); }
-      else { h1 -= d1; logs.push(`💥 ${first.name} strikes first (Roll: ${r2}) and deals ${d1} DMG to ${second.name}.`); }
-
-      if (h1 <= 0 || h2 <= 0) break;
-
+    if (h1 > 0 && h2 > 0) {
       const d2 = Math.floor(Math.random() * 10) + 1 + second.might;
-      if (second === p1) { h2 -= d2; logs.push(`⚡ ${second.name} counters (Roll: ${r1}) and hits back for ${d2} DMG.`); }
-      else { h1 -= d2; logs.push(`⚡ ${second.name} counters (Roll: ${r2}) and hits back for ${d2} DMG.`); }
-
-      round++;
+      if (second.id === p1.id) { h2 -= d2; nextLogs.push(`⚡ ${second.name} rolls ${icon1} Counter -> Hits back for ${d2} DMG.`); }
+      else { h1 -= d2; nextLogs.push(`⚡ ${second.name} rolls ${icon2} Counter -> Hits back for ${d2} DMG.`); }
     }
 
-    const winner = h1 > h2 ? p1 : p2;
-    logs.push(`🎉 WINNER: ${winner.name} balances victorious with ${Math.max(0, h1 > h2 ? h1 : h2)} HP remaining!`);
+    nextLogs.push(`❤️ Remaining HP -> ${p1.name}: ${Math.max(0, h1)} | ${p2.name}: ${Math.max(0, h2)}`);
 
-    setCombatLogs(prev => ({ ...prev, [matchId]: logs }));
-    setCombatWinners(prev => ({ ...prev, [matchId]: winner.name }));
+    let finalWinner = null;
+    if (h1 <= 0 || h2 <= 0) {
+      finalWinner = h1 > h2 ? p1.name : p2.name;
+      nextLogs.push(`🎉 WINNER: ${finalWinner} stands victorious!`);
+    }
+
+    setArenaState(prev => ({
+      ...prev,
+      [matchId]: { hp1: h1, hp2: h2, round: rNum + 1, logs: nextLogs, winner: finalWinner }
+    }));
   };
 
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
@@ -351,7 +380,7 @@ export default function App() {
         </button>
       </header>
 
-      {/* LOBBY CONNECTION INTERFACE */}
+      {/* REGISTRATION SYSTEM */}
       <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
         {!currentPlayerName ? (
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -360,32 +389,21 @@ export default function App() {
             <button onClick={() => savePlayerIdentity(typedName)} disabled={!typedName.trim()} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>Join Lobby</button>
           </div>
         ) : myClaimedCharacter ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid #030', paddingBottom: '15px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <img src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} alt="avatar" style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + myClaimedCharacter.job_class; }} />
-                <div>
-                  <h2 style={{ color: '#fff', margin: '0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
-                  <p style={{ margin: '5px 0 0 0' }}>Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}</p>
-                </div>
-              </div>
-              <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>{t.releaseBtn}</button>
-            </div>
-
-            {/* BATTLE POSES MONITOR */}
-            <div>
-              <h3 style={{ color: '#888', margin: '0 0 10px 0' }}>[ Battle Poses Assets Monitor ]</h3>
-              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ display: 'block', color: '#0f0', marginBottom: '5px' }}>🏆 WIN POSE</span>
-                  <img src={getGameAssetUrl('win', myClaimedCharacter.job_class)} alt="Win Pose" style={{ width: '150px', height: '150px', border: '1px dashed #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=🏆+Win'; }} />
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <span style={{ display: 'block', color: '#ff0000', marginBottom: '5px' }}>💀 LOST POSE</span>
-                  <img src={getGameAssetUrl('lost', myClaimedCharacter.job_class)} alt="Lost Pose" style={{ width: '150px', height: '150px', border: '1px dashed #ff0000', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/ff0000?text=💀+Lost'; }} />
-                </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <img src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} alt="avatar" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + myClaimedCharacter.job_class; }} />
+              <div>
+                <h2 style={{ color: '#fff', margin: '0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
+                <p style={{ margin: '5px 0 0 0' }}>Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}</p>
+                <button 
+                  onClick={() => handleToggleReady(myClaimedCharacter.id, myClaimedCharacter.is_ready || false)} 
+                  style={{ marginTop: '10px', background: myClaimedCharacter.is_ready ? '#300' : '#040', color: myClaimedCharacter.is_ready ? '#ff3333' : '#0f0', border: `1px solid ${myClaimedCharacter.is_ready ? '#ff3333' : '#0f0'}`, padding: '6px 15px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
+                >
+                  {myClaimedCharacter.is_ready ? t.unreadyBtn : t.readyBtn}
+                </button>
               </div>
             </div>
+            <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>{t.releaseBtn}</button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -413,48 +431,80 @@ export default function App() {
         )}
       </section>
 
+      {/* READY CHECK ROOM */}
+      {activeClaimed.length > 0 && !isTournamentActive && (
+        <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #ff0', backgroundColor: '#0a0a00' }}>
+          <h3 style={{ color: '#ff0', marginTop: 0 }}>{t.waitingRoomTitle}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {activeClaimed.map(c => (
+              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #220', paddingBottom: '8px' }}>
+                <span style={{ color: '#fff' }}>👤 <strong>@{c.assigned_to}</strong> leading <strong>{c.name}</strong> ({c.job_class})</span>
+                <span style={{ color: c.is_ready ? '#0f0' : '#ff3333', fontWeight: 'bold' }}>{c.is_ready ? `[ ${t.statusReady} ]` : `[ ${t.statusWaiting} ]`}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* TOURNAMENT LIVE INTERFACE */}
-      {tournamentMatches.length > 0 && (
+      {isTournamentActive && tournamentMatches.length > 0 && (
         <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
           <h2 style={{ textAlign: 'center', color: '#fff', letterSpacing: '2px' }}>{t.arenaTitle}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', marginTop: '20px' }}>
             {tournamentMatches.map((match) => {
               const [p1, p2] = match;
               const matchId = `match_${p1.id}_vs_${p2.id}`;
-              const logs = combatLogs[matchId] || [];
-              const winnerName = combatWinners[matchId];
+              
+              const liveState = arenaState[matchId] || {
+                hp1: 40 + p1.vitality * 5,
+                hp2: 40 + p2.vitality * 5,
+                round: 1,
+                logs: [`🏁 Ready Check Verified. Click below to roll dice!`],
+                winner: null
+              };
 
               return (
                 <div key={matchId} style={{ border: '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                     
                     <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                      <img src={getGameAssetUrl(winnerName === p1.name ? 'win' : winnerName === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '100px', height: '100px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                      <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
                       <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
+                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
                     </div>
 
                     <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
 
                     <div style={{ textAlign: 'center', minWidth: '150px' }}>
-                      <img src={getGameAssetUrl(winnerName === p2.name ? 'win' : winnerName === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '100px', height: '100px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                      <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
                       <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
+                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
                     </div>
 
                   </div>
 
                   <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                    <button onClick={() => runDiceBattleSimulation(matchId, p1, p2)} style={{ background: '#0f0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer' }}>{t.rollBtn}</button>
+                    {liveState.winner ? (
+                      <div style={{ color: '#ff0', fontWeight: 'bold', border: '1px solid #ff0', padding: '8px', background: '#220', display: 'inline-block' }}>
+                        {t.matchOverBtn}
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => runInteractiveRound(matchId, p1, p2)} 
+                        style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 25px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '15px' }}
+                      >
+                        {t.rollBtn} {liveState.round}
+                      </button>
+                    )}
                   </div>
 
-                  {logs.length > 0 && (
-                    <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '180px', overflowY: 'auto', fontSize: '13px' }}>
-                      {logs.map((log, lIdx) => (
-                        <div key={lIdx} style={{ margin: '4px 0', color: log.includes('WINNER') ? '#ff0' : '#888' }}>{log}</div>
-                      ))}
-                    </div>
-                  )}
+                  <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '180px', overflowY: 'auto', fontSize: '13px' }}>
+                    {liveState.logs.map((log, lIdx) => (
+                      <div key={lIdx} style={{ margin: '4px 0', color: log.includes('WINNER') ? '#ff0' : log.includes('Round') ? '#fff' : '#888' }}>{log}</div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -463,45 +513,34 @@ export default function App() {
       )}
 
       {/* CREATE HERO SECTION */}
-      {!myClaimedCharacter && (
+      {!myClaimedCharacter && !isTournamentActive && (
         <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px', marginBottom: '30px' }}>
           <h2>[ {t.createTitle} ]</h2>
           <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <input type="text" placeholder={t.namePlace} value={name} onChange={(e) => setName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} required />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
-                {Object.keys(CLASSES_DATA).map(cls => <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>)}
-              </select>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
-                <img src={getGameAssetUrl('avatar', jobClass)} alt="Preview" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }} />
-                <div><span style={{ color: '#888', fontSize: '12px', display: 'block' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
-              </div>
+            <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
+              {Object.keys(CLASSES_DATA).map(cls => <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>)}
+            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
+              <img src={getGameAssetUrl('avatar', jobClass)} alt="Preview" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }} />
+              <div><span style={{ color: '#888', fontSize: '12px' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
             </div>
 
             {/* ATTRIBUTES */}
             <div>
               <h3>{t.pointsLeft} <span style={{ color: pointsLeft === 0 ? '#0f0' : '#ff0', fontSize: '22px' }}>{pointsLeft}</span></h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ minWidth: '250px' }}>{t.might} : <strong>{might}</strong></span>
-                  <button type="button" onClick={() => pointsLeft > 0 && setMight(might + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
-                  <button type="button" onClick={() => might > 0 && setMight(might - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ minWidth: '250px' }}>{t.vit} : <strong>{vitality}</strong></span>
-                  <button type="button" onClick={() => pointsLeft > 0 && setVitality(vitality + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
-                  <button type="button" onClick={() => vitality > 0 && setVitality(vitality - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ minWidth: '250px' }}>{t.reflex} : <strong>{reflex}</strong></span>
-                  <button type="button" onClick={() => pointsLeft > 0 && setReflex(reflex + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
-                  <button type="button" onClick={() => reflex > 0 && setReflex(reflex - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
-                </label>
+                {[ ['might', t.might, might, setMight], ['vitality', t.vit, vitality, setVitality], ['reflex', t.reflex, reflex, setReflex] ].map(([key, label, val, setVal]: any) => (
+                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ minWidth: '250px' }}>{label} : <strong>{val}</strong></span>
+                    <button type="button" onClick={() => pointsLeft > 0 && setVal(val + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
+                    <button type="button" onClick={() => val > 0 && setVal(val - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
+                  </label>
+                ))}
               </div>
             </div>
 
-            {/* SKILLS PANEL */}
+            {/* SKILLS PANEL WITH INJECTED READ DICTIONARY */}
             <div>
               <h3>{t.skillsLabel} ({selectedSkills.length}/2)</h3>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
@@ -511,10 +550,11 @@ export default function App() {
                 })}
               </div>
 
+              {/* 🛠️ RESTORED SKILL DESCRIPTION BOX (FIXES TS WARNING) */}
               <div style={{ border: '1px dashed #050', padding: '15px', backgroundColor: '#050505' }}>
                 {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
                   const isSelected = selectedSkills.includes(skill);
-                  const details = SKILLS_LIBRARY[skill] || { en: "", vi: "" };
+                  const details = SKILLS_LIBRARY[skill] || { en: "Class spell card asset.", vi: "Kỹ năng bổ trợ hệ phái." };
                   return (
                     <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
                       {isSelected && (
@@ -538,12 +578,11 @@ export default function App() {
         </section>
       )}
 
-      {/* ROSTER / MAINTENANCE PANEL */}
+      {/* ROSTER / MAINTENANCE */}
       <section style={{ border: '1px solid #500', padding: '20px', backgroundColor: '#0a0000' }}>
         <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.rosterTitle}</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {characters.map(char => {
-            // 🛡️ ENFORCE CREATOR LOCK RULE VISUALLY
             const hasCreatorRegistered = char.created_by !== null && char.created_by !== undefined && char.created_by !== '';
             const isMyOwnCreation = char.created_by === currentPlayerName;
             const canIDeleteThis = !hasCreatorRegistered || isMyOwnCreation;
@@ -558,11 +597,7 @@ export default function App() {
                     {hasCreatorRegistered && <span style={{ marginLeft: '10px', color: '#888', fontSize: '11px', fontStyle: 'italic' }}>({t.creatorLabel}: {char.created_by})</span>}
                   </div>
                 </div>
-                {canIDeleteThis ? (
-                  <button onClick={() => handleDeleteCharacter(char.id, char.created_by)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button>
-                ) : (
-                  <span style={{ color: '#444', fontStyle: 'italic', fontSize: '13px' }}>[Locked by {char.created_by}]</span>
-                )}
+                {canIDeleteThis ? <button onClick={() => handleDeleteCharacter(char.id, char.created_by)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button> : <span style={{ color: '#444', fontStyle: 'italic', fontSize: '13px' }}>[Locked by {char.created_by}]</span>}
               </div>
             );
           })}
