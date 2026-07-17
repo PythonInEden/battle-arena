@@ -138,7 +138,7 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Trap Setter": { en: "Place a hidden spiked trap. Stuns the enemy, making them skip 1 turn.", vi: "Đặt bẫy rập dưới đất, làm địch dính bẫy bất động, mất luôn 1 lượt." },
   "Eagle Eye": { en: "Permanent focus buff. Adds a flat +4 accuracy to all your dice rolls.", vi: "Mắt đại bàng siêu tinh anh, cộng thẳng +4 điểm vào mọi lần đổ xúc xắc." },
   "Dodge Roll": { en: "A quick combat roll. High chance to completely avoid any physical attack.", vi: "Lộn người né đòn, né sạch bách các đòn đánh bằng vũ khí thông thường." },
-  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khổng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
+  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khỏng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
   "Teleport": { en: "Blink out of reality. Automatically evades the next incoming attack.", vi: "Biến mất trong chớp mắt, khiến đòn đánh tiếp theo của địch hụt ăn hoàn toàn." },
   "Mana Shield": { en: "Energy barrier. Uses your gold coins to absorb damage instead of your HP.", vi: "Lấy tiền đè người, biến vàng trong túi thành lớp bảo vệ chống nát gáo." },
   "Chain Lightning": { en: "Electric burst. Strikes the enemy and instantly vaporizes summoned minions.", vi: "Giật sét tung tóe, giật chết cả chủ lẫn thiêu rụi mấy con đệ đi kèm." },
@@ -328,13 +328,12 @@ export default function App() {
     return pairs;
   };
 
-  // 🥁 1.5-SECOND SUSPENSE DRUM ROLL ENGINE WITH TACTICAL SKILLS CALCULATION
   const triggerDrumRollCombat = (matchId: string, p1: Combatant, p2: Combatant) => {
     const baseState = arenaState[matchId] || {
       hp1: 40 + p1.vitality * 5,
       hp2: 40 + p2.vitality * 5,
       round: 1,
-      logs: [locale === 'vi' ? `🏁 Sẵn Sàng Kiểm Tra Sĩ Số. Hãy Chọn Chiêu Thức!` : `🏁 Ready Check Verified. Choose Your Action!`],
+      logs: [locale === 'vi' ? `🏁 Phòng chờ hoàn tất. Hãy Chọn Chiêu Thức!` : `🏁 Ready Check Verified. Choose Your Action!`],
       winner: null,
       isRolling: false,
       displayDice1: "❓",
@@ -343,7 +342,6 @@ export default function App() {
 
     if (baseState.winner || baseState.isRolling) return;
 
-    // Trigger Rolling state lockdown
     setArenaState(prev => ({ ...prev, [matchId]: { ...baseState, isRolling: true } }));
 
     let timerCount = 0;
@@ -371,13 +369,11 @@ export default function App() {
     let nextLogs = [...baseState.logs];
 
     const actionP1 = playerActions[matchId] || 'attack';
-    // AI selects a random tactic from basic options or its available skills
     const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
     const actionP2 = p2.isBot ? botOptions[Math.floor(Math.random() * botOptions.length)] : 'attack';
 
     nextLogs.push(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
 
-    // Lock random final dice indexes
     const idx1 = Math.floor(Math.random() * 6);
     const idx2 = Math.floor(Math.random() * 6);
     const finalIcon1 = DICE_ICONS[idx1];
@@ -386,7 +382,6 @@ export default function App() {
     const roll1 = idx1 + 1;
     const roll2 = idx2 + 1;
 
-    // Apply Reflex/Speed initiative
     const init1 = roll1 + p1.reflex;
     const init2 = roll2 + p2.reflex;
     const first = init1 >= init2 ? p1 : p2;
@@ -394,7 +389,7 @@ export default function App() {
     const actFirst = init1 >= init2 ? actionP1 : actionP2;
     const actSecond = init1 >= init2 ? actionP2 : actionP1;
 
-    // Combat Damage Calculator Closure
+    // 🛠️ FIX RESOLVER: 'defender' property is now read, removing the unused variable warning
     const resolveStrike = (attacker: Combatant, defender: Combatant, actionStr: string, defenseActive: boolean) => {
       let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
       let logMsg = "";
@@ -410,9 +405,8 @@ export default function App() {
         const idx = parseInt(actionStr.replace('skill', ''));
         const skillName = attacker.skills[idx] || "Basic Strike";
         
-        // Dynamic special modifiers based on skill keywords
         if (skillName === "Heavy Slash" || skillName === "Double Strafe" || skillName === "Fireball") {
-          baseDamage = baseDamage * 2; // Sát thương bạo kích nhân đôi
+          baseDamage = baseDamage * 2;
         }
         logMsg = locale === 'vi'
           ? `🔥 [KỸ NĂNG] ${attacker.name} tung chiêu tuyệt kỹ [${skillName}]!`
@@ -424,21 +418,21 @@ export default function App() {
       }
 
       if (defenseActive) {
-        baseDamage = Math.max(1, Math.floor(baseDamage / 2)); // Giảm nửa sát thương khi đối phương phòng thủ
-        logMsg += locale === 'vi' ? ` Đòn đánh bị giảm nửa sát thương do đối thủ đang thủ!` : ` Strike was mitigated by defensive positioning!`;
+        baseDamage = Math.max(1, Math.floor(baseDamage / 2));
+        logMsg += locale === 'vi' 
+          ? ` Đòn đánh bị giảm nửa sát thương do ${defender.name} đang phòng thủ!` 
+          : ` Strike was mitigated by ${defender.name}'s defensive positioning!`;
       }
 
       logMsg += locale === 'vi' ? ` Gây ${baseDamage} SÁT THƯƠNG.` : ` Dealt ${baseDamage} DMG.`;
       return { dmg: baseDamage, log: logMsg };
     };
 
-    // First Striker Action Resolver
     const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
     nextLogs.push(`🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`);
     nextLogs.push(strike1.log);
     if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
 
-    // Second Striker Action Resolver (executes only if surviving)
     if (h1 > 0 && h2 > 0) {
       const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
       nextLogs.push(`🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`);
@@ -559,7 +553,7 @@ export default function App() {
         </section>
       )}
 
-      {/* 🏆 LIVE TOURNAMENT DECK */}
+      {/* TOURNAMENT LIVE INTERFACE */}
       {isTournamentActive && tournamentMatches.length > 0 && (
         <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
           <h2 style={{ textAlign: 'center', color: '#fff', letterSpacing: '2px' }}>{t.arenaTitle}</h2>
@@ -592,7 +586,7 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                      {/* 🎲 🔴 REPOSITIONED EXPANDED DICE BAY (Directly under fighter 1) */}
+                      {/* 🎲 REPOSITIONED EXPANDED DICE BAY */}
                       <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
                         {liveState.isRolling ? "🎲" : liveState.displayDice1}
                       </div>
@@ -607,7 +601,7 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
 
-                      {/* 🎲 🔴 REPOSITIONED EXPANDED DICE BAY (Directly under fighter 2) */}
+                      {/* 🎲 REPOSITIONED EXPANDED DICE BAY */}
                       <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #ff0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
                         {liveState.isRolling ? "🎲" : liveState.displayDice2}
                       </div>
@@ -615,7 +609,7 @@ export default function App() {
 
                   </div>
 
-                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (Only visible if match is active) */}
+                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
                   {!liveState.winner && !liveState.isRolling && (
                     <div style={{ marginTop: '25px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                       <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
