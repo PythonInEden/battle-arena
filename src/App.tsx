@@ -123,7 +123,7 @@ const CLASSES_DATA = {
   Rogue: { en: "Rogue", vi: "Thích Khách", skills: ["Poison Dagger", "Stealth Strike", "Pickpocket", "Smoke Bomb", "Shadow Step"] },
   Cleric: { en: "Cleric", vi: "Mục Sư", skills: ["Holy Heal", "Holy Smite", "Blessing", "Divine Shield", "Resurrection"] },
   Paladin: { en: "Paladin", vi: "Hiệp Sĩ Thánh", skills: ["Divine Aura", "Holy Charge", "Lay on Hands", "Smite Evil", "Guardian Wall"] },
-  Necromancer: { en: "Necromancer", vi: "Thầy Pháp Bóng Tối", skills: ["Raise Skeleton", "Life Drain", "Bone Armor", "Corpse Explosion", "Curse Eye"] },
+  Necromancer: { en: "Necromancer", vi: "Thầy Phép Bóng Tối", skills: ["Raise Skeleton", "Life Drain", "Bone Armor", "Corpse Explosion", "Curse Eye"] },
   Bard: { en: "Bard", vi: "Nghệ Sĩ Ca Sĩ", skills: ["Distraction Song", "Healing Tune", "Vicious Mockery", "Speed Beat", "Lullaby"] },
 };
 
@@ -138,7 +138,7 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Trap Setter": { en: "Place a hidden spiked trap. Stuns the enemy, making them skip 1 turn.", vi: "Đặt bẫy rập dưới đất, làm địch dính bẫy bất động, mất luôn 1 lượt." },
   "Eagle Eye": { en: "Permanent focus buff. Adds a flat +4 accuracy to all your dice rolls.", vi: "Mắt đại bàng siêu tinh anh, cộng thẳng +4 điểm vào mọi lần đổ xúc xắc." },
   "Dodge Roll": { en: "A quick combat roll. High chance to completely avoid any physical attack.", vi: "Lộn người né đòn, né sạch bách các đòn đánh bằng vũ khí thông thường." },
-  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khổng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
+  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khỏng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
   "Teleport": { en: "Blink out of reality. Automatically evades the next incoming attack.", vi: "Biến mất trong chớp mắt, khiến đòn đánh tiếp theo của địch hụt ăn hoàn toàn." },
   "Mana Shield": { en: "Energy barrier. Uses your gold coins to absorb damage instead of your HP.", vi: "Lấy tiền đè người, biến vàng trong túi thành lớp bảo vệ chống nát gáo." },
   "Chain Lightning": { en: "Electric burst. Strikes the enemy and instantly vaporizes summoned minions.", vi: "Giật sét tung tóe, giật chết cả chủ lẫn thiêu rụi mấy con đệ đi kèm." },
@@ -371,7 +371,6 @@ export default function App() {
     const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
     const actionP2 = p2.isBot ? botOptions[Math.floor(Math.random() * botOptions.length)] : 'attack';
 
-    // 📜 CREATE A LOCAL ROUND LOGGER BLOCK
     let roundLogs: string[] = [];
     roundLogs.push(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
 
@@ -457,7 +456,6 @@ export default function App() {
       roundLogs.push(locale === 'vi' ? `🎉 CHIẾN THẮNG: ${finalWinner} đã hạ gục đối thủ!` : `🎉 TOURNAMENT WINNER: ${finalWinner} clear victory!`);
     }
 
-    // 🔄 REVERSE PREPEND ENGINE: Splices the whole new round at the absolute front of array stack
     const updatedHistory = [...roundLogs, ...baseState.logs];
 
     setArenaState(prev => ({
@@ -595,7 +593,7 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                      {/* 🎲 MAGNIFIED DICE BAY FRAME (Fills out the dotted boundary box completely) */}
+                      {/* 🎲 MAGNIFIED DICE BAY FRAME */}
                       <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                         {liveState.displayDice1}
                       </div>
@@ -610,7 +608,7 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
 
-                      {/* 🎲 MAGNIFIED DICE BAY FRAME (Fills out the dotted boundary box completely) */}
+                      {/* 🎲 MAGNIFIED DICE BAY FRAME */}
                       <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                         {liveState.displayDice2}
                       </div>
@@ -712,8 +710,9 @@ export default function App() {
                   const details = SKILLS_LIBRARY[skill] || { en: "Class spell card asset.", vi: "Kỹ năng bổ trợ hệ phái." };
                   return (
                     <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
+                      {/* 🛠️ REPAIRED LOGIC BLOCK: Added missing opening image element tag */}
                       {isSelected && (
-                        src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
+                        <img src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
                       )}
                       <div>
                         <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
