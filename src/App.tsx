@@ -25,7 +25,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
-// 2. Master Translations Dictionary (100% Sync)
+// 2. Master Translations Dictionary
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY & ARENA ⚔️",
@@ -54,7 +54,7 @@ const LANG = {
     protectedText: "Fighting",
     arenaTitle: "🏆 LIVE TOURNAMENT MATCHUPS 🏆",
     rollBtn: "🎲 Roll Round",
-    rollingBtn: "🥁 Rolling Dice...",
+    rollingBtn: "🥁 Shuffling Dice...",
     vsText: "VS",
     botLabel: "AI System Bot",
     creatorLabel: "Created by",
@@ -68,7 +68,6 @@ const LANG = {
     deckTitle: "📜 CHOOSE YOUR COMBAT ACTION:",
     optAttack: "⚔️ Basic Attack",
     optDefend: "🛡️ Defend Stance",
-    noDice: "Waiting...",
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -111,7 +110,6 @@ const LANG = {
     deckTitle: "📜 CHỌN CHIÊU THỨC CHIẾN ĐẤU:",
     optAttack: "⚔️ Tấn Công Thường",
     optDefend: "🛡️ Thủ Thế Toàn Diện",
-    noDice: "Đang đợi...",
   }
 };
 
@@ -138,7 +136,7 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Trap Setter": { en: "Place a hidden spiked trap. Stuns the enemy, making them skip 1 turn.", vi: "Đặt bẫy rập dưới đất, làm địch dính bẫy bất động, mất luôn 1 lượt." },
   "Eagle Eye": { en: "Permanent focus buff. Adds a flat +4 accuracy to all your dice rolls.", vi: "Mắt đại bàng siêu tinh anh, cộng thẳng +4 điểm vào mọi lần đổ xúc xắc." },
   "Dodge Roll": { en: "A quick combat roll. High chance to completely avoid any physical attack.", vi: "Lộn người né đòn, né sạch bách các đòn đánh bằng vũ khí thông thường." },
-  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khỏng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
+  "Fireball": { en: "Explosive magical fire. Completely ignores physical shields and armor.", vi: "Chưởng lửa siêu to khổng lồ, xuyên thẳng qua giáp sắt, thiêu cháy đối thủ." },
   "Teleport": { en: "Blink out of reality. Automatically evades the next incoming attack.", vi: "Biến mất trong chớp mắt, khiến đòn đánh tiếp theo của địch hụt ăn hoàn toàn." },
   "Mana Shield": { en: "Energy barrier. Uses your gold coins to absorb damage instead of your HP.", vi: "Lấy tiền đè người, biến vàng trong túi thành lớp bảo vệ chống nát gáo." },
   "Chain Lightning": { en: "Electric burst. Strikes the enemy and instantly vaporizes summoned minions.", vi: "Giật sét tung tóe, giật chết cả chủ lẫn thiêu rụi mấy con đệ đi kèm." },
@@ -389,7 +387,6 @@ export default function App() {
     const actFirst = init1 >= init2 ? actionP1 : actionP2;
     const actSecond = init1 >= init2 ? actionP2 : actionP1;
 
-    // 🛠️ FIX RESOLVER: 'defender' property is now read, removing the unused variable warning
     const resolveStrike = (attacker: Combatant, defender: Combatant, actionStr: string, defenseActive: boolean) => {
       let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
       let logMsg = "";
@@ -429,13 +426,19 @@ export default function App() {
     };
 
     const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
-    nextLogs.push(`🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`);
+    nextLogs.push(locale === 'vi' 
+      ? `🎲 ${first.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
+      : `🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
+    );
     nextLogs.push(strike1.log);
     if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
 
     if (h1 > 0 && h2 > 0) {
       const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
-      nextLogs.push(`🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`);
+      nextLogs.push(locale === 'vi' 
+        ? `🎲 ${second.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
+        : `🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
+      );
       nextLogs.push(strike2.log);
       if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg;
     }
@@ -586,9 +589,9 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                      {/* 🎲 REPOSITIONED EXPANDED DICE BAY */}
+                      {/* 🎲 REPOSITIONED DYNAMIC SHUFFLING DICE BAY */}
                       <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
-                        {liveState.isRolling ? "🎲" : liveState.displayDice1}
+                        {liveState.displayDice1}
                       </div>
                     </div>
 
@@ -601,9 +604,9 @@ export default function App() {
                       <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                       <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
 
-                      {/* 🎲 REPOSITIONED EXPANDED DICE BAY */}
+                      {/* 🎲 REPOSITIONED DYNAMIC SHUFFLING DICE BAY */}
                       <div style={{ margin: '15px auto 0 auto', width: '70px', height: '70px', border: '2px dashed #ff0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '38px', color: '#ff0' }}>
-                        {liveState.isRolling ? "🎲" : liveState.displayDice2}
+                        {liveState.displayDice2}
                       </div>
                     </div>
 
