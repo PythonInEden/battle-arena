@@ -16,7 +16,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
-// 2. Master Translations Dictionary (Patched & Complete)
+// 2. Master Translations Dictionary
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY & ARENA ⚔️",
@@ -47,6 +47,7 @@ const LANG = {
     rollBtn: "🎲 Fight & Roll Dice",
     vsText: "VS",
     botLabel: "AI Shadow Bot",
+    creatorLabel: "Created by",
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -77,6 +78,7 @@ const LANG = {
     rollBtn: "🎲 Giao Trận & Đổ Xúc Xắc",
     vsText: "ĐẤU VỚI",
     botLabel: "Quái Vật Máy (AI)",
+    creatorLabel: "Tạo bởi",
   }
 };
 
@@ -149,6 +151,7 @@ interface Combatant {
   reflex: number;
   skills: string[];
   assigned_to: string | null;
+  created_by?: string | null;
   isBot?: boolean;
 }
 
@@ -205,7 +208,16 @@ export default function App() {
     if (!name || selectedSkills.length !== 2 || pointsLeft !== 0 || isSaving) return;
     setIsSaving(true);
     try {
-      await supabase.from('characters').insert([{ name, job_class: jobClass, might, vitality, reflex, skills: selectedSkills }]);
+      // 🔒 LOCK IN IDENTITY: Injects 'created_by' with active terminal player name
+      await supabase.from('characters').insert([{ 
+        name, 
+        job_class: jobClass, 
+        might, 
+        vitality, 
+        reflex, 
+        skills: selectedSkills,
+        created_by: currentPlayerName 
+      }]);
       setName(''); setMight(0); setVitality(0); setReflex(0); setSelectedSkills([]);
       await fetchCharacters();
     } catch (err) { console.error(err); } finally { setIsSaving(false); }
@@ -221,10 +233,20 @@ export default function App() {
     await supabase.from('characters').update({ assigned_to: null }).eq('id', charId);
   };
 
-  const handleDeleteCharacter = async (charId: number, assignedTo: string | null) => {
+  // 🗑️ SECURE CREATOR-LOCK DELETION ENGINE
+  const handleDeleteCharacter = async (charId: number, createdBy: string | null) => {
     const msg = locale === 'en' ? "Permanently destroy this hero data?" : "Xóa vĩnh viễn anh hùng này khỏi máy chủ?";
     if (!window.confirm(msg)) return;
-    if (assignedTo && assignedTo !== currentPlayerName) return alert("Locked character!");
+    
+    // Security verification check: matches browser signature with cloud data
+    if (createdBy && createdBy !== currentPlayerName) {
+      const errorMsg = locale === 'en' 
+        ? `Access Denied! Only the creator (${createdBy}) can delete this hero.` 
+        : `Từ chối lệnh! Chỉ người tạo tướng (${createdBy}) mới có quyền xóa.`;
+      alert(errorMsg);
+      return;
+    }
+    
     await supabase.from('characters').delete().eq('id', charId);
     await fetchCharacters();
   };
@@ -516,19 +538,31 @@ export default function App() {
         </section>
       )}
 
-      {/* ROSTER / MAINTENANCE */}
+      {/* ROSTER / MAINTENANCE PANEL */}
       <section style={{ border: '1px solid #500', padding: '20px', backgroundColor: '#0a0000' }}>
         <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.rosterTitle}</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {characters.map(char => {
-            const isLockedBySomeoneElse = char.assigned_to && char.assigned_to !== currentPlayerName;
+            // 🛡️ ENFORCE CREATOR LOCK RULE VISUALLY
+            const hasCreatorRegistered = char.created_by !== null && char.created_by !== undefined && char.created_by !== '';
+            const isMyOwnCreation = char.created_by === currentPlayerName;
+            const canIDeleteThis = !hasCreatorRegistered || isMyOwnCreation;
+
             return (
               <div key={char.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #300', padding: '10px', backgroundColor: '#000' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                   <img src={getGameAssetUrl('avatar', char.job_class)} alt="avatar" style={{ width: '40px', height: '40px', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/40x40/000000/ff0000?text=?'; }} />
-                  <div><strong>{char.name}</strong> <span style={{ color: '#888' }}>({char.job_class})</span> {char.assigned_to && <span style={{ marginLeft: '10px', color: '#ff0', fontSize: '12px' }}>★ {t.taken} {char.assigned_to}</span>}</div>
+                  <div>
+                    <strong>{char.name}</strong> <span style={{ color: '#888' }}>({char.job_class})</span> 
+                    {char.assigned_to && <span style={{ marginLeft: '10px', color: '#ff0', fontSize: '12px' }}>★ {t.taken} {char.assigned_to}</span>}
+                    {hasCreatorRegistered && <span style={{ marginLeft: '10px', color: '#888', fontSize: '11px', fontStyle: 'italic' }}>({t.creatorLabel}: {char.created_by})</span>}
+                  </div>
                 </div>
-                {isLockedBySomeoneElse ? <span style={{ color: '#555', fontStyle: 'italic', fontSize: '13px' }}>[{t.protectedText}]</span> : <button onClick={() => handleDeleteCharacter(char.id, char.assigned_to)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button>}
+                {canIDeleteThis ? (
+                  <button onClick={() => handleDeleteCharacter(char.id, char.created_by)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button>
+                ) : (
+                  <span style={{ color: '#444', fontStyle: 'italic', fontSize: '13px' }}>[Locked by {char.created_by}]</span>
+                )}
               </div>
             );
           })}
