@@ -6,10 +6,23 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+interface DBCharacter {
+  id: number;
+  name: string;
+  job_class: string;
+  might: number;
+  vitality: number;
+  reflex: number;
+  skills: string[];
+  assigned_to: string | null;
+  is_ready: boolean;
+  created_by: string | null;
+}
+
 // 🛠️ IMMUTABLE SYSTEM BOSSES (Immune to pool depletion)
 const IMMUTABLE_SYSTEM_BOTS = [
-  { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", isBot: true },
-  { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Poison Dagger", "Smoke Bomb"], assigned_to: "[System Bot]", isBot: true }
+  { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", is_ready: true },
+  { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Poison Dagger", "Smoke Bomb"], assigned_to: "[System Bot]", is_ready: true }
 ];
 
 // 🛠️ Retro Unicode Dice Face Map
@@ -69,6 +82,7 @@ const LANG = {
     optAttack: "⚔️ Basic Attack",
     optDefend: "🛡️ Defend Stance",
     noDice: "Waiting...",
+    previewActionTitle: "🔎 ACTION RUNTIME PREVIEW:"
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -112,6 +126,7 @@ const LANG = {
     optAttack: "⚔️ Tấn Công Thường",
     optDefend: "🛡️ Thủ Thế Toàn Diện",
     noDice: "Đang đợi...",
+    previewActionTitle: "🔎 XEM TRƯỚC ĐÒN ĐÁNH:"
   }
 };
 
@@ -128,6 +143,8 @@ const CLASSES_DATA = {
 };
 
 const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
+  "Basic Attack": { en: "Strike with a basic melee or ranged weapon hit.", vi: "Vung vũ khí cơ bản để tấn công gây sát thương vật lý tiêu chuẩn." },
+  "Defend Stance": { en: "Hunker down behind armor. Reduces all incoming damage by half for this round.", vi: "Giương cao khiên chắn thủ thế toàn diện, giảm 50% sát thương nhận vào hiệp này." },
   "Shield Slam": { en: "Smash with shield. Deals solid damage and blocks enemy's next skill.", vi: "Vả khiên sắt vào mặt, gây sát thương và làm địch choáng váng quên bài." },
   "Heavy Slash": { en: "A massive two-handed swing. Slow, but deals triple damage if it hits!", vi: "Chém bổ củi chí mạng. Hên xui dễ hụt nhưng trúng là đi nửa cây máu." },
   "Second Wind": { en: "Take a deep breath mid-fight. Instantly restores a chunk of health.", vi: "Vận nội công thở dốc một cái, tự hồi phục một khúc máu không cần bùa." },
@@ -190,7 +207,7 @@ interface Combatant {
 
 export default function App() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
-  const [characters, setCharacters] = useState<any[]>([]);
+  const [characters, setCharacters] = useState<DBCharacter[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   
   const [currentPlayerName, setCurrentPlayerName] = useState<string>(() => {
@@ -238,7 +255,7 @@ export default function App() {
 
   const fetchCharacters = async () => {
     const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
-    if (data) setCharacters(data);
+    if (data) setCharacters(data as DBCharacter[]);
   };
 
   const savePlayerIdentity = (nameString: string) => {
@@ -295,7 +312,7 @@ export default function App() {
 
   const activeClaimed = characters
     .filter(c => c.assigned_to !== null && c.assigned_to !== '')
-    .sort((a, b) => a.assigned_to.localeCompare(b.assigned_to));
+    .sort((a, b) => (a.assigned_to || '').localeCompare(b.assigned_to || ''));
 
   const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
 
@@ -582,6 +599,21 @@ export default function App() {
 
               const currentTactic = playerActions[matchId] || 'attack';
 
+              // Determine details for action preview bay parsing
+              let activeTacticName = "Basic Attack";
+              let activeTacticLookup = "basic_attack";
+              
+              if (currentTactic === 'defend') {
+                activeTacticName = "Defend Stance";
+                activeTacticLookup = "defend_stance";
+              } else if (currentTactic.startsWith('skill')) {
+                const sIdx = parseInt(currentTactic.replace('skill', ''));
+                activeTacticName = p1.skills[sIdx] || "Basic Attack";
+                activeTacticLookup = activeTacticName;
+              }
+
+              const tacticDetails = SKILLS_LIBRARY[activeTacticName] || { en: "Standard combat dynamic card execution.", vi: "Chiêu thức hành động chiến đấu chuẩn hệ phái." };
+
               return (
                 <div key={matchId} style={{ border: '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
@@ -616,9 +648,28 @@ export default function App() {
 
                   </div>
 
+                  {/* 🔎 DYNAMIC ACTION PREVIEW BAY */}
+                  <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
+                    <div style={{ flexShrink: 0 }}>
+                      <img 
+                        src={getGameAssetUrl('skill', p1.job_class, activeTacticLookup)} 
+                        alt={activeTacticName}
+                        style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
+                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <span style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>{t.previewActionTitle}</span>
+                      <strong style={{ color: '#ff0', fontSize: '18px', display: 'block', marginBottom: '6px' }}>{activeTacticName}</strong>
+                      <p style={{ color: '#0f0', margin: 0, fontStyle: 'italic', fontSize: '14px', lineHeight: '1.4' }}>
+                        {locale === 'en' ? tacticDetails.en : tacticDetails.vi}
+                      </p>
+                    </div>
+                  </div>
+
                   {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
                   {!liveState.winner && !liveState.isRolling && (
-                    <div style={{ marginTop: '25px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
+                    <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                       <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
                       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
                         <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'attack' ? '#0f0' : '#000', color: currentTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -710,7 +761,6 @@ export default function App() {
                   const details = SKILLS_LIBRARY[skill] || { en: "Class spell card asset.", vi: "Kỹ năng bổ trợ hệ phái." };
                   return (
                     <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
-                      {/* 🛠️ REPAIRED LOGIC BLOCK: Added missing opening image element tag */}
                       {isSelected && (
                         <img src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
                       )}
