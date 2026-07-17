@@ -6,16 +6,16 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🛠️ IMMUTABLE SYSTEM BOSSES (Hardcoded, un-deletable, immune to pool depletion)
+// 🛠 * IMMUTABLE SYSTEM BOSSES (Hardcoded, un-deletable, immune to pool depletion)
 const IMMUTABLE_SYSTEM_BOTS = [
   { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam"], assigned_to: "[System Bot]", isBot: true },
   { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Counter-Stance"], assigned_to: "[System Bot]", isBot: true }
 ];
 
-// 🛠️ Retro Unicode Dice Map
+// 🛠 * Retro Unicode Dice Map
 const DICE_ICONS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 
-// 🛠️ Dynamic Image Link Generator
+// 🛠 * Dynamic Image Link Generator
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
   if (type === 'avatar') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_avatar.webp`;
@@ -242,19 +242,25 @@ export default function App() {
     } catch (err) { console.error(err); } finally { setIsSaving(false); }
   };
 
+  // 🌟 FALLBACK REPAIR FIXED: Forces immediate app refresh upon asset claims
   const handleClaim = async () => {
     if (!selectedCharId || !currentPlayerName) return;
     if (isTournamentActive) return alert(t.lobbyLockAlert);
     await supabase.from('characters').update({ assigned_to: currentPlayerName, is_ready: false }).eq('id', selectedCharId);
     setSelectedCharId('');
+    await fetchCharacters(); 
   };
 
+  // 🌟 FALLBACK REPAIR FIXED: Forces immediate app refresh upon releases
   const handleRelease = async (charId: number) => {
     await supabase.from('characters').update({ assigned_to: null, is_ready: false }).eq('id', charId);
+    await fetchCharacters();
   };
 
+  // 🌟 FALLBACK REPAIR FIXED: Forces immediate app refresh upon ticking ready boxes
   const handleToggleReady = async (charId: number, currentReadyState: boolean) => {
     await supabase.from('characters').update({ is_ready: !currentReadyState }).eq('id', charId);
+    await fetchCharacters();
   };
 
   const handleDeleteCharacter = async (charId: number, createdBy: string | null) => {
@@ -326,7 +332,6 @@ export default function App() {
 
     nextLogs.push(`⚔️ --- Round ${rNum} ---`);
 
-    // Dynamic Retro Roll Icon Spin Simulation
     const icon1 = DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)];
     const icon2 = DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)];
 
@@ -523,7 +528,7 @@ export default function App() {
             </select>
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
               <img src={getGameAssetUrl('avatar', jobClass)} alt="Preview" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }} />
-              <div><span style={{ color: '#888', fontSize: '12px' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
+              <div><span style={{ color: '#888', fontSize: '12px', display: 'block' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
             </div>
 
             {/* ATTRIBUTES */}
@@ -540,7 +545,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* SKILLS PANEL WITH INJECTED READ DICTIONARY */}
+            {/* SKILLS PANEL */}
             <div>
               <h3>{t.skillsLabel} ({selectedSkills.length}/2)</h3>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
@@ -550,7 +555,6 @@ export default function App() {
                 })}
               </div>
 
-              {/* 🛠️ RESTORED SKILL DESCRIPTION BOX (FIXES TS WARNING) */}
               <div style={{ border: '1px dashed #050', padding: '15px', backgroundColor: '#050505' }}>
                 {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
                   const isSelected = selectedSkills.includes(skill);
