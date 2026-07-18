@@ -119,11 +119,6 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     fetchLeaderboard();
   }, []);
 
-  // 📊 Dynamic Web Page Title Synchronizer
-  useEffect(() => {
-    document.title = locale === 'en' ? "⚔️ MATH BATTLE ARENA ⚔️" : "⚔️ ĐẤU TRƯỜNG TOÁN HỌC ⚔️";
-  }, [locale]);
-
   const fetchLeaderboard = async () => {
     const { data } = await supabase
       .from('math_scores')
