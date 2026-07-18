@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // 1. Initialize Cloud Brain
@@ -19,6 +19,25 @@ interface DBCharacter {
   created_by: string | null;
 }
 
+interface Question {
+  text: string;
+  answer: number;
+}
+
+interface ScoreRecord {
+  username: string;
+  score: number;
+  attempts: number;
+}
+
+interface MonsterData {
+  id: number;
+  name: string;
+  imageKey: string;
+  tier: 'TRASH' | 'ELITE' | 'BOSS' | 'LEGENDARY';
+  maxHp: number;
+}
+
 // 🛠️ IMMUTABLE SYSTEM BOSSES (Immune to pool depletion)
 const IMMUTABLE_SYSTEM_BOTS = [
   { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", is_ready: true },
@@ -27,6 +46,29 @@ const IMMUTABLE_SYSTEM_BOTS = [
 
 // 🛠️ Retro Unicode Dice Face Map
 const DICE_ICONS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+
+const MONSTER_ROSTER: MonsterData[] = [
+  { id: 1, name: "Kobold", imageKey: "kobold", tier: "TRASH", maxHp: 30 },
+  { id: 2, name: "Goblin", imageKey: "goblin", tier: "TRASH", maxHp: 40 },
+  { id: 3, name: "Zombie", imageKey: "zombie", tier: "TRASH", maxHp: 50 },
+  { id: 4, name: "Skeleton Warrior", imageKey: "skeleton_warrior", tier: "TRASH", maxHp: 60 },
+  { id: 5, name: "Gelatinous Cube", imageKey: "gelatinous_cube", tier: "TRASH", maxHp: 70 },
+  { id: 6, name: "Orc Berserker", imageKey: "orc_berserker", tier: "ELITE", maxHp: 80 },
+  { id: 7, name: "Bugbear", imageKey: "bugbear", tier: "ELITE", maxHp: 90 },
+  { id: 8, name: "Gargoyle", imageKey: "gargoyle", tier: "ELITE", maxHp: 100 },
+  { id: 9, name: "Mimic Chest", imageKey: "mimic_chest", tier: "ELITE", maxHp: 110 },
+  { id: 10, name: "Owlbear", imageKey: "owlbear", tier: "ELITE", maxHp: 120 },
+  { id: 11, name: "Displacer Beast", imageKey: "displacer_beast", tier: "BOSS", maxHp: 140 },
+  { id: 12, name: "Cave Troll", imageKey: "cave_troll", tier: "BOSS", maxHp: 160 },
+  { id: 13, name: "Chimera", imageKey: "chimera", tier: "BOSS", maxHp: 180 },
+  { id: 14, name: "Mind Flayer", imageKey: "mind_flayer", tier: "BOSS", maxHp: 200 },
+  { id: 15, name: "Iron Golem", imageKey: "iron_golem", tier: "BOSS", maxHp: 220 },
+  { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 250 },
+  { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 300 },
+  { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 350 },
+  { id: 19, name: "Ancient Red Dragon", imageKey: "ancient_red_dragon", tier: "LEGENDARY", maxHp: 400 },
+  { id: 20, name: "The Tarrasque", imageKey: "the_tarrasque", tier: "LEGENDARY", maxHp: 500 },
+];
 
 // 🛠️ Dynamic Image Link Generator
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
@@ -130,6 +172,45 @@ const LANG = {
   }
 };
 
+const MATH_LANG = {
+  en: {
+    sub: "Defeat monsters in 60 seconds!",
+    loginTitle: "[ IDENTIFY MATH WARRIOR ]",
+    loginLabel: "Enter Player Name:",
+    loginBtn: "INITIALIZE ARENA",
+    time: "⏳ Time:",
+    score: "🏆 Score:",
+    combo: "🔥 BEYOND GODLIKE COMBO! 🔥",
+    timesUp: "⌛ TIME'S UP!",
+    points: "points!",
+    btnStart: "ENTER THE ARENA",
+    btnAgain: "LAUNCH NEXT ATTACK",
+    ladderTitle: "📊 DAILY LADDER SCOREBOARD 📊",
+    colRank: "RANK",
+    colName: "PLAYER",
+    colScore: "MAX SCORE",
+    colTries: "TRIES"
+  },
+  vi: {
+    sub: "Hạ gục quái vật trong 60 giây!",
+    loginTitle: "[ XÁC MINH DANH TÍNH ]",
+    loginLabel: "Nhập Tên Của Chiến Binh:",
+    loginBtn: "KÍCH HOẠT ĐẤU TRƯỜNG",
+    time: "⏳ Thời gian:",
+    score: "🏆 Điểm số:",
+    combo: "🔥 LIÊN HOÀN BẠO KÍCH! 🔥",
+    timesUp: "⌛ HẾT GIỜ!",
+    points: "điểm!",
+    btnStart: "BẮT ĐẦU CHIẾN",
+    btnAgain: "TIẾP TỤC TẤN CÔNG",
+    ladderTitle: "📊 BẢNG XẾP HẠNG HÔM NAY 📊",
+    colRank: "HẠNG",
+    colName: "CHIẾN BINH",
+    colScore: "ĐIỂM CAO",
+    colTries: "SỐ LƯỢT"
+  }
+};
+
 const CLASSES_DATA = {
   Fighter: { en: "Fighter", vi: "Chiến Binh (Búa)", skills: ["Shield Slam", "Heavy Slash", "Second Wind", "Counter-Stance", "Battle Cry"] },
   Ranger: { en: "Ranger", vi: "Cung Thủ (Bao)", skills: ["Sniper Shot", "Double Strafe", "Trap Setter", "Eagle Eye", "Dodge Roll"] },
@@ -192,6 +273,14 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Lullaby": { en: "Sing a sleepy song. Puts the enemy to sleep, forcing them to skip an attack.", vi: "Hát ru ngủ ngủ, làm địch ngáy o o mất luôn lượt tấn công kế tiếp." }
 };
 
+const generateQuestion = (): Question => {
+  const num1 = Math.floor(Math.random() * 8) + 2; 
+  const num2 = Math.floor(Math.random() * 8) + 2; 
+  return Math.random() > 0.5 
+    ? { text: `${num1 * num2} ÷ ${num1}`, answer: num2 }
+    : { text: `${num1} × ${num2}`, answer: num1 * num2 };
+};
+
 interface Combatant {
   id: number | string;
   name: string;
@@ -205,10 +294,244 @@ interface Combatant {
   isBot?: boolean;
 }
 
+// 🛡️ SUB-APP COMPONENT: ISOLATED MATH ARENA
+function MathArenaModule({ locale }: { locale: 'en' | 'vi' }) {
+  const [username, setUsername] = useState(() => localStorage.getItem('math_brother_name') || '');
+  const [typedName, setTypedName] = useState('');
+  const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'GAMEOVER'>('START');
+  const [question, setQuestion] = useState<Question>({ text: '', answer: 0 });
+  const [userInput, setUserInput] = useState('');
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [currentMonsterIdx, setCurrentMonsterIdx] = useState(0);
+  const [monsterHp, setMonsterHp] = useState(MONSTER_ROSTER[0].maxHp);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
+  
+  const inputRef = useRef<HTMLInputElement>(null);
+  const t = MATH_LANG[locale];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, []);
+
+  const fetchLeaderboard = async () => {
+    const { data } = await supabase
+      .from('math_scores')
+      .select('username, score, attempts')
+      .eq('score_date', todayStr)
+      .order('score', { ascending: false });
+    if (data) setLeaderboard(data as ScoreRecord[]);
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = typedName.trim().toUpperCase();
+    if (!clean) return;
+    setUsername(clean);
+    localStorage.setItem('math_brother_name', clean);
+  };
+
+  const startGame = () => {
+    setScore(0);
+    setStreak(0);
+    setCurrentMonsterIdx(0);
+    setMonsterHp(MONSTER_ROSTER[0].maxHp);
+    setTimeLeft(60);
+    setQuestion(generateQuestion());
+    setGameState('BATTLE');
+    setUserInput('');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  useEffect(() => {
+    if (gameState !== 'BATTLE') return;
+    if (timeLeft <= 0) {
+      handleGameOver();
+      return;
+    }
+    const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [timeLeft, gameState]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setUserInput(value);
+
+    if (parseInt(value) === question.answer) {
+      const newStreak = streak + 1;
+      setStreak(newStreak);
+      setScore(score + 10 + (newStreak > 3 ? 5 : 0));
+      
+      setMonsterHp((prev) => {
+        const nextHp = prev - 20;
+        if (nextHp <= 0) {
+          const nextIdx = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
+          setCurrentMonsterIdx(nextIdx);
+          return MONSTER_ROSTER[nextIdx].maxHp;
+        }
+        return nextHp;
+      });
+
+      setQuestion(generateQuestion());
+      setUserInput('');
+    }
+  };
+
+  const handleGameOver = async () => {
+    setGameState('GAMEOVER');
+    
+    const { data } = await supabase
+      .from('math_scores')
+      .select('*')
+      .eq('username', username)
+      .eq('score_date', todayStr);
+
+    const existingRow = data && data.length > 0 ? data[0] : null;
+    const currentAttempts = existingRow ? parseInt(existingRow.attempts) : 0;
+    const currentHighScore = existingRow ? parseInt(existingRow.score) : 0;
+
+    await supabase.from('math_scores').upsert(
+      {
+        username: username,
+        score: Math.max(currentHighScore, score),
+        attempts: currentAttempts + 1,
+        score_date: todayStr
+      },
+      { onConflict: 'username,score_date' }
+    );
+
+    fetchLeaderboard();
+  };
+
+  if (!username) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
+        <div style={{ border: '2px dashed #0f0', padding: '30px', width: '100%', maxWidth: '400px', backgroundColor: '#000', textAlign: 'center' }}>
+          <h2 style={{ color: '#ff0', marginBottom: '20px' }}>{t.loginTitle}</h2>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <label style={{ color: '#0f0', textAlign: 'left', fontWeight: 'bold' }}>{t.loginLabel}</label>
+            <input
+              type="text"
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '12px', fontSize: '18px', fontFamily: 'monospace', textTransform: 'uppercase', outline: 'none' }}
+              required
+            />
+            <button type="submit" style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace' }}>
+              {t.loginBtn}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '800px', margin: '0 auto', gap: '25px', boxSizing: 'border-box' }}>
+      
+      <div style={{ color: '#888', margin: '0', fontSize: '14px' }}>WARRIOR ACCOUNT ACCREDITED: <span style={{color: '#ff0'}}>{username}</span></div>
+
+      {/* Play Arena Frame */}
+      <div style={{ border: '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '450px', backgroundColor: '#000', textAlign: 'center', boxSizing: 'border-box' }}>
+        {gameState === 'START' && (
+          <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
+            {t.btnStart}
+          </button>
+        )}
+
+        {gameState === 'BATTLE' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '15px' }}>
+              <span style={{ color: '#ff0' }}>{t.time} {timeLeft}s</span>
+              <span style={{ color: '#0f0' }}>{t.score} {score}</span>
+            </div>
+
+            {/* Dynamic Target Pipeline */}
+            {(() => {
+              const activeMonster = MONSTER_ROSTER[currentMonsterIdx];
+              const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
+              const hpPercentage = (monsterHp / activeMonster.maxHp) * 100;
+
+              return (
+                <div style={{ padding: '15px', background: '#000', border: '1px solid #0f0', marginBottom: '20px' }}>
+                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px', textTransform: 'uppercase' }}>
+                    TARGET: {activeMonster.name} [{activeMonster.tier}]
+                  </div>
+                  <img 
+                    src={monsterImgUrl} 
+                    alt={activeMonster.name} 
+                    style={{ width: '150px', height: '150px', objectFit: 'cover', border: '2px solid #0f0', marginBottom: '10px', backgroundColor: '#111' }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=' + activeMonster.name; }}
+                  />
+                  <div style={{ background: '#000', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
+                    <div style={{ background: '#0f0', height: '100%', width: `${hpPercentage}%`, transition: 'width 0.1s' }}></div>
+                  </div>
+                  <div style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>
+                    HP: {monsterHp} / {activeMonster.maxHp}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {streak >= 3 && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
+
+            <div style={{ fontSize: '4rem', fontWeight: 'bold', color: '#fff', margin: '20px 0' }}>{question.text}</div>
+
+            <input
+              ref={inputRef}
+              type="number"
+              value={userInput}
+              onChange={handleInputChange}
+              style={{ background: '#000', color: '#0f0', border: '2px solid #0f0', fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }}
+              placeholder="?"
+            />
+          </div>
+        )}
+
+        {gameState === 'GAMEOVER' && (
+          <div>
+            <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.timesUp}</h2>
+            <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}</p>
+            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
+              {t.btnAgain}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Cyberpunk Daily Scoreboard Frame Layout */}
+      <div style={{ width: '100%', maxWidth: '650px', border: '1px solid #0f0', padding: '20px', backgroundColor: '#000', boxSizing: 'border-box' }}>
+        <h3 style={{ color: '#ff0', textAlign: 'center', marginTop: 0, borderBottom: '1px solid #0f0', paddingBottom: '10px' }}>{t.ladderTitle}</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#0f0', borderBottom: '1px dashed #0f0', paddingBottom: '5px', fontSize: '14px' }}>
+            <span style={{ width: '15%' }}>{t.colRank}</span>
+            <span style={{ width: '45%' }}>{t.colName}</span>
+            <span style={{ width: '25%', textAlign: 'right' }}>{t.colScore}</span>
+            <span style={{ width: '15%', textAlign: 'right' }}>{t.colTries}</span>
+          </div>
+          {leaderboard.map((row, idx) => (
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: row.username === username ? '#ff0' : '#fff', fontSize: '15px', padding: '4px 0' }}>
+              <span style={{ width: '15%' }}>#{idx + 1}</span>
+              <span style={{ width: '45%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.username}</span>
+              <span style={{ width: '25%', textAlign: 'right', fontWeight: 'bold' }}>{row.score}</span>
+              <span style={{ width: '15%', textAlign: 'right', color: '#888' }}>{row.attempts}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+    </div>
+  );
+}
+
+// 👑 MASTER ENTRY APP CONTROLLER
 export default function App() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
   const [characters, setCharacters] = useState<DBCharacter[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
+  const [mode, setMode] = useState<string | null>(null);
   
   const [currentPlayerName, setCurrentPlayerName] = useState<string>(() => {
     return localStorage.getItem('forest_game_username') || '';
@@ -242,7 +565,14 @@ export default function App() {
   const totalPointsSpent = might + vitality + reflex;
   const pointsLeft = 10 - totalPointsSpent;
 
+  // Sniff current view parameters strictly
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setMode(params.get('mode'));
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'math') return;
     fetchCharacters();
     const channel = supabase
       .channel('schema-db-changes')
@@ -251,7 +581,7 @@ export default function App() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [mode]);
 
   const fetchCharacters = async () => {
     const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
@@ -409,18 +739,28 @@ export default function App() {
     const resolveStrike = (attacker: Combatant, defender: Combatant, actionStr: string, defenseActive: boolean) => {
       let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
       let logMsg = "";
+      let healVal = 0;
 
       if (actionStr === 'defend') {
         logMsg = locale === 'vi' 
           ? `🛡️ ${attacker.name} chọn thế Thủ Thế Toàn Diện, chuẩn bị đỡ đòn.` 
           : `🛡️ ${attacker.name} hunkers down into a Defend Stance, bracing for impact.`;
-        return { dmg: 0, log: logMsg };
+        return { dmg: 0, heal: 0, isHeal: false, log: logMsg };
       }
 
       if (actionStr.startsWith('skill')) {
         const idx = parseInt(actionStr.replace('skill', ''));
         const skillName = attacker.skills[idx] || "Basic Strike";
         
+        // Dynamic Specialty Matrix Router
+        if (skillName === "Second Wind") {
+          healVal = 10 + attacker.might;
+          logMsg = locale === 'vi'
+            ? `💖 [KỸ NĂNG] ${attacker.name} sử dụng [Second Wind] hồi phục +${healVal} HP!`
+            : `💖 [SPECIAL SKILL] ${attacker.name} activates [Second Wind] restoring +${healVal} HP!`;
+          return { dmg: 0, heal: healVal, isHeal: true, log: logMsg };
+        }
+
         if (skillName === "Heavy Slash" || skillName === "Double Strafe" || skillName === "Fireball") {
           baseDamage = baseDamage * 2;
         }
@@ -441,17 +781,26 @@ export default function App() {
       }
 
       logMsg += locale === 'vi' ? ` Gây ${baseDamage} SÁT THƯƠNG.` : ` Dealt ${baseDamage} DMG.`;
-      return { dmg: baseDamage, log: logMsg };
+      return { dmg: baseDamage, heal: 0, isHeal: false, log: logMsg };
     };
 
+    // Strike Route Execution 1
     const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
     roundLogs.push(locale === 'vi' 
       ? `🎲 ${first.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
       : `🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
     );
     roundLogs.push(strike1.log);
-    if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
+    
+    if (strike1.isHeal) {
+      const maxHp = 40 + first.vitality * 5;
+      if (first.id === p1.id) h1 = Math.min(maxHp, h1 + strike1.heal);
+      else h2 = Math.min(maxHp, h2 + strike1.heal);
+    } else {
+      if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
+    }
 
+    // Strike Route Execution 2
     if (h1 > 0 && h2 > 0) {
       const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
       roundLogs.push(locale === 'vi' 
@@ -459,7 +808,14 @@ export default function App() {
         : `🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
       );
       roundLogs.push(strike2.log);
-      if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg;
+      
+      if (strike2.isHeal) {
+        const maxHp = 40 + second.vitality * 5;
+        if (second.id === p1.id) h1 = Math.min(maxHp, h1 + strike2.heal);
+        else h2 = Math.min(maxHp, h2 + strike2.heal);
+      } else {
+        if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg;
+      }
     }
 
     roundLogs.push(locale === 'vi' 
@@ -501,312 +857,319 @@ export default function App() {
         body, html, #root { background-color: #000 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
       `}</style>
 
-      <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f0', paddingBottom: '10px' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f0', paddingBottom: '10px', marginBottom: '20px' }}>
         <div>
-          <h1>{t.title}</h1>
-          <p style={{ color: '#888' }}>{t.sub}</p>
+          <h1 style={{ margin: 0 }}>{mode === 'math' ? "⚔️ MATH BATTLE ARENA ⚔️" : t.title}</h1>
+          <p style={{ color: '#888', margin: '5px 0 0 0' }}>{mode === 'math' ? t.sub : t.sub}</p>
         </div>
         <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
           {t.langBtn}
         </button>
       </header>
 
-      {/* REGISTRATION SYSTEM */}
-      <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
-        {!currentPlayerName ? (
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ fontWeight: 'bold' }}>{t.nameInputLabel}</label>
-            <input type="text" placeholder={t.nameInputPlace} value={typedName} onChange={(e) => setTypedName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} />
-            <button onClick={() => savePlayerIdentity(typedName)} disabled={!typedName.trim()} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>Join Lobby</button>
-          </div>
-        ) : myClaimedCharacter ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <img src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} alt="avatar" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + myClaimedCharacter.job_class; }} />
-              <div>
-                <h2 style={{ color: '#fff', margin: '0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
-                <p style={{ margin: '5px 0 0 0' }}>Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}</p>
-                <button 
-                  onClick={() => handleToggleReady(myClaimedCharacter.id, myClaimedCharacter.is_ready || false)} 
-                  style={{ marginTop: '10px', background: myClaimedCharacter.is_ready ? '#300' : '#040', color: myClaimedCharacter.is_ready ? '#ff3333' : '#0f0', border: `1px solid ${myClaimedCharacter.is_ready ? '#ff3333' : '#0f0'}`, padding: '6px 15px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
-                >
-                  {myClaimedCharacter.is_ready ? t.unreadyBtn : t.readyBtn}
-                </button>
+      {/* ISOLATED VIEW PARAMETER CONTAINER ROUTER */}
+      {mode === 'math' ? (
+        <MathArenaModule locale={locale} />
+      ) : (
+        <>
+          {/* REGISTRATION SYSTEM */}
+          <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
+            {!currentPlayerName ? (
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ fontWeight: 'bold' }}>{t.nameInputLabel}</label>
+                <input type="text" placeholder={t.nameInputPlace} value={typedName} onChange={(e) => setTypedName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} />
+                <button onClick={() => savePlayerIdentity(typedName)} disabled={!typedName.trim()} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>Join Lobby</button>
               </div>
-            </div>
-            <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>{t.releaseBtn}</button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
-              <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); setSelectedCharId(''); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
-              <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
-                <option value="">-- Select Character --</option>
-                {characters.map(char => (
-                  <option key={char.id} value={char.id} disabled={char.assigned_to !== null}>{char.name} [{char.job_class}] {char.assigned_to ? `(${t.taken} ${char.assigned_to})` : ''}</option>
-                ))}
-              </select>
-              <button onClick={handleClaim} disabled={!selectedCharId} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>{t.claimBtn}</button>
-            </div>
-            {currentlyBrowsingCharacter && (
-              <div style={{ display: 'flex', gap: '20px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#000', maxWidth: '500px', alignItems: 'center' }}>
-                <img src={getGameAssetUrl('avatar', currentlyBrowsingCharacter.job_class)} alt="avatar" style={{ width: '120px', height: '120px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + currentlyBrowsingCharacter.job_class; }} />
-                <div>
-                  <h3 style={{ color: '#fff', margin: '0' }}>{currentlyBrowsingCharacter.name}</h3>
-                  <p style={{ margin: '5px 0', fontSize: '13px' }}>HP: {40 + currentlyBrowsingCharacter.vitality * 5} | Might: +{currentlyBrowsingCharacter.might} | Speed: +{currentlyBrowsingCharacter.reflex}</p>
+            ) : myClaimedCharacter ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                  <img src={getGameAssetUrl('avatar', myClaimedCharacter.job_class)} alt="avatar" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + myClaimedCharacter.job_class; }} />
+                  <div>
+                    <h2 style={{ color: '#fff', margin: '0' }}>👑 {currentPlayerName} ({myClaimedCharacter.name})</h2>
+                    <p style={{ margin: '5px 0 0 0' }}>Class: {myClaimedCharacter.job_class} | HP: {40 + myClaimedCharacter.vitality * 5} | Might: +{myClaimedCharacter.might} | Speed: +{myClaimedCharacter.reflex}</p>
+                    <button 
+                      onClick={() => handleToggleReady(myClaimedCharacter.id, myClaimedCharacter.is_ready || false)} 
+                      style={{ marginTop: '10px', background: myClaimedCharacter.is_ready ? '#300' : '#040', color: myClaimedCharacter.is_ready ? '#ff3333' : '#0f0', border: `1px solid ${myClaimedCharacter.is_ready ? '#ff3333' : '#0f0'}`, padding: '6px 15px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
+                    >
+                      {myClaimedCharacter.is_ready ? t.unreadyBtn : t.readyBtn}
+                    </button>
+                  </div>
                 </div>
+                <button onClick={() => handleRelease(myClaimedCharacter.id)} style={{ background: '#ff0000', color: '#fff', border: 'none', padding: '12px 25px', cursor: 'pointer', fontWeight: 'bold' }}>{t.releaseBtn}</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
+                  <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); setSelectedCharId(''); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
+                  <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
+                    <option value="">-- Select Character --</option>
+                    {characters.map(char => (
+                      <option key={char.id} value={char.id.toString()} disabled={char.assigned_to !== null}>{char.name} [{char.job_class}] {char.assigned_to ? `(${t.taken} ${char.assigned_to})` : ''}</option>
+                    ))}
+                  </select>
+                  <button onClick={handleClaim} disabled={!selectedCharId} style={{ background: '#0f0', color: '#000', border: 'none', padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold' }}>{t.claimBtn}</button>
+                </div>
+                {currentlyBrowsingCharacter && (
+                  <div style={{ display: 'flex', gap: '20px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#000', maxWidth: '500px', alignItems: 'center' }}>
+                    <img src={getGameAssetUrl('avatar', currentlyBrowsingCharacter.job_class)} alt="avatar" style={{ width: '120px', height: '120px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + currentlyBrowsingCharacter.job_class; }} />
+                    <div>
+                      <h3 style={{ color: '#fff', margin: '0' }}>{currentlyBrowsingCharacter.name}</h3>
+                      <p style={{ margin: '5px 0', fontSize: '13px' }}>HP: {40 + currentlyBrowsingCharacter.vitality * 5} | Might: +{currentlyBrowsingCharacter.might} | Speed: +{currentlyBrowsingCharacter.reflex}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-      </section>
+          </section>
 
-      {/* READY CHECK ROOM */}
-      {activeClaimed.length > 0 && !isTournamentActive && (
-        <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #ff0', backgroundColor: '#0a0a00' }}>
-          <h3 style={{ color: '#ff0', marginTop: 0 }}>{t.waitingRoomTitle}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {activeClaimed.map(c => (
-              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #220', paddingBottom: '8px' }}>
-                <span style={{ color: '#fff' }}>👤 <strong>@{c.assigned_to}</strong> leading <strong>{c.name}</strong> ({c.job_class})</span>
-                <span style={{ color: c.is_ready ? '#0f0' : '#ff3333', fontWeight: 'bold' }}>{c.is_ready ? `[ ${t.statusReady} ]` : `[ ${t.statusWaiting} ]`}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* TOURNAMENT LIVE INTERFACE */}
-      {isTournamentActive && tournamentMatches.length > 0 && (
-        <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
-          <h2 style={{ textAlign: 'center', color: '#fff', letterSpacing: '2px' }}>{t.arenaTitle}</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', marginTop: '20px' }}>
-            {tournamentMatches.map((match) => {
-              const [p1, p2] = match;
-              const matchId = `match_${p1.id}_vs_${p2.id}`;
-              
-              const liveState = arenaState[matchId] || {
-                hp1: 40 + p1.vitality * 5,
-                hp2: 40 + p2.vitality * 5,
-                round: 1,
-                logs: [locale === 'vi' ? `🏁 Phòng chờ hoàn tất. Vui lòng chọn chiêu và đổ xúc xắc!` : `🏁 Ready Check Verified. Choose actions and roll dice!`],
-                winner: null,
-                isRolling: false,
-                displayDice1: "❓",
-                displayDice2: "❓"
-              };
-
-              const currentTactic = playerActions[matchId] || 'attack';
-
-              // Determine details for action preview bay parsing
-              let activeTacticName = "Basic Attack";
-              let activeTacticLookup = "basic_attack";
-              
-              if (currentTactic === 'defend') {
-                activeTacticName = "Defend Stance";
-                activeTacticLookup = "defend_stance";
-              } else if (currentTactic.startsWith('skill')) {
-                const sIdx = parseInt(currentTactic.replace('skill', ''));
-                activeTacticName = p1.skills[sIdx] || "Basic Attack";
-                activeTacticLookup = activeTacticName;
-              }
-
-              const tacticDetails = SKILLS_LIBRARY[activeTacticName] || { en: "Standard combat dynamic card execution.", vi: "Chiêu thức hành động chiến đấu chuẩn hệ phái." };
-
-              return (
-                <div key={matchId} style={{ border: '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-                    
-                    {/* Left Challenger Card Block */}
-                    <div style={{ textAlign: 'center', minWidth: '180px' }}>
-                      <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
-                      <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
-                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
-                      <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
-
-                      {/* 🎲 MAGNIFIED DICE BAY FRAME */}
-                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
-                        {liveState.displayDice1}
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
-
-                    {/* Right Challenger Card Block */}
-                    <div style={{ textAlign: 'center', minWidth: '180px' }}>
-                      <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
-                      <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
-                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
-                      <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
-
-                      {/* 🎲 MAGNIFIED DICE BAY FRAME */}
-                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
-                        {liveState.displayDice2}
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* 🔎 DYNAMIC ACTION PREVIEW BAY */}
-                  <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
-                    <div style={{ flexShrink: 0 }}>
-                      <img 
-                        src={getGameAssetUrl('skill', p1.job_class, activeTacticLookup)} 
-                        alt={activeTacticName}
-                        style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
-                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                      <span style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>{t.previewActionTitle}</span>
-                      <strong style={{ color: '#ff0', fontSize: '18px', display: 'block', marginBottom: '6px' }}>{activeTacticName}</strong>
-                      <p style={{ color: '#0f0', margin: 0, fontStyle: 'italic', fontSize: '14px', lineHeight: '1.4' }}>
-                        {locale === 'en' ? tacticDetails.en : tacticDetails.vi}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
-                  {!liveState.winner && !liveState.isRolling && (
-                    <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
-                      <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
-                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                        <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'attack' ? '#0f0' : '#000', color: currentTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
-                          {t.optAttack}
-                        </button>
-                        <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
-                          {t.optDefend}
-                        </button>
-                        {p1.skills?.map((skill, sIdx) => (
-                          <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
-                            💥 {skill}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Operational Roll Trigger Button Container */}
-                  <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                    {liveState.winner ? (
-                      <div style={{ color: '#ff0', fontWeight: 'bold', border: '1px solid #ff0', padding: '8px 20px', background: '#220', display: 'inline-block' }}>
-                        {t.matchOverBtn}
-                      </div>
-                    ) : (
-                      <button 
-                        onClick={() => triggerDrumRollCombat(matchId, p1, p2)} 
-                        disabled={liveState.isRolling}
-                        style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px 35px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px', opacity: liveState.isRolling ? 0.6 : 1 }}
-                      >
-                        {liveState.isRolling ? t.rollingBtn : `${t.rollBtn} ${liveState.round}`}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Terminal Log Box Output */}
-                  <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '200px', overflowY: 'auto', fontSize: '13px' }}>
-                    {liveState.logs.map((log, lIdx) => (
-                      <div key={lIdx} style={{ margin: '5px 0', color: log.includes('CHIẾN THẮNG') || log.includes('WINNER') ? '#ff0' : log.includes('HIỆP ĐẤU') || log.includes('ROUND') ? '#fff' : '#888' }}>{log}</div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* CREATE HERO SECTION */}
-      {!myClaimedCharacter && !isTournamentActive && (
-        <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px', marginBottom: '30px' }}>
-          <h2>[ {t.createTitle} ]</h2>
-          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <input type="text" placeholder={t.namePlace} value={name} onChange={(e) => setName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} required />
-            <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
-              {Object.keys(CLASSES_DATA).map(cls => <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>)}
-            </select>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
-              <img src={getGameAssetUrl('avatar', jobClass)} alt="Preview" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }} />
-              <div><span style={{ color: '#888', fontSize: '12px', display: 'block' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
-            </div>
-
-            {/* ATTRIBUTES */}
-            <div>
-              <h3>{t.pointsLeft} <span style={{ color: pointsLeft === 0 ? '#0f0' : '#ff0', fontSize: '22px' }}>{pointsLeft}</span></h3>
+          {/* READY CHECK ROOM */}
+          {activeClaimed.length > 0 && !isTournamentActive && (
+            <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #ff0', backgroundColor: '#0a0a00' }}>
+              <h3 style={{ color: '#ff0', marginTop: 0 }}>{t.waitingRoomTitle}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[ ['might', t.might, might, setMight], ['vitality', t.vit, vitality, setVitality], ['reflex', t.reflex, reflex, setReflex] ].map(([key, label, val, setVal]: any) => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ minWidth: '250px' }}>{label} : <strong>{val}</strong></span>
-                    <button type="button" onClick={() => pointsLeft > 0 && setVal(val + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
-                    <button type="button" onClick={() => val > 0 && setVal(val - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
-                  </label>
+                {activeClaimed.map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #220', paddingBottom: '8px' }}>
+                    <span style={{ color: '#fff' }}>👤 <strong>@{c.assigned_to}</strong> leading <strong>{c.name}</strong> ({c.job_class})</span>
+                    <span style={{ color: c.is_ready ? '#0f0' : '#ff3333', fontWeight: 'bold' }}>{c.is_ready ? `[ ${t.statusReady} ]` : `[ ${t.statusWaiting} ]`}</span>
+                  </div>
                 ))}
               </div>
-            </div>
+            </section>
+          )}
 
-            {/* SKILLS PANEL */}
-            <div>
-              <h3>{t.skillsLabel} ({selectedSkills.length}/2)</h3>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
-                {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
-                  const isSelected = selectedSkills.includes(skill);
-                  return <button key={skill} type="button" onClick={() => toggleSkill(skill)} style={{ padding: '10px 15px', border: '1px solid #0f0', background: isSelected ? '#0f0' : '#000', color: isSelected ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>{skill}</button>;
-                })}
-              </div>
+          {/* TOURNAMENT LIVE INTERFACE */}
+          {isTournamentActive && tournamentMatches.length > 0 && (
+            <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
+              <h2 style={{ fontFamily: 'monospace', textAlign: 'center', color: '#fff', letterSpacing: '2px' }}>{t.arenaTitle}</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', marginTop: '20px' }}>
+                {tournamentMatches.map((match) => {
+                  const [p1, p2] = match;
+                  const matchId = `match_${p1.id}_vs_${p2.id}`;
+                  
+                  const liveState = arenaState[matchId] || {
+                    hp1: 40 + p1.vitality * 5,
+                    hp2: 40 + p2.vitality * 5,
+                    round: 1,
+                    logs: [locale === 'vi' ? `🏁 Phòng chờ hoàn tất. Vui lòng chọn chiêu và đổ xúc xắc!` : `🏁 Ready Check Verified. Choose actions and roll dice!`],
+                    winner: null,
+                    isRolling: false,
+                    displayDice1: "❓",
+                    displayDice2: "❓"
+                  };
 
-              <div style={{ border: '1px dashed #050', padding: '15px', backgroundColor: '#050505' }}>
-                {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
-                  const isSelected = selectedSkills.includes(skill);
-                  const details = SKILLS_LIBRARY[skill] || { en: "Class spell card asset.", vi: "Kỹ năng bổ trợ hệ phái." };
+                  const currentTactic = playerActions[matchId] || 'attack';
+
+                  // Determine details for action preview bay parsing
+                  let activeTacticName = "Basic Attack";
+                  let activeTacticLookup = "basic_attack";
+                  
+                  if (currentTactic === 'defend') {
+                    activeTacticName = "Defend Stance";
+                    activeTacticLookup = "defend_stance";
+                  } else if (currentTactic.startsWith('skill')) {
+                    const sIdx = parseInt(currentTactic.replace('skill', ''));
+                    activeTacticName = p1.skills[sIdx] || "Basic Attack";
+                    activeTacticLookup = activeTacticName;
+                  }
+
+                  const tacticDetails = SKILLS_LIBRARY[activeTacticName] || { en: "Standard combat dynamic card execution.", vi: "Chiêu thức hành động chiến đấu chuẩn hệ phái." };
+
                   return (
-                    <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
-                      {isSelected && (
-                        <img src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
+                    <div key={matchId} style={{ border: '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                        
+                        {/* Left Challenger Card Block */}
+                        <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                          <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                          <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
+                          <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
+                          <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
+
+                          {/* 🎲 MAGNIFIED DICE BAY FRAME */}
+                          <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
+                            {liveState.displayDice1}
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
+
+                        {/* Right Challenger Card Block */}
+                        <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                          <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                          <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
+                          <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
+                          <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
+
+                          {/* 🎲 MAGNIFIED DICE BAY FRAME */}
+                          <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
+                            {liveState.displayDice2}
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* 🔎 DYNAMIC ACTION PREVIEW BAY */}
+                      <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
+                        <div style={{ flexShrink: 0 }}>
+                          <img 
+                            src={getGameAssetUrl('skill', p1.job_class, activeTacticLookup)} 
+                            alt={activeTacticName}
+                            style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
+                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                          <span style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>{t.previewActionTitle}</span>
+                          <strong style={{ color: '#ff0', fontSize: '18px', display: 'block', marginBottom: '6px' }}>{activeTacticName}</strong>
+                          <p style={{ color: '#0f0', margin: 0, fontStyle: 'italic', fontSize: '14px', lineHeight: '1.4' }}>
+                            {locale === 'en' ? tacticDetails.en : tacticDetails.vi}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
+                      {!liveState.winner && !liveState.isRolling && (
+                        <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
+                          <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'attack' ? '#0f0' : '#000', color: currentTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                              {t.optAttack}
+                            </button>
+                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                              {t.optDefend}
+                            </button>
+                            {p1.skills?.map((skill, sIdx) => (
+                              <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
+                                💥 {skill}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                      <div>
-                        <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
-                        <span style={{ fontStyle: 'italic' }}>{locale === 'en' ? details.en : details.vi}</span>
-                        {isSelected && <span style={{ marginLeft: '10px', color: '#ff0' }}>[SELECTED]</span>}
+
+                      {/* Operational Roll Trigger Button Container */}
+                      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                        {liveState.winner ? (
+                          <div style={{ color: '#ff0', fontWeight: 'bold', border: '1px solid #ff0', padding: '8px 20px', background: '#220', display: 'inline-block' }}>
+                            {t.matchOverBtn}
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => triggerDrumRollCombat(matchId, p1, p2)} 
+                            disabled={liveState.isRolling}
+                            style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px 35px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px', opacity: liveState.isRolling ? 0.6 : 1 }}
+                          >
+                            {liveState.isRolling ? t.rollingBtn : `${t.rollBtn} ${liveState.round}`}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Terminal Log Box Output */}
+                      <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '200px', overflowY: 'auto', fontSize: '13px' }}>
+                        {liveState.logs.map((log, lIdx) => (
+                          <div key={lIdx} style={{ margin: '5px 0', color: log.includes('CHIẾN THẮNG') || log.includes('WINNER') ? '#ff0' : log.includes('HIỆP ĐẤU') || log.includes('ROUND') ? '#fff' : '#888' }}>{log}</div>
+                        ))}
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
+          )}
 
-            <button type="submit" disabled={pointsLeft !== 0 || selectedSkills.length !== 2 || isSaving} style={{ background: '#0f0', color: '#000', padding: '15px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', opacity: (pointsLeft === 0 && selectedSkills.length === 2 && !isSaving) ? 1 : 0.5 }}>
-              {isSaving ? t.savingBtn : t.saveBtn}
-            </button>
-          </form>
-        </section>
-      )}
+          {/* CREATE HERO SECTION */}
+          {!myClaimedCharacter && !isTournamentActive && (
+            <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px', marginBottom: '30px' }}>
+              <h2>[ {t.createTitle} ]</h2>
+              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <input type="text" placeholder={t.namePlace} value={name} onChange={(e) => setName(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }} required />
+                <select value={jobClass} onChange={(e) => { setJobClass(e.target.value); setSelectedSkills([]); }} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', fontSize: '16px' }}>
+                  {Object.keys(CLASSES_DATA).map(cls => <option key={cls} value={cls}>{CLASSES_DATA[cls as keyof typeof CLASSES_DATA][locale]}</option>)}
+                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '10px', border: '1px dashed #030', backgroundColor: '#020202', maxWidth: '350px' }}>
+                  <img src={getGameAssetUrl('avatar', jobClass)} alt="Preview" style={{ width: '100px', height: '100px', border: '2px solid #0f0', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=' + jobClass; }} />
+                  <div><span style={{ color: '#888', fontSize: '12px', display: 'block' }}>{t.classPreview}</span><strong>{jobClass}</strong></div>
+                </div>
 
-      {/* ROSTER / MAINTENANCE */}
-      <section style={{ border: '1px solid #500', padding: '20px', backgroundColor: '#0a0000' }}>
-        <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.rosterTitle}</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {characters.map(char => {
-            const hasCreatorRegistered = char.created_by !== null && char.created_by !== undefined && char.created_by !== '';
-            const isMyOwnCreation = char.created_by === currentPlayerName;
-            const canIDeleteThis = !hasCreatorRegistered || isMyOwnCreation;
-
-            return (
-              <div key={char.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #300', padding: '10px', backgroundColor: '#000' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <img src={getGameAssetUrl('avatar', char.job_class)} alt="avatar" style={{ width: '40px', height: '40px', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/40x40/000000/ff0000?text=?'; }} />
-                  <div>
-                    <strong>{char.name}</strong> <span style={{ color: '#888' }}>({char.job_class})</span> 
-                    {char.assigned_to && <span style={{ marginLeft: '10px', color: '#ff0', fontSize: '12px' }}>★ {t.taken} {char.assigned_to}</span>}
-                    {hasCreatorRegistered && <span style={{ marginLeft: '10px', color: '#888', fontSize: '11px', fontStyle: 'italic' }}>({t.creatorLabel}: {char.created_by})</span>}
+                {/* ATTRIBUTES */}
+                <div>
+                  <h3>{t.pointsLeft} <span style={{ color: pointsLeft === 0 ? '#0f0' : '#ff0', fontSize: '22px' }}>{pointsLeft}</span></h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[ ['might', t.might, might, setMight], ['vitality', t.vit, vitality, setVitality], ['reflex', t.reflex, reflex, setReflex] ].map(([key, label, val, setVal]: any) => (
+                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ minWidth: '250px' }}>{label} : <strong>{val}</strong></span>
+                        <button type="button" onClick={() => pointsLeft > 0 && setVal(val + 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>+</button>
+                        <button type="button" onClick={() => val > 0 && setVal(val - 1)} style={{ background: '#222', color: '#0f0', border: '1px solid #0f0', width: '35px', height: '35px', cursor: 'pointer' }}>-</button>
+                      </label>
+                    ))}
                   </div>
                 </div>
-                {canIDeleteThis ? <button onClick={() => handleDeleteCharacter(char.id, char.created_by)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button> : <span style={{ color: '#444', fontStyle: 'italic', fontSize: '13px' }}>[Locked by {char.created_by}]</span>}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+
+                {/* SKILLS PANEL */}
+                <div>
+                  <h3>{t.skillsLabel} ({selectedSkills.length}/2)</h3>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                    {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
+                      const isSelected = selectedSkills.includes(skill);
+                      return <button key={skill} type="button" onClick={() => toggleSkill(skill)} style={{ padding: '10px 15px', border: '1px solid #0f0', background: isSelected ? '#0f0' : '#000', color: isSelected ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>{skill}</button>;
+                    })}
+                  </div>
+
+                  <div style={{ border: '1px dashed #050', padding: '15px', backgroundColor: '#050505' }}>
+                    {CLASSES_DATA[jobClass as keyof typeof CLASSES_DATA].skills.map(skill => {
+                      const isSelected = selectedSkills.includes(skill);
+                      const details = SKILLS_LIBRARY[skill] || { en: "Class spell card asset.", vi: "Kỹ năng bổ trợ hệ phái." };
+                      return (
+                        <div key={skill} style={{ display: 'flex', alignItems: 'center', gap: '15px', margin: '15px 0', opacity: isSelected ? 1 : 0.4, color: isSelected ? '#0f0' : '#888', fontSize: '15px' }}>
+                          {isSelected && (
+                            <img src={getGameAssetUrl('skill', jobClass, skill)} alt={skill} style={{ width: '100px', height: '100px', border: '1px solid #0f0', backgroundColor: '#111', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/100x100/000000/00ff00?text=Skill'; }} />
+                          )}
+                          <div>
+                            <span style={{ fontWeight: 'bold' }}>• {skill}:</span>{' '}
+                            <span style={{ fontStyle: 'italic' }}>{locale === 'en' ? details.en : details.vi}</span>
+                            {isSelected && <span style={{ marginLeft: '10px', color: '#ff0' }}>[SELECTED]</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button type="submit" disabled={pointsLeft !== 0 || selectedSkills.length !== 2 || isSaving} style={{ background: '#0f0', color: '#000', padding: '15px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', opacity: (pointsLeft === 0 && selectedSkills.length === 2 && !isSaving) ? 1 : 0.5 }}>
+                  {isSaving ? t.savingBtn : t.saveBtn}
+                </button>
+              </form>
+            </section>
+          )}
+
+          {/* ROSTER / MAINTENANCE */}
+          <section style={{ border: '1px solid #500', padding: '20px', backgroundColor: '#0a0000' }}>
+            <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.rosterTitle}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {characters.map(char => {
+                const hasCreatorRegistered = char.created_by !== null && char.created_by !== undefined && char.created_by !== '';
+                const isMyOwnCreation = char.created_by === currentPlayerName;
+                const canIDeleteThis = !hasCreatorRegistered || isMyOwnCreation;
+
+                return (
+                  <div key={char.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #300', padding: '10px', backgroundColor: '#000' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <img src={getGameAssetUrl('avatar', char.job_class)} alt="avatar" style={{ width: '40px', height: '40px', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/40x40/000000/ff0000?text=?'; }} />
+                      <div>
+                        <strong>{char.name}</strong> <span style={{ color: '#888' }}>({char.job_class})</span> 
+                        {char.assigned_to && <span style={{ marginLeft: '10px', color: '#ff0', fontSize: '12px' }}>★ {t.taken} {char.assigned_to}</span>}
+                        {hasCreatorRegistered && <span style={{ marginLeft: '10px', color: '#888', fontSize: '11px', fontStyle: 'italic' }}>({t.creatorLabel}: {char.created_by})</span>}
+                      </div>
+                    </div>
+                    {canIDeleteThis ? <button onClick={() => handleDeleteCharacter(char.id, char.created_by)} style={{ background: '#300', color: '#ff3333', border: '1px solid #ff3333', padding: '5px 12px', cursor: 'pointer' }}>{t.deleteBtn}</button> : <span style={{ color: '#444', fontStyle: 'italic', fontSize: '13px' }}>[Locked by {char.created_by}]</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
 
     </div>
   );
