@@ -1021,6 +1021,10 @@ export default function App() {
                     displayDice2: "❓"
                   };
 
+                  const isMyP1 = currentPlayerName === p1.assigned_to;
+                  const isMyP2 = currentPlayerName === p2.assigned_to;
+                  const myCombatant = isMyP1 ? p1 : (isMyP2 ? p2 : p1); // Fallback to p1 for spectators
+
                   const currentTactic = playerActions[matchId] || 'attack';
 
                   let activeTacticName = "Basic Attack";
@@ -1031,7 +1035,7 @@ export default function App() {
                     activeTacticLookup = "defend_stance";
                   } else if (currentTactic.startsWith('skill')) {
                     const sIdx = parseInt(currentTactic.replace('skill', ''));
-                    activeTacticName = p1.skills[sIdx] || "Basic Attack";
+                    activeTacticName = myCombatant.skills[sIdx] || "Basic Attack";
                     activeTacticLookup = activeTacticName;
                   }
 
@@ -1073,7 +1077,7 @@ export default function App() {
                       <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
                         <div style={{ flexShrink: 0 }}>
                           <img 
-                            src={getGameAssetUrl('skill', p1.job_class, activeTacticLookup)} 
+                            src={getGameAssetUrl('skill', myCombatant.job_class, activeTacticLookup)} 
                             alt={activeTacticName}
                             style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
                             onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
@@ -1099,7 +1103,7 @@ export default function App() {
                             <button onClick={() => handleActionClick(matchId, p1, p2, 'defend')} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
                               {t.optDefend}
                             </button>
-                            {p1.skills?.map((skill, sIdx) => (
+                            {myCombatant.skills?.map((skill, sIdx) => (
                               <button key={skill} onClick={() => handleActionClick(matchId, p1, p2, `skill${sIdx}`)} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
                                 💥 {skill}
                               </button>
