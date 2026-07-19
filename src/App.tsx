@@ -561,9 +561,122 @@ export default function App() {
   // 🕹️ STRATEGIC PLAYER ACTION SELECTION DECK
   const [playerActions, setPlayerActions] = useState<Record<string, string>>({});
 
+  // Hoisted Derived Variables & Match Seeding Computations to Avoid Out-of-Scope Errors
   const t = LANG[locale];
   const totalPointsSpent = might + vitality + reflex;
   const pointsLeft = 10 - totalPointsSpent;
+
+  const activeClaimed = characters
+    .filter(c => c.assigned_to !== null && c.assigned_to !== '')
+    .sort((a, b) => (a.assigned_to || '').localeCompare(b.assigned_to || ''));
+
+  const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
+
+  const generateTournamentPairs = () => {
+    if (!isTournamentActive) return [];
+    const pairs: [Combatant, Combatant][] = [];
+    
+    for (let i = 0; i < activeClaimed.length; i += 2) {
+      if (i + 1 < activeClaimed.length) {
+        pairs.push([activeClaimed[i], activeClaimed[i + 1]]);
+      } else {
+        const unclaimedPool = characters.filter(c => c.assigned_to === null || c.assigned_to === '');
+        let botTemplate = unclaimedPool[0] || IMMUTABLE_SYSTEM_BOTS[i % IMMUTABLE_SYSTEM_BOTS.length];
+        
+        const shadowBot: Combatant = {
+          id: botTemplate.id.toString().includes('sys') ? botTemplate.id : `bot_${botTemplate.id}_${i}`,
+          name: botTemplate.name,
+          job_class: botTemplate.job_class,
+          might: botTemplate.might,
+          vitality: botTemplate.vitality,
+          reflex: botTemplate.reflex,
+          skills: botTemplate.skills,
+          assigned_to: `[${t.botLabel}]`,
+          is_ready: true,
+          isBot: true
+        };
+        pairs.push([activeClaimed[i], shadowBot]);
+      }
+    }
+    return pairs;
+  };
+
+  const tournamentMatches = generateTournamentPairs();
+  const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
+  const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
+
+  // 📡 REAL-TIME MULTIPLAYER MATCH SYNCHRONIZER
+  useEffect(() => {
+    if (mode === 'math') return;
+
+    const matchesChannel = supabase
+      .channel('realtime-tournament-matches')
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'matches' }, 
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const match = payload.new as any;
+            const matchId = `match_${match.p1_char_id}_vs_${match.p2_char_id}`;
+            
+            setArenaState((prev: any) => ({
+              ...prev,
+              [matchId]: {
+                hp1: match.p1_hp,
+                hp2: match.p2_hp,
+                round: match.round_number,
+                logs: match.logs || [],
+                winner: match.winner,
+                isRolling: match.is_rolling,
+                displayDice1: match.dice1,
+                displayDice2: match.dice2
+              }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(matchesChannel);
+    };
+  }, [mode]);
+
+  // 🚀 AUTOMATED TOURNAMENT SEEDING & MATCH CREATION EFFECT
+  useEffect(() => {
+    if (mode === 'math') return;
+    if (!isTournamentActive || tournamentMatches.length === 0) return;
+
+    const seedLiveTournamentMatches = async () => {
+      for (const match of tournamentMatches) {
+        const [p1, p2] = match;
+        
+        const { data: existing } = await supabase
+          .from('matches')
+          .select('id')
+          .eq('p1_char_id', p1.id)
+          .eq('p2_char_id', p2.id);
+
+        if (!existing || existing.length === 0) {
+          await supabase.from('matches').insert([{
+            player1_name: p1.name,
+            player2_name: p2.name,
+            p1_char_id: p1.id,
+            p2_char_id: p2.id,
+            p1_hp: 40 + p1.vitality * 5,
+            p2_hp: 40 + p2.vitality * 5,
+            round_number: 1,
+            dice1: '❓',
+            dice2: '❓',
+            is_rolling: false,
+            logs: [locale === 'vi' ? `🏁 Trận đấu đấu trường trực tuyến được khởi tạo!` : `🏁 Arena Match officially initialized!`]
+          }]);
+        }
+      }
+    };
+
+    seedLiveTournamentMatches();
+  }, [isTournamentActive, tournamentMatches, mode, locale]);
 
   // Sniff current view parameters strictly
   useEffect(() => {
@@ -640,215 +753,165 @@ export default function App() {
     }
   };
 
-  const activeClaimed = characters
-    .filter(c => c.assigned_to !== null && c.assigned_to !== '')
-    .sort((a, b) => (a.assigned_to || '').localeCompare(b.assigned_to || ''));
+  // 🕹️ NEW: CLOUD ACTION SELECTION HANDLER
+  const handleActionClick = async (matchId: string, p1: Combatant, p2: Combatant, actionStr: string) => {
+    setPlayerActions(prev => ({ ...prev, [matchId]: actionStr }));
 
-  const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
+    if (mode === 'math') return;
 
-  const generateTournamentPairs = () => {
-    if (!isTournamentActive) return [];
-    const pairs: [Combatant, Combatant][] = [];
-    
-    for (let i = 0; i < activeClaimed.length; i += 2) {
-      if (i + 1 < activeClaimed.length) {
-        pairs.push([activeClaimed[i], activeClaimed[i + 1]]);
-      } else {
-        const unclaimedPool = characters.filter(c => c.assigned_to === null || c.assigned_to === '');
-        let botTemplate = unclaimedPool[0] || IMMUTABLE_SYSTEM_BOTS[i % IMMUTABLE_SYSTEM_BOTS.length];
-        
-        const shadowBot: Combatant = {
-          id: botTemplate.id.toString().includes('sys') ? botTemplate.id : `bot_${botTemplate.id}_${i}`,
-          name: botTemplate.name,
-          job_class: botTemplate.job_class,
-          might: botTemplate.might,
-          vitality: botTemplate.vitality,
-          reflex: botTemplate.reflex,
-          skills: botTemplate.skills,
-          assigned_to: `[${t.botLabel}]`,
-          is_ready: true,
-          isBot: true
-        };
-        pairs.push([activeClaimed[i], shadowBot]);
-      }
-    }
-    return pairs;
-  };
+    const isP1 = currentPlayerName === p1.assigned_to;
+    const isP2 = currentPlayerName === p2.assigned_to;
+    if (!isP1 && !isP2) return; 
 
-  const triggerDrumRollCombat = (matchId: string, p1: Combatant, p2: Combatant) => {
-    const baseState = arenaState[matchId] || {
-      hp1: 40 + p1.vitality * 5,
-      hp2: 40 + p2.vitality * 5,
-      round: 1,
-      logs: [locale === 'vi' ? `🏁 Phòng chờ hoàn tất. Hãy Chọn Chiêu Thức!` : `🏁 Ready Check Verified. Choose Your Action!`],
-      winner: null,
-      isRolling: false,
-      displayDice1: "❓",
-      displayDice2: "❓"
-    };
+    const { data: matches } = await supabase.from('matches').select('*').eq('p1_char_id', p1.id).eq('p2_char_id', p2.id);
+    const hasMatch = matches && matches.length > 0;
+    const matchRow = hasMatch ? matches[0] : null;
 
-    if (baseState.winner || baseState.isRolling) return;
+    const updateData: any = {};
+    if (isP1) updateData.p1_action = actionStr;
+    if (isP2) updateData.p2_action = actionStr;
 
-    setArenaState(prev => ({ ...prev, [matchId]: { ...baseState, isRolling: true } }));
-
-    let timerCount = 0;
-    const interval = setInterval(() => {
-      setArenaState(prev => ({
-        ...prev,
-        [matchId]: {
-          ...prev[matchId],
-          displayDice1: DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)],
-          displayDice2: DICE_ICONS[Math.floor(Math.random() * DICE_ICONS.length)]
-        }
-      }));
-      timerCount += 100;
-      if (timerCount >= 1500) {
-        clearInterval(interval);
-        executeActualCombatRound(matchId, p1, p2, baseState);
-      }
-    }, 100);
-  };
-
-  const executeActualCombatRound = (matchId: string, p1: Combatant, p2: Combatant, baseState: any) => {
-    let h1 = baseState.hp1;
-    let h2 = baseState.hp2;
-    let rNum = baseState.round;
-
-    const actionP1 = playerActions[matchId] || 'attack';
-    const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
-    const actionP2 = p2.isBot ? botOptions[Math.floor(Math.random() * botOptions.length)] : 'attack';
-
-    let roundLogs: string[] = [];
-    roundLogs.push(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
-
-    const idx1 = Math.floor(Math.random() * 6);
-    const idx2 = Math.floor(Math.random() * 6);
-    const finalIcon1 = DICE_ICONS[idx1];
-    const finalIcon2 = DICE_ICONS[idx2];
-
-    const roll1 = idx1 + 1;
-    const roll2 = idx2 + 1;
-
-    const init1 = roll1 + p1.reflex;
-    const init2 = roll2 + p2.reflex;
-    const first = init1 >= init2 ? p1 : p2;
-    const second = init1 >= init2 ? p2 : p1;
-    const actFirst = init1 >= init2 ? actionP1 : actionP2;
-    const actSecond = init1 >= init2 ? actionP2 : actionP1;
-
-    const resolveStrike = (attacker: Combatant, defender: Combatant, actionStr: string, defenseActive: boolean) => {
-      let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
-      let logMsg = "";
-      let healVal = 0;
-
-      if (actionStr === 'defend') {
-        logMsg = locale === 'vi' 
-          ? `🛡️ ${attacker.name} chọn thế Thủ Thế Toàn Diện, chuẩn bị đỡ đòn.` 
-          : `🛡️ ${attacker.name} hunkers down into a Defend Stance, bracing for impact.`;
-        return { dmg: 0, heal: 0, isHeal: false, log: logMsg };
-      }
-
-      if (actionStr.startsWith('skill')) {
-        const idx = parseInt(actionStr.replace('skill', ''));
-        const skillName = attacker.skills[idx] || "Basic Strike";
-        
-        // Dynamic Specialty Matrix Router
-        if (skillName === "Second Wind") {
-          healVal = 10 + attacker.might;
-          logMsg = locale === 'vi'
-            ? `💖 [KỸ NĂNG] ${attacker.name} sử dụng [Second Wind] hồi phục +${healVal} HP!`
-            : `💖 [SPECIAL SKILL] ${attacker.name} activates [Second Wind] restoring +${healVal} HP!`;
-          return { dmg: 0, heal: healVal, isHeal: true, log: logMsg };
-        }
-
-        if (skillName === "Heavy Slash" || skillName === "Double Strafe" || skillName === "Fireball") {
-          baseDamage = baseDamage * 2;
-        }
-        logMsg = locale === 'vi'
-          ? `🔥 [KỸ NĂNG] ${attacker.name} tung chiêu tuyệt kỹ [${skillName}]!`
-          : `🔥 [SPECIAL SKILL] ${attacker.name} unleashes their signature [${skillName}]!`;
-      } else {
-        logMsg = locale === 'vi'
-          ? `⚔️ ${attacker.name} vung đòn Tấn Công Thường.`
-          : `⚔️ ${attacker.name} strikes with a Basic Attack.`;
-      }
-
-      if (defenseActive) {
-        baseDamage = Math.max(1, Math.floor(baseDamage / 2));
-        logMsg += locale === 'vi' 
-          ? ` Đòn đánh bị giảm nửa sát thương do ${defender.name} đang phòng thủ!` 
-          : ` Strike was mitigated by ${defender.name}'s defensive positioning!`;
-      }
-
-      logMsg += locale === 'vi' ? ` Gây ${baseDamage} SÁT THƯƠNG.` : ` Dealt ${baseDamage} DMG.`;
-      return { dmg: baseDamage, heal: 0, isHeal: false, log: logMsg };
-    };
-
-    // Strike Route Execution 1
-    const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
-    roundLogs.push(locale === 'vi' 
-      ? `🎲 ${first.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
-      : `🎲 ${first.name} Init Roll: ${init1 >= init2 ? roll1 : roll2} (${finalIcon1})`
-    );
-    roundLogs.push(strike1.log);
-    
-    if (strike1.isHeal) {
-      const maxHp = 40 + first.vitality * 5;
-      if (first.id === p1.id) h1 = Math.min(maxHp, h1 + strike1.heal);
-      else h2 = Math.min(maxHp, h2 + strike1.heal);
+    if (hasMatch) {
+      await supabase.from('matches').update(updateData).eq('id', matchRow.id);
     } else {
-      if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg;
+      await supabase.from('matches').insert([{
+        player1_name: p1.name,
+        player2_name: p2.name,
+        p1_char_id: p1.id,
+        p2_char_id: p2.id,
+        p1_hp: 40 + p1.vitality * 5,
+        p2_hp: 40 + p2.vitality * 5,
+        round_number: 1,
+        dice1: '❓',
+        dice2: '❓',
+        is_rolling: false,
+        logs: [locale === 'vi' ? `🏁 Trận đấu bắt đầu trực tuyến!` : `🏁 Online Match Initialized!`],
+        ...updateData
+      }]);
     }
-
-    // Strike Route Execution 2
-    if (h1 > 0 && h2 > 0) {
-      const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
-      roundLogs.push(locale === 'vi' 
-        ? `🎲 ${second.name} Đổ Tốc Đánh: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
-        : `🎲 ${second.name} Init Roll: ${init1 >= init2 ? roll2 : roll1} (${finalIcon2})`
-      );
-      roundLogs.push(strike2.log);
-      
-      if (strike2.isHeal) {
-        const maxHp = 40 + second.vitality * 5;
-        if (second.id === p1.id) h1 = Math.min(maxHp, h1 + strike2.heal);
-        else h2 = Math.min(maxHp, h2 + strike2.heal);
-      } else {
-        if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg;
-      }
-    }
-
-    roundLogs.push(locale === 'vi' 
-      ? `❤️ MÁU CÒN LẠI -> ${p1.name}: ${Math.max(0, h1)} HP | ${p2.name}: ${Math.max(0, h2)} HP`
-      : `❤️ HP REMAINING -> ${p1.name}: ${Math.max(0, h1)} HP | ${p2.name}: ${Math.max(0, h2)} HP`
-    );
-
-    let finalWinner = null;
-    if (h1 <= 0 || h2 <= 0) {
-      finalWinner = h1 > h2 ? p1.name : p2.name;
-      roundLogs.push(locale === 'vi' ? `🎉 CHIẾN THẮNG: ${finalWinner} đã hạ gục đối thủ!` : `🎉 TOURNAMENT WINNER: ${finalWinner} clear victory!`);
-    }
-
-    const updatedHistory = [...roundLogs, ...baseState.logs];
-
-    setArenaState(prev => ({
-      ...prev,
-      [matchId]: {
-        hp1: h1,
-        hp2: h2,
-        round: rNum + 1,
-        logs: updatedHistory,
-        winner: finalWinner,
-        isRolling: false,
-        displayDice1: finalIcon1,
-        displayDice2: finalIcon2
-      }
-    }));
   };
 
-  const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
-  const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
-  const tournamentMatches = generateTournamentPairs();
+  // 🎲 NEW: REWRITTEN SYNCHRONIZED DRUM ROLL ENGINE
+  const triggerDrumRollCombat = async (matchId: string, p1: Combatant, p2: Combatant) => {
+    // 🛡️ SHIELD: Run original local logic for kids' offline math mode
+    if (mode === 'math') {
+      const baseState = arenaState[matchId] || {
+        hp1: 40 + p1.vitality * 5, hp2: 40 + p2.vitality * 5, round: 1,
+        logs: [locale === 'vi' ? `🏁 Phòng chờ!` : `🏁 Ready Check!`],
+        winner: null, isRolling: false, displayDice1: "❓", displayDice2: "❓"
+      };
+      if (baseState.winner || baseState.isRolling) return;
+      setArenaState((prev: any) => ({ ...prev, [matchId]: { ...baseState, isRolling: true } }));
+      let timerCount = 0;
+      const interval = setInterval(() => {
+        setArenaState((prev: any) => ({
+          ...prev, [matchId]: {
+            ...prev[matchId],
+            displayDice1: DICE_ICONS[Math.floor(Math.random() * 6)],
+            displayDice2: DICE_ICONS[Math.floor(Math.random() * 6)]
+          }
+        }));
+        timerCount += 100;
+        if (timerCount >= 1500) { 
+          clearInterval(interval); 
+          
+          let h1 = baseState.hp1; let h2 = baseState.hp2;
+          let baseDamage = Math.floor(Math.random() * 10) + 1 + p1.might;
+          h2 -= baseDamage;
+          let newLogs = [`⚔️ Local Hit dealt ${baseDamage} DMG`, ...baseState.logs];
+          let win = h2 <= 0 ? p1.name : null;
+          setArenaState((prev: any) => ({
+            ...prev, [matchId]: {
+              hp1: h1, hp2: Math.max(0, h2), round: baseState.round + 1,
+              logs: newLogs, winner: win, isRolling: false, displayDice1: "⚅", displayDice2: "⚃"
+            }
+          }));
+        }
+      }, 100);
+      return;
+    }
+
+    // 📡 LIVE TOURNAMENT NETWORKING PIPELINE
+    const { data: matches } = await supabase.from('matches').select('*').eq('p1_char_id', p1.id).eq('p2_char_id', p2.id);
+    let currentMatch = matches && matches.length > 0 ? matches[0] : null;
+
+    let actP1 = currentMatch?.p1_action;
+    let actP2 = currentMatch?.p2_action;
+
+    if (p2.isBot && !actP2) {
+      const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
+      actP2 = botOptions[Math.floor(Math.random() * botOptions.length)];
+    }
+
+    if (!actP1 || !actP2) {
+      alert(locale === 'vi' ? "Chờ đối thủ chọn chiêu thức!" : "Waiting for opponent choices!");
+      return;
+    }
+
+    await supabase.from('matches').update({ is_rolling: true, p2_action: actP2 }).eq('id', currentMatch.id);
+
+    setTimeout(async () => {
+      let h1 = currentMatch.p1_hp;
+      let h2 = currentMatch.p2_hp;
+      let rNum = currentMatch.round_number;
+      let roundLogs: string[] = currentMatch.logs || [];
+
+      roundLogs.unshift(locale === 'vi' ? `⚔️ --- HIỆP ĐẤU ${rNum} ---` : `⚔️ --- ROUND ${rNum} ---`);
+
+      const idx1 = Math.floor(Math.random() * 6); const idx2 = Math.floor(Math.random() * 6);
+      const finalIcon1 = DICE_ICONS[idx1]; const finalIcon2 = DICE_ICONS[idx2];
+      const roll1 = idx1 + 1; const roll2 = idx2 + 1;
+      const init1 = roll1 + p1.reflex; const init2 = roll2 + p2.reflex;
+      const first = init1 >= init2 ? p1 : p2; const second = init1 >= init2 ? p2 : p1;
+      const actFirst = init1 >= init2 ? actP1 : actP2; const actSecond = init1 >= init2 ? actP2 : actP1;
+
+      const resolveStrike = (attacker: Combatant, _defender: Combatant, actionStr: string, defenseActive: boolean) => {
+        let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
+        let logMsg = ""; let healVal = 0;
+        if (actionStr === 'defend') {
+          return { dmg: 0, heal: 0, isHeal: false, log: `${attacker.name} chọn Thủ Thế Toàn Diện.` };
+        }
+        if (actionStr.startsWith('skill')) {
+          const idx = parseInt(actionStr.replace('skill', ''));
+          const skillName = attacker.skills[idx] || "Basic Strike";
+          if (skillName === "Second Wind") {
+            healVal = 10 + attacker.might;
+            return { dmg: 0, heal: healVal, isHeal: true, log: `💖 ${attacker.name} dùng Second Wind (+${healVal} HP)` };
+          }
+          if (["Heavy Slash", "Double Strafe", "Fireball"].includes(skillName)) baseDamage *= 2;
+          logMsg = `🔥 ${attacker.name} tung [${skillName}]!`;
+        } else { logMsg = `⚔️ ${attacker.name} Tấn Công Thường.`; }
+        if (defenseActive) { baseDamage = Math.max(1, Math.floor(baseDamage / 2)); logMsg += " (Bị giảm nửa giáp)"; }
+        logMsg += ` Gây ${baseDamage} DMG.`;
+        return { dmg: baseDamage, heal: 0, isHeal: false, log: logMsg };
+      };
+
+      const strike1 = resolveStrike(first, second, actFirst, actSecond === 'defend');
+      roundLogs.unshift(strike1.log);
+      if (strike1.isHeal) {
+        if (first.id === p1.id) h1 = Math.min(40 + p1.vitality * 5, h1 + strike1.heal);
+        else h2 = Math.min(40 + p2.vitality * 5, h2 + strike1.heal);
+      } else { if (second.id === p1.id) h1 -= strike1.dmg; else h2 -= strike1.dmg; }
+
+      if (h1 > 0 && h2 > 0) {
+        const strike2 = resolveStrike(second, first, actSecond, actFirst === 'defend');
+        roundLogs.unshift(strike2.log);
+        if (strike2.isHeal) {
+          if (second.id === p1.id) h1 = Math.min(40 + p1.vitality * 5, h1 + strike2.heal);
+          else h2 = Math.min(40 + p2.vitality * 5, h2 + strike2.heal);
+        } else { if (first.id === p1.id) h1 -= strike2.dmg; else h2 -= strike2.dmg; }
+      }
+
+      let finalWinner = null;
+      if (h1 <= 0 || h2 <= 0) finalWinner = h1 > h2 ? p1.name : p2.name;
+
+      await supabase.from('matches').update({
+        p1_hp: Math.max(0, h1), p2_hp: Math.max(0, h2), round_number: rNum + 1,
+        p1_action: null, p2_action: null, dice1: finalIcon1, dice2: finalIcon2,
+        is_rolling: false, winner: finalWinner, logs: roundLogs
+      }).eq('id', currentMatch.id);
+    }, 1500);
+  };
 
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
@@ -960,7 +1023,6 @@ export default function App() {
 
                   const currentTactic = playerActions[matchId] || 'attack';
 
-                  // Determine details for action preview bay parsing
                   let activeTacticName = "Basic Attack";
                   let activeTacticLookup = "basic_attack";
                   
@@ -980,13 +1042,12 @@ export default function App() {
                       <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                         
                         {/* Left Challenger Card Block */}
-                        <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                        <div style={{ minWidth: '180px', textAlign: 'center' }}>
                           <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
                           <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
                           <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
                           <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                          {/* 🎲 MAGNIFIED DICE BAY FRAME */}
                           <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                             {liveState.displayDice1}
                           </div>
@@ -995,13 +1056,12 @@ export default function App() {
                         <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
 
                         {/* Right Challenger Card Block */}
-                        <div style={{ textAlign: 'center', minWidth: '180px' }}>
+                        <div style={{ minWidth: '180px', textAlign: 'center' }}>
                           <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
                           <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
                           <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
                           <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
 
-                          {/* 🎲 MAGNIFIED DICE BAY FRAME */}
                           <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
                             {liveState.displayDice2}
                           </div>
@@ -1028,19 +1088,19 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
-                      {!liveState.winner && !liveState.isRolling && (
+                      {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (With Spectator Shield) */}
+                      {!liveState.winner && !liveState.isRolling && (currentPlayerName === p1.assigned_to || currentPlayerName === p2.assigned_to) && (
                         <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                           <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
                           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'attack' ? '#0f0' : '#000', color: currentTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                            <button onClick={() => handleActionClick(matchId, p1, p2, 'attack')} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'attack' ? '#0f0' : '#000', color: currentTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
                               {t.optAttack}
                             </button>
-                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                            <button onClick={() => handleActionClick(matchId, p1, p2, 'defend')} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
                               {t.optDefend}
                             </button>
                             {p1.skills?.map((skill, sIdx) => (
-                              <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
+                              <button key={skill} onClick={() => handleActionClick(matchId, p1, p2, `skill${sIdx}`)} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
                                 💥 {skill}
                               </button>
                             ))}
@@ -1067,7 +1127,7 @@ export default function App() {
 
                       {/* Terminal Log Box Output */}
                       <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '200px', overflowY: 'auto', fontSize: '13px' }}>
-                        {liveState.logs.map((log, lIdx) => (
+                        {liveState.logs.map((log: string, lIdx: number) => (
                           <div key={lIdx} style={{ margin: '5px 0', color: log.includes('CHIẾN THẮNG') || log.includes('WINNER') ? '#ff0' : log.includes('HIỆP ĐẤU') || log.includes('ROUND') ? '#fff' : '#888' }}>{log}</div>
                         ))}
                       </div>
