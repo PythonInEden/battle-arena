@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { BattleArena } from './BattleArena';
 import { FortressWorkspace } from './components/FortressWorkspace';
+import MathArena from './MathArena'; 
+// Add this line to import your database client:
+import { supabase } from './supabaseClient';
 
 type AppMode = 'menu' | 'battle' | 'math' | 'fortress';
 
 export default function App() {
   const [currentMode, setCurrentMode] = useState<AppMode>('menu');
 
-  // Intercept incoming connection vectors and map parameter configurations
   useEffect(() => {
     const handleUrlRouting = () => {
       const queryParams = new URLSearchParams(window.location.search);
@@ -24,22 +26,17 @@ export default function App() {
       }
     };
 
-    // Run synchronization mapping at boot launch
     handleUrlRouting();
-
-    // Event hooks to handle forward/backward browsing mutations
     window.addEventListener('popstate', handleUrlRouting);
     return () => window.removeEventListener('popstate', handleUrlRouting);
   }, []);
 
-  // Safe navigation transition coordinator updates url state without breaking the live tab context
   const navigateToMode = (targetMode: AppMode) => {
     const nextUrl = targetMode === 'menu' ? '/' : `/?mode=${targetMode}`;
     window.history.pushState({ mode: targetMode }, '', nextUrl);
     setCurrentMode(targetMode);
   };
 
-  // Rendering Routing Resolution Engine Block
   if (currentMode === 'battle') {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#121212', padding: '20px' }}>
@@ -49,18 +46,13 @@ export default function App() {
     );
   }
 
+  // 2. Updated block to render your actual Math Game!
   if (currentMode === 'math') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#1a202c', padding: '20px', color: '#fff', textAlign: 'center', fontFamily: 'sans-serif' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#1a202c', padding: '20px' }}>
         <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>← Main Hub Menu Selection</button>
-        <div style={{ marginTop: '40px', padding: '30px', backgroundColor: '#2d3748', borderRadius: '8px', inlineSize: 'fit-content', margin: '40px auto' }}>
-          <h2>🧮 Live Math Arena Instance Stream Redirect</h2>
-          <p style={{ color: '#a0aec0' }}>Connected to Vercel Endpoint Target Deployment System.</p>
-          <div style={{ margin: '24px 0', padding: '16px', backgroundColor: '#1a202c', borderRadius: '6px', fontSize: '18px', fontWeight: 'bold', color: '#63b3ed' }}>
-            [MATH ENGINE SYNCED SUCCESSFULLY]
-          </div>
-          <p style={{ fontSize: '14px', color: '#718096' }}>Query parameter tracking configuration active: `?mode=math` state persistent loop.</p>
-        </div>
+        {/* Pass the exact configurations required by your component types */}
+        <MathArena locale="en" supabase={supabase} />
       </div>
     );
   }
@@ -74,7 +66,6 @@ export default function App() {
     );
   }
 
-  // Fallback default state presentation UI layer configuration (Menu Hub Screen)
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
@@ -115,7 +106,6 @@ export default function App() {
   );
 }
 
-// Styling Object Vectors
 const backButtonStyle: React.CSSProperties = {
   padding: '8px 16px',
   fontSize: '14px',
@@ -139,5 +129,4 @@ const menuCardStyle = (accentColor: string): React.CSSProperties => ({
   display: 'flex',
   alignItems: 'flex-start',
   gap: '16px',
-  transition: 'transform 0.2s, backgroundColor 0.2s',
 });
