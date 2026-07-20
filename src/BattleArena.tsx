@@ -19,12 +19,6 @@ interface DBCharacter {
   created_by: string | null;
 }
 
-interface ScoreRecord {
-  username: string;
-  score: number;
-  attempts: number;
-}
-
 interface Combatant {
   id: number | string;
   name: string;
@@ -457,7 +451,7 @@ export function BattleArena() {
     }
   };
 
-  const triggerDrumRollCombat = async (matchId: string, p1: Combatant, p2: Combatant) => {
+  const triggerDrumRollCombat = async (_matchId: string, p1: Combatant, p2: Combatant) => {
     const { data: matches } = await supabase.from('matches').select('*').eq('p1_char_id', p1.id).eq('p2_char_id', p2.id);
     let currentMatch = matches && matches.length > 0 ? matches[0] : null;
 
