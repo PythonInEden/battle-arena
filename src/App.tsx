@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { BattleArena } from './BattleArena';
 import { FortressWorkspace } from './components/FortressWorkspace';
 import MathArena from './MathArena'; 
-// Add this line to import your database client:
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient'; 
 
 type AppMode = 'menu' | 'battle' | 'math' | 'fortress';
 
 export default function App() {
   const [currentMode, setCurrentMode] = useState<AppMode>('menu');
+  // Default the state tracking to Vietnamese ('vi') as requested
+  const [locale, setLocale] = useState<'en' | 'vi'>('vi');
 
   useEffect(() => {
     const handleUrlRouting = () => {
@@ -46,13 +47,23 @@ export default function App() {
     );
   }
 
-  // 2. Updated block to render your actual Math Game!
   if (currentMode === 'math') {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#1a202c', padding: '20px' }}>
-        <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>← Main Hub Menu Selection</button>
-        {/* Pass the exact configurations required by your component types */}
-        <MathArena locale="en" supabase={supabase} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, marginBottom: 0 }}>← Main Hub Menu Selection</button>
+          
+          {/* Inline Game Language Selector Dropdown */}
+          <select 
+            value={locale} 
+            onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+            style={selectStyle}
+          >
+            <option value="vi">Tiếng Việt (VN)</option>
+            <option value="en">English (EN)</option>
+          </select>
+        </div>
+        <MathArena locale={locale} supabase={supabase} />
       </div>
     );
   }
@@ -67,7 +78,20 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', position: 'relative' }}>
+      
+      {/* Top Right Main Menu Language Picker */}
+      <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
+        <select 
+          value={locale} 
+          onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+          style={selectStyle}
+        >
+          <option value="vi">Tiếng Việt (VN)</option>
+          <option value="en">English (EN)</option>
+        </select>
+      </div>
+
       <div style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ fontSize: '42px', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-1px', color: '#38bdf8' }}>ARCADE PLATFORM CORE HUB</h1>
         <p style={{ fontSize: '18px', margin: 0, color: '#94a3b8' }}>Select an engine instance simulation deck target</p>
@@ -94,7 +118,7 @@ export default function App() {
           <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏰</div>
           <div>
             <h3 style={{ margin: '0 0 4px 0', fontSize: '20px' }}>Fortress Remake Dev Desk</h3>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Debug pipeline environment for Fortress of the Witch King classic remake.[cite: 1]</p>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Debug pipeline environment for Fortress of the Witch King classic remake.</p>
           </div>
         </div>
       </div>
@@ -117,6 +141,17 @@ const backButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   marginBottom: '20px',
   display: 'inline-block',
+};
+
+const selectStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  backgroundColor: '#1e293b',
+  color: '#f8fafc',
+  border: '1px solid #334155',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  fontSize: '14px',
+  outline: 'none',
 };
 
 const menuCardStyle = (accentColor: string): React.CSSProperties => ({
