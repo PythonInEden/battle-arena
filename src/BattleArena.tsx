@@ -32,7 +32,7 @@ interface Combatant {
   isBot?: boolean;
 }
 
-// 🛠️ IMMUTABLE SYSTEM BOSSES (Immune to pool depletion)
+// 🛠️ IMMUTABLE SYSTEM BOSSES
 const IMMUTABLE_SYSTEM_BOTS = [
   { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", is_ready: true },
   { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Poison Dagger", "Smoke Bomb"], assigned_to: "[System Bot]", is_ready: true }
@@ -51,7 +51,7 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
-// 2. Master Translations Dictionary (100% Sync)
+// 2. Master Translations Dictionary
 const LANG = {
   en: {
     title: "⚔️ HEROES LOBBY & ARENA ⚔️",
@@ -102,7 +102,10 @@ const LANG = {
     resetLobbyBtn: "🔄 RESET STUCK LOBBY",
     btnLockAction: "🟢 LOCK IN ACTION & READY",
     statusLocked: "🔒 ACTION LOCKED! Waiting for opponent...",
-    statusOpponentLocked: "⚡ Opponent is Ready!"
+    statusOpponentLocked: "⚡ Opponent is Ready!",
+    chargesLeft: "Uses Left:",
+    outOfCharges: "DEPLETED",
+    onCooldown: "COOLDOWN (1 R)"
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -153,7 +156,10 @@ const LANG = {
     resetLobbyBtn: "🔄 GIẢI PHÓNG PHÒNG CHỜ",
     btnLockAction: "🟢 CHỐT CHIÊU & SẴN SÀNG HIỆP",
     statusLocked: "🔒 ĐÃ CHỐT CHIÊU! Đang chờ đối thủ...",
-    statusOpponentLocked: "⚡ Đối thủ đã sẵn sàng!"
+    statusOpponentLocked: "⚡ Đối thủ đã sẵn sàng!",
+    chargesLeft: "Lượt dùng:",
+    outOfCharges: "HẾT LƯỢT",
+    onCooldown: "ĐỜI CHIÊU (1 H)"
   }
 };
 
@@ -219,7 +225,6 @@ const SKILLS_LIBRARY: Record<string, { en: string; vi: string }> = {
   "Lullaby": { en: "Sing a sleepy song. Puts the enemy to sleep, forcing them to skip an attack.", vi: "Hát ru ngủ ngủ, làm địch ngáy o o mất luôn lượt tấn công kế tiếp." }
 };
 
-// 👑 EXPORTED NAMED COMPONENT MATED TO APP.TSX DECK ROUTING
 export function BattleArena() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
   const [characters, setCharacters] = useState<DBCharacter[]>([]);
@@ -275,7 +280,6 @@ export function BattleArena() {
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
   const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
 
-  // Helper function to reconstruct Combatant from name or ID
   const getCombatantByNameOrId = (identifier: string | number): Combatant => {
     const strId = identifier.toString();
     const byId = characters.find(c => c.id.toString() === strId);
@@ -337,11 +341,11 @@ export function BattleArena() {
         if (actionStr.startsWith('skill')) {
           const idx = parseInt(actionStr.replace('skill', ''));
           const skillName = attacker.skills[idx] || "Basic Strike";
-          if (skillName === "Second Wind") {
+          if (skillName === "Second Wind" || skillName === "Holy Heal" || skillName === "Lay on Hands") {
             healVal = 10 + attacker.might;
-            return { dmg: 0, heal: healVal, isHeal: true, log: `💖 ${attacker.name} dùng Second Wind (+${healVal} HP)` };
+            return { dmg: 0, heal: healVal, isHeal: true, log: `💖 ${attacker.name} dùng [${skillName}] (+${healVal} HP)` };
           }
-          if (["Heavy Slash", "Double Strafe", "Fireball"].includes(skillName)) baseDamage *= 2;
+          if (["Heavy Slash", "Double Strafe", "Fireball", "Stealth Strike"].includes(skillName)) baseDamage *= 2;
           logMsg = `🔥 ${attacker.name} tung [${skillName}]!`;
         } else { logMsg = `⚔️ ${attacker.name} Tấn Công Thường.`; }
         if (defenseActive) { baseDamage = Math.max(1, Math.floor(baseDamage / 2)); logMsg += " (Bị giảm nửa giáp)"; }
@@ -376,10 +380,8 @@ export function BattleArena() {
     }, 1500);
   };
 
-  // 📡 DIRECT DATABASE FETCH ON LOBBY LOCK
+  // 📡 CONTINUOUS 1-SECOND POLLING & REALTIME MATCH LISTENER
   useEffect(() => {
-    if (!isTournamentActive) return;
-
     const fetchActiveMatches = async () => {
       const { data } = await supabase.from('matches').select('*');
       if (data && data.length > 0) {
@@ -408,10 +410,13 @@ export function BattleArena() {
       }
     };
 
-    fetchActiveMatches();
+    if (isTournamentActive) {
+      fetchActiveMatches();
+      const interval = setInterval(fetchActiveMatches, 1000); // 1-second auto-poll to prevent F5 refresh requirement
+      return () => clearInterval(interval);
+    }
   }, [isTournamentActive]);
 
-  // 📡 REALTIME MATCH LISTENER WITH AUTOMATIC ROLL DISPATCHER
   useEffect(() => {
     const matchesChannel = supabase
       .channel('realtime-tournament-matches')
@@ -703,6 +708,24 @@ export function BattleArena() {
     }
   };
 
+  // Helper to calculate Skill Usage Charges & Cooldowns
+  const getSkillStatus = (matchLogs: string[], fighterName: string, skillName: string, currentRound: number) => {
+    const skillLogs = matchLogs.filter(log => log.includes(fighterName) && log.includes(`[${skillName}]`));
+    const timesUsed = skillLogs.length;
+    const chargesLeft = Math.max(0, 2 - timesUsed); // 2 Max Uses per match
+
+    let isOnCooldown = false;
+    if (matchLogs.length > 0) {
+      const lastLog = matchLogs[0];
+      // Check if used in the immediately preceding round
+      if (lastLog.includes(fighterName) && lastLog.includes(`[${skillName}]`)) {
+        isOnCooldown = true;
+      }
+    }
+
+    return { chargesLeft, isOnCooldown, isDepleted: chargesLeft <= 0 };
+  };
+
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
       
@@ -825,7 +848,6 @@ export function BattleArena() {
                     if (!pair) return null;
                     const [p1, p2] = pair;
 
-                    // Fallback to local combatant structure if network response is delayed
                     const liveState = arenaState[matchId] || {
                       id: '',
                       hp1: 40 + p1.vitality * 5,
@@ -917,7 +939,7 @@ export function BattleArena() {
                           </div>
                         </div>
 
-                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
+                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (WITH CHARGE & COOLDOWN CONTROLS) */}
                         {!liveState.winner && !liveState.isRolling && (isMyP1 || isMyP2) && (
                           <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                             <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
@@ -931,11 +953,30 @@ export function BattleArena() {
                                   <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentSelectedTactic === 'defend' ? '#0f0' : '#000', color: currentSelectedTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
                                     {t.optDefend}
                                   </button>
-                                  {myCombatant.skills?.map((skill, sIdx) => (
-                                    <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentSelectedTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentSelectedTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
-                                      💥 {skill}
-                                    </button>
-                                  ))}
+
+                                  {myCombatant.skills?.map((skill, sIdx) => {
+                                    const { chargesLeft, isOnCooldown, isDepleted } = getSkillStatus(liveState.logs, myCombatant.name, skill, liveState.round);
+                                    const isDisabled = isDepleted || isOnCooldown;
+
+                                    return (
+                                      <button 
+                                        key={skill} 
+                                        disabled={isDisabled}
+                                        onClick={() => !isDisabled && setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} 
+                                        style={{ 
+                                          padding: '8px 12px', 
+                                          border: `1px solid ${isDisabled ? '#555' : '#ff0'}`, 
+                                          background: currentSelectedTactic === `skill${sIdx}` ? '#ff0' : '#000', 
+                                          color: isDisabled ? '#666' : (currentSelectedTactic === `skill${sIdx}` ? '#000' : '#ff0'), 
+                                          cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                                          fontWeight: 'bold',
+                                          opacity: isDisabled ? 0.5 : 1
+                                        }}
+                                      >
+                                        💥 {skill} ({isDepleted ? t.outOfCharges : isOnCooldown ? t.onCooldown : `⚡ ${chargesLeft}/2`})
+                                      </button>
+                                    );
+                                  })}
                                 </div>
 
                                 <div style={{ textAlign: 'center' }}>
