@@ -90,12 +90,13 @@ const LANG = {
     statusWaiting: "WAITING...",
     statusReady: "READY TO FIGHT!",
     lobbyLockAlert: "Tournament is currently active! Please wait until the match ends.",
-    matchOverBtn: "💥 COMBAT CONCLUDED",
+    matchOverBtn: "💥 CONCLUDE MATCH & RETURN TO LOBBY",
     deckTitle: "📜 CHOOSE YOUR COMBAT ACTION:",
     optAttack: "⚔️ Basic Attack",
     optDefend: "🛡️ Defend Stance",
     noDice: "Waiting...",
-    previewActionTitle: "🔎 ACTION RUNTIME PREVIEW:"
+    previewActionTitle: "🔎 ACTION RUNTIME PREVIEW:",
+    resetLobbyBtn: "🔄 RESET STUCK LOBBY"
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -134,12 +135,13 @@ const LANG = {
     statusWaiting: "ĐANG CHỜ TỔ ĐỘI...",
     statusReady: "SẴN SÀNG KHÔ MÁU!",
     lobbyLockAlert: "Trận đấu đang diễn ra! Vui lòng đợi các đấu sĩ đánh xong.",
-    matchOverBtn: "💥 TRẬN ĐẤU KẾT THÚC",
+    matchOverBtn: "💥 KẾT THÚC TRẬN & VỀ PHÒNG CHỜ",
     deckTitle: "📜 CHỌN CHIÊU THỨC CHIẾN ĐẤU:",
     optAttack: "⚔️ Tấn Công Thường",
     optDefend: "🛡️ Thủ Thế Toàn Diện",
     noDice: "Đang đợi...",
-    previewActionTitle: "🔎 XEM TRƯỚC ĐÒN ĐÁNH:"
+    previewActionTitle: "🔎 XEM TRƯỚC ĐÒN ĐÁNH:",
+    resetLobbyBtn: "🔄 GIẢI PHÓNG PHÒNG CHỜ"
   }
 };
 
@@ -284,6 +286,16 @@ export function BattleArena() {
   const tournamentMatches = generateTournamentPairs();
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
   const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
+
+  // 🧹 EMERGENCY RESET LOBBY FUNCTION
+  const handleResetLobby = async () => {
+    // Reset all characters in the cloud to unready
+    await supabase.from('characters').update({ is_ready: false, assigned_to: null }).neq('id', 0);
+    // Delete old match records so fresh ones can seed cleanly
+    await supabase.from('matches').delete().neq('p1_hp', -999);
+    setArenaState({});
+    await fetchCharacters();
+  };
 
   useEffect(() => {
     const matchesChannel = supabase
@@ -572,9 +584,14 @@ export function BattleArena() {
           <h1 style={{ margin: 0 }}>{t.title}</h1>
           <p style={{ color: '#888', margin: '5px 0 0 0' }}>{t.sub}</p>
         </div>
-        <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
-          {t.langBtn}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button onClick={handleResetLobby} style={{ background: '#ff3333', color: '#fff', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none', borderRadius: '4px' }}>
+            {t.resetLobbyBtn}
+          </button>
+          <button onClick={() => setLocale(locale === 'en' ? 'vi' : 'en')} style={{ background: '#0f0', color: '#000', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none' }}>
+            {t.langBtn}
+          </button>
+        </div>
       </header>
 
       {/* REGISTRATION SYSTEM */}
@@ -735,7 +752,7 @@ export function BattleArena() {
                     </div>
                   </div>
 
-                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (With Spectator Shield & Device Class Abilities) */}
+                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
                   {!liveState.winner && !liveState.isRolling && (currentPlayerName === p1.assigned_to || currentPlayerName === p2.assigned_to) && (
                     <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                       <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
@@ -758,9 +775,9 @@ export function BattleArena() {
                   {/* Operational Roll Trigger Button Container */}
                   <div style={{ textAlign: 'center', marginTop: '20px' }}>
                     {liveState.winner ? (
-                      <div style={{ color: '#ff0', fontWeight: 'bold', border: '1px solid #ff0', padding: '8px 20px', background: '#220', display: 'inline-block' }}>
+                      <button onClick={handleResetLobby} style={{ background: '#ff3333', color: '#fff', fontWeight: 'bold', border: '1px solid #ff3333', padding: '12px 25px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px' }}>
                         {t.matchOverBtn}
-                      </div>
+                      </button>
                     ) : (
                       <button 
                         onClick={() => triggerDrumRollCombat(matchId, p1, p2)} 
