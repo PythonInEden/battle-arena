@@ -212,7 +212,7 @@ export function BattleArena() {
   const [selectedCharId, setSelectedCharId] = useState<string>('');
   
   const [currentPlayerName, setCurrentPlayerName] = useState<string>(() => {
-    return localStorage.getItem('forest_game_username') || '';
+    return sessionStorage.getItem('forest_game_username') || '';
   });
   const [typedName, setTypedName] = useState<string>('');
 
@@ -240,6 +240,11 @@ export function BattleArena() {
   const t = LANG[locale];
   const totalPointsSpent = might + vitality + reflex;
   const pointsLeft = 10 - totalPointsSpent;
+
+  const fetchCharacters = async () => {
+    const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
+    if (data) setCharacters(data as DBCharacter[]);
+  };
 
   const activeClaimed = characters
     .filter(c => c.assigned_to !== null && c.assigned_to !== '')
@@ -359,16 +364,42 @@ export function BattleArena() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const fetchCharacters = async () => {
-    const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
-    if (data) setCharacters(data as DBCharacter[]);
-  };
+  // 🧹 AUTO-RELEASE HERO ON CLOSE / REFRESH / NAVIGATE AWAY
+  useEffect(() => {
+    const handleTabClose = () => {
+      if (myClaimedCharacter) {
+        const payload = JSON.stringify({ assigned_to: null, is_ready: false });
+        const targetUrl = `${supabaseUrl}/rest/v1/characters?id=eq.${myClaimedCharacter.id}`;
+
+        fetch(targetUrl, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          },
+          body: payload,
+          keepalive: true
+        });
+      }
+      sessionStorage.removeItem('forest_game_username');
+    };
+
+    window.addEventListener('beforeunload', handleTabClose);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleTabClose);
+      if (myClaimedCharacter) {
+        supabase.from('characters').update({ assigned_to: null, is_ready: false }).eq('id', myClaimedCharacter.id);
+      }
+    };
+  }, [myClaimedCharacter]);
 
   const savePlayerIdentity = (nameString: string) => {
     const trimmed = nameString.trim();
     if (!trimmed) return;
     setCurrentPlayerName(trimmed);
-    localStorage.setItem('forest_game_username', trimmed);
+    sessionStorage.setItem('forest_game_username', trimmed);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -575,7 +606,7 @@ export function BattleArena() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ color: '#fff' }}>Player: <strong>{currentPlayerName}</strong></span>
-              <button onClick={() => { setCurrentPlayerName(''); localStorage.removeItem('forest_game_username'); setSelectedCharId(''); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
+              <button onClick={() => { setCurrentPlayerName(''); sessionStorage.removeItem('forest_game_username'); setSelectedCharId(''); }} style={{ background: '#333', color: '#aaa', border: '1px solid #555', padding: '5px 10px', cursor: 'pointer' }}>Change User</button>
               <select value={selectedCharId} onChange={(e) => setSelectedCharId(e.target.value)} style={{ background: '#000', color: '#0f0', border: '1px solid #0f0', padding: '10px', minWidth: '200px' }}>
                 <option value="">-- Select Character --</option>
                 {characters.map(char => (
@@ -632,6 +663,11 @@ export function BattleArena() {
                 displayDice2: "❓"
               };
 
+              // Identify local device combatant dynamically
+              const isMyP1 = currentPlayerName === p1.assigned_to;
+              const isMyP2 = currentPlayerName === p2.assigned_to;
+              const myCombatant = isMyP1 ? p1 : (isMyP2 ? p2 : p1);
+
               const currentTactic = playerActions[matchId] || 'attack';
 
               let activeTacticName = "Basic Attack";
@@ -642,7 +678,7 @@ export function BattleArena() {
                 activeTacticLookup = "defend_stance";
               } else if (currentTactic.startsWith('skill')) {
                 const sIdx = parseInt(currentTactic.replace('skill', ''));
-                activeTacticName = p1.skills[sIdx] || "Basic Attack";
+                activeTacticName = myCombatant.skills[sIdx] || "Basic Attack";
                 activeTacticLookup = activeTacticName;
               }
 
@@ -684,7 +720,7 @@ export function BattleArena() {
                   <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
                     <div style={{ flexShrink: 0 }}>
                       <img 
-                        src={getGameAssetUrl('skill', p1.job_class, activeTacticLookup)} 
+                        src={getGameAssetUrl('skill', myCombatant.job_class, activeTacticLookup)} 
                         alt={activeTacticName}
                         style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
@@ -699,7 +735,7 @@ export function BattleArena() {
                     </div>
                   </div>
 
-                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (With Spectator Shield) */}
+                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (With Spectator Shield & Device Class Abilities) */}
                   {!liveState.winner && !liveState.isRolling && (currentPlayerName === p1.assigned_to || currentPlayerName === p2.assigned_to) && (
                     <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                       <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
@@ -710,7 +746,7 @@ export function BattleArena() {
                         <button onClick={() => handleActionClick(matchId, p1, p2, 'defend')} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentTactic === 'defend' ? '#0f0' : '#000', color: currentTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
                           {t.optDefend}
                         </button>
-                        {p1.skills?.map((skill, sIdx) => (
+                        {myCombatant.skills?.map((skill, sIdx) => (
                           <button key={skill} onClick={() => handleActionClick(matchId, p1, p2, `skill${sIdx}`)} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
                             💥 {skill}
                           </button>
