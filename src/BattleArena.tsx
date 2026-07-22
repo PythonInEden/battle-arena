@@ -376,6 +376,41 @@ export function BattleArena() {
     }, 1500);
   };
 
+  // 📡 DIRECT DATABASE FETCH ON LOBBY LOCK
+  useEffect(() => {
+    if (!isTournamentActive) return;
+
+    const fetchActiveMatches = async () => {
+      const { data } = await supabase.from('matches').select('*');
+      if (data && data.length > 0) {
+        const map: Record<string, any> = {};
+        data.forEach((m: any) => {
+          const key = `match_${m.p1_char_id}_vs_${m.p2_char_id}`;
+          map[key] = {
+            id: m.id,
+            hp1: m.p1_hp,
+            hp2: m.p2_hp,
+            round: m.round_number,
+            logs: m.logs || [],
+            winner: m.winner,
+            isRolling: m.is_rolling,
+            displayDice1: m.dice1,
+            displayDice2: m.dice2,
+            p1_action: m.p1_action,
+            p2_action: m.p2_action,
+            p1_char_id: m.p1_char_id,
+            p2_char_id: m.p2_char_id,
+            player1_name: m.player1_name,
+            player2_name: m.player2_name
+          };
+        });
+        setArenaState(prev => ({ ...prev, ...map }));
+      }
+    };
+
+    fetchActiveMatches();
+  }, [isTournamentActive]);
+
   // 📡 REALTIME MATCH LISTENER WITH AUTOMATIC ROLL DISPATCHER
   useEffect(() => {
     const matchesChannel = supabase
@@ -427,7 +462,7 @@ export function BattleArena() {
     };
   }, [currentPlayerName, characters]);
 
-  // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE (Quarter-Finals -> Semi-Finals -> Grand Finals)
+  // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE
   const computeTournamentStages = () => {
     if (!isTournamentActive || activeClaimed.length === 0) return [];
 
@@ -448,7 +483,6 @@ export function BattleArena() {
         if (i + 1 < currentParticipants.length) {
           pairs.push([currentParticipants[i], currentParticipants[i + 1]]);
         } else {
-          // Odd player paired with Shadow Bot
           const botTemplate = IMMUTABLE_SYSTEM_BOTS[stageIndex % IMMUTABLE_SYSTEM_BOTS.length];
           const shadowBot: Combatant = {
             id: `sys_bot_stage_${stageIndex}_${i}`,
@@ -489,7 +523,7 @@ export function BattleArena() {
         currentParticipants = stageWinners;
         stageIndex++;
       } else {
-        break; // Stop evaluating further unreached stages
+        break;
       }
     }
 
@@ -532,7 +566,7 @@ export function BattleArena() {
             }]);
           }
         }
-        if (!stage.isComplete) break; // Wait for current stage to resolve before seeding next stage
+        if (!stage.isComplete) break;
       }
     };
 
@@ -639,10 +673,6 @@ export function BattleArena() {
     const isP2 = currentPlayerName === p2.assigned_to;
     if (!isP1 && !isP2) return;
 
-    const { data: matches } = await supabase.from('matches').select('*').eq('p1_char_id', p1.id).eq('p2_char_id', p2.id);
-    if (!matches || matches.length === 0) return;
-    const matchRow = matches[0];
-
     const updateData: any = {};
     if (isP1) updateData.p1_action = chosenAction;
     if (isP2) updateData.p2_action = chosenAction;
@@ -652,7 +682,25 @@ export function BattleArena() {
       updateData.p2_action = botOptions[Math.floor(Math.random() * botOptions.length)];
     }
 
-    await supabase.from('matches').update(updateData).eq('id', matchRow.id);
+    const { data: matches } = await supabase.from('matches').select('*').eq('p1_char_id', p1.id).eq('p2_char_id', p2.id);
+    if (matches && matches.length > 0) {
+      await supabase.from('matches').update(updateData).eq('id', matches[0].id);
+    } else {
+      await supabase.from('matches').insert([{
+        player1_name: p1.name,
+        player2_name: p2.name,
+        p1_char_id: p1.id,
+        p2_char_id: p2.id,
+        p1_hp: 40 + p1.vitality * 5,
+        p2_hp: 40 + p2.vitality * 5,
+        round_number: 1,
+        dice1: '❓',
+        dice2: '❓',
+        is_rolling: false,
+        logs: [locale === 'vi' ? '🏁 Trận đấu bắt đầu trực tuyến!' : '🏁 Online Match Initialized!'],
+        ...updateData
+      }]);
+    }
   };
 
   return (
@@ -772,12 +820,29 @@ export function BattleArena() {
                 </h2>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-                  {stage.matchKeys.map((matchId) => {
-                    const liveState = arenaState[matchId];
-                    if (!liveState) return null;
+                  {stage.matchKeys.map((matchId, mIdx) => {
+                    const pair = stage.pairs[mIdx];
+                    if (!pair) return null;
+                    const [p1, p2] = pair;
 
-                    const p1 = getCombatantByNameOrId(liveState.p1_char_id);
-                    const p2 = getCombatantByNameOrId(liveState.p2_char_id);
+                    // Fallback to local combatant structure if network response is delayed
+                    const liveState = arenaState[matchId] || {
+                      id: '',
+                      hp1: 40 + p1.vitality * 5,
+                      hp2: 40 + p2.vitality * 5,
+                      round: 1,
+                      logs: [locale === 'vi' ? '🏁 Phòng chờ hoàn tất. Vui lòng chọn chiêu và nhấn Chốt Chiêu!' : '🏁 Ready Check Verified. Choose action and lock in!'],
+                      winner: null,
+                      isRolling: false,
+                      displayDice1: "❓",
+                      displayDice2: "❓",
+                      p1_action: null,
+                      p2_action: null,
+                      p1_char_id: p1.id,
+                      p2_char_id: p2.id,
+                      player1_name: p1.name,
+                      player2_name: p2.name
+                    };
 
                     const isMyP1 = currentPlayerName === p1.assigned_to;
                     const isMyP2 = currentPlayerName === p2.assigned_to;
