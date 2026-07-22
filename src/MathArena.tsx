@@ -14,34 +14,34 @@ interface ScoreRecord {
 interface MonsterData {
   id: number;
   name: string;
-  imageKey: string; // Follows the lowercase + underscore rule
+  imageKey: string;
   tier: 'TRASH' | 'ELITE' | 'BOSS' | 'LEGENDARY';
   maxHp: number;
 }
 
 const MONSTER_ROSTER: MonsterData[] = [
-  // 🟢 TIER 1: TRASH MOBS (Score 0 - 30)
+  // 🟢 TIER 1: TRASH MOBS (Score 0 - 30) - Tables 2 & 3
   { id: 1, name: "Kobold", imageKey: "kobold", tier: "TRASH", maxHp: 30 },
   { id: 2, name: "Goblin", imageKey: "goblin", tier: "TRASH", maxHp: 40 },
   { id: 3, name: "Zombie", imageKey: "zombie", tier: "TRASH", maxHp: 50 },
   { id: 4, name: "Skeleton Warrior", imageKey: "skeleton_warrior", tier: "TRASH", maxHp: 60 },
   { id: 5, name: "Gelatinous Cube", imageKey: "gelatinous_cube", tier: "TRASH", maxHp: 70 },
 
-  // 🟡 TIER 2: ELITES (Score 30 - 70)
+  // 🟡 TIER 2: ELITES (Score 30 - 70) - Tables 4, 5 & 6
   { id: 6, name: "Orc Berserker", imageKey: "orc_berserker", tier: "ELITE", maxHp: 80 },
   { id: 7, name: "Bugbear", imageKey: "bugbear", tier: "ELITE", maxHp: 90 },
   { id: 8, name: "Gargoyle", imageKey: "gargoyle", tier: "ELITE", maxHp: 100 },
   { id: 9, name: "Mimic Chest", imageKey: "mimic_chest", tier: "ELITE", maxHp: 110 },
   { id: 10, name: "Owlbear", imageKey: "owlbear", tier: "ELITE", maxHp: 120 },
 
-  // 🟠 TIER 3: MINI-BOSSES (Score 70 - 120)
+  // 🟠 TIER 3: MINI-BOSSES (Score 70 - 120) - Tables 7 & 8
   { id: 11, name: "Displacer Beast", imageKey: "displacer_beast", tier: "BOSS", maxHp: 140 },
   { id: 12, name: "Cave Troll", imageKey: "cave_troll", tier: "BOSS", maxHp: 160 },
   { id: 13, name: "Chimera", imageKey: "chimera", tier: "BOSS", maxHp: 180 },
   { id: 14, name: "Mind Flayer", imageKey: "mind_flayer", tier: "BOSS", maxHp: 200 },
   { id: 15, name: "Iron Golem", imageKey: "iron_golem", tier: "BOSS", maxHp: 220 },
 
-  // 🔴 TIER 4: LEGENDARY BOSSES (Score 120+)
+  // 🔴 TIER 4: LEGENDARY BOSSES (Score 120+) - Table 9
   { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 250 },
   { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 300 },
   { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 350 },
@@ -52,17 +52,23 @@ const MONSTER_ROSTER: MonsterData[] = [
 const MATH_LANG = {
   en: {
     title: "⚔️ MATH BATTLE ARENA ⚔️",
-    sub: "Defeat monsters in 60 seconds!",
+    sub: "Master math tables & slay monsters!",
     loginTitle: "[ IDENTIFY PLAYER ]",
     loginLabel: "Enter Player Name:",
     loginBtn: "INITIALIZE ARENA",
     time: "⏳ Time:",
     score: "🏆 Score:",
+    lives: "❤️ Lives:",
+    modeTrain: "🎓 TRAINING MODE (Table 2 → 9)",
+    modeChallenge: "⚡ CHALLENGE ARENA (Mixed Blitz)",
+    selectMode: "SELECT GAME MODE:",
     combo: "🔥 BEYOND GODLIKE COMBO! 🔥",
     timesUp: "⌛ TIME'S UP!",
+    killedMsg: "💀 YOU WERE KILLED BY THE MONSTER!",
+    wrongWarn: "❌ WRONG ANSWER! (-1 LIFE)",
     points: "points!",
     btnStart: "ENTER THE ARENA",
-    btnAgain: "LAUNCH NEXT ATTACK",
+    btnAgain: "PLAY AGAIN",
     ladderTitle: "📊 DAILY LADDER SCOREBOARD 📊",
     colRank: "RANK",
     colName: "PLAYER",
@@ -71,14 +77,20 @@ const MATH_LANG = {
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG TOÁN HỌC ⚔️",
-    sub: "Hạ gục quái vật trong 60 giây!",
+    sub: "Luyện thuộc bảng nhân chia & diệt quái!",
     loginTitle: "[ XÁC MINH DANH TÍNH ]",
     loginLabel: "Nhập Tên Của Chiến Binh:",
     loginBtn: "KÍCH HOẠT ĐẤU TRƯỜNG",
     time: "⏳ Thời gian:",
     score: "🏆 Điểm số:",
+    lives: "❤️ Máu:",
+    modeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP (Bảng 2 → 9)",
+    modeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH (Ngẫu Nhiên)",
+    selectMode: "CHỌN CHẾ ĐỘ CHƠI:",
     combo: "🔥 LIÊN HOÀN BẠO KÍCH! 🔥",
     timesUp: "⌛ HẾT GIỜ!",
+    killedMsg: "💀 BẠN ĐÃ BỊ QUÁI VẬT BẮT BÀI & HẠ GỤC!",
+    wrongWarn: "❌ SAI RỒI! (-1 MÁU)",
     points: "điểm!",
     btnStart: "BẮT ĐẦU CHIẾN",
     btnAgain: "TIẾP TỤC TẤN CÔNG",
@@ -90,8 +102,16 @@ const MATH_LANG = {
   }
 };
 
-const generateQuestion = (): Question => {
-  const num1 = Math.floor(Math.random() * 8) + 2; 
+// Smart Question Engine
+const generateQuestion = (mode: 'TRAIN' | 'CHALLENGE', monsterIdx: number): Question => {
+  let num1 = 2;
+  if (mode === 'TRAIN') {
+    // Stage Progression: Monster 0-1 => Table 2, Monster 2-3 => Table 3 ... Max Table 9
+    num1 = Math.min(9, 2 + Math.floor(monsterIdx / 2));
+  } else {
+    num1 = Math.floor(Math.random() * 8) + 2; // Random 2-9
+  }
+
   const num2 = Math.floor(Math.random() * 8) + 2; 
   return Math.random() > 0.5 
     ? { text: `${num1 * num2} ÷ ${num1}`, answer: num2 }
@@ -101,11 +121,17 @@ const generateQuestion = (): Question => {
 export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; supabase: any }) {
   const [username, setUsername] = useState(() => localStorage.getItem('math_brother_name') || '');
   const [typedName, setTypedName] = useState('');
+  const [gameMode, setGameMode] = useState<'TRAIN' | 'CHALLENGE'>('TRAIN');
   const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'GAMEOVER'>('START');
+  const [deathReason, setDeathReason] = useState<'TIMEOUT' | 'KILLED' | null>(null);
+  
   const [question, setQuestion] = useState<Question>({ text: '', answer: 0 });
   const [userInput, setUserInput] = useState('');
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [flashError, setFlashError] = useState(false);
+  
   const [currentMonsterIdx, setCurrentMonsterIdx] = useState(0);
   const [monsterHp, setMonsterHp] = useState(MONSTER_ROSTER[0].maxHp);
   const [timeLeft, setTimeLeft] = useState(60);
@@ -118,6 +144,10 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   useEffect(() => {
     fetchLeaderboard();
   }, []);
+
+  useEffect(() => {
+    document.title = locale === 'en' ? "⚔️ MATH BATTLE ARENA ⚔️" : "⚔️ ĐẤU TRƯỜNG TOÁN HỌC ⚔️";
+  }, [locale]);
 
   const fetchLeaderboard = async () => {
     const { data } = await supabase
@@ -139,52 +169,76 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const startGame = () => {
     setScore(0);
     setStreak(0);
+    setLives(3);
+    setDeathReason(null);
     setCurrentMonsterIdx(0);
     setMonsterHp(MONSTER_ROSTER[0].maxHp);
     setTimeLeft(60);
-    setQuestion(generateQuestion());
+    setQuestion(generateQuestion(gameMode, 0));
     setGameState('BATTLE');
     setUserInput('');
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  // Timer loop
   useEffect(() => {
     if (gameState !== 'BATTLE') return;
     if (timeLeft <= 0) {
-      handleGameOver();
+      handleGameOver('TIMEOUT');
       return;
     }
     const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
     return () => clearTimeout(timer);
   }, [timeLeft, gameState]);
 
+  // Anti-Luck & Live Typing Check
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setUserInput(value);
 
+    const targetAnsStr = question.answer.toString();
+
+    // 1. Correct Answer Match
     if (parseInt(value) === question.answer) {
       const newStreak = streak + 1;
       setStreak(newStreak);
       setScore(score + 10 + (newStreak > 3 ? 5 : 0));
       
+      let nextMonsterIndex = currentMonsterIdx;
       setMonsterHp((prev) => {
         const nextHp = prev - 20;
         if (nextHp <= 0) {
-          const nextIdx = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
-          setCurrentMonsterIdx(nextIdx);
-          return MONSTER_ROSTER[nextIdx].maxHp;
+          nextMonsterIndex = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
+          setCurrentMonsterIdx(nextMonsterIndex);
+          return MONSTER_ROSTER[nextMonsterIndex].maxHp;
         }
         return nextHp;
       });
 
-      setQuestion(generateQuestion());
+      setQuestion(generateQuestion(gameMode, nextMonsterIndex));
       setUserInput('');
+      return;
+    }
+
+    // 2. Anti-Spam Miss Check: Trigger miss if typed digits match/exceed answer length & is wrong
+    if (value.length >= targetAnsStr.length && parseInt(value) !== question.answer) {
+      const remainingLives = lives - 1;
+      setLives(remainingLives);
+      setStreak(0);
+      setFlashError(true);
+      setTimeout(() => setFlashError(false), 600);
+      setUserInput('');
+
+      if (remainingLives <= 0) {
+        handleGameOver('KILLED');
+      }
     }
   };
 
-  const handleGameOver = async () => {
+  const handleGameOver = async (reason: 'TIMEOUT' | 'KILLED') => {
     setGameState('GAMEOVER');
-    
+    setDeathReason(reason);
+
     const { data } = await supabase
       .from('math_scores')
       .select('*')
@@ -241,32 +295,63 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
       </div>
 
       {/* Main Play Arena Box */}
-      <div style={{ border: '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '450px', backgroundColor: '#000', textAlign: 'center', boxSizing: 'border-box' }}>
+      <div style={{ border: flashError ? '2px solid #ff0000' : '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '450px', backgroundColor: '#000', textAlign: 'center', boxSizing: 'border-box', transition: 'border 0.2s' }}>
+        
+        {/* START SCREEN: Mode Selection */}
         {gameState === 'START' && (
-          <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
-            {t.btnStart}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '16px' }}>{t.selectMode}</div>
+            
+            <button 
+              onClick={() => setGameMode('TRAIN')} 
+              style={{ background: gameMode === 'TRAIN' ? '#0f0' : '#000', color: gameMode === 'TRAIN' ? '#000' : '#0f0', border: '2px solid #0f0', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', textAlign: 'left' }}
+            >
+              {t.modeTrain}
+            </button>
+
+            <button 
+              onClick={() => setGameMode('CHALLENGE')} 
+              style={{ background: gameMode === 'CHALLENGE' ? '#0f0' : '#000', color: gameMode === 'CHALLENGE' ? '#000' : '#0f0', border: '2px solid #0f0', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', textAlign: 'left' }}
+            >
+              {t.modeChallenge}
+            </button>
+
+            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace', marginTop: '10px' }}>
+              {t.btnStart}
+            </button>
+          </div>
         )}
 
+        {/* BATTLE SCREEN */}
         {gameState === 'BATTLE' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '15px' }}>
+            {/* Top Status HUD Bar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '15px', fontSize: '15px' }}>
               <span style={{ color: '#ff0' }}>{t.time} {timeLeft}s</span>
+              <span style={{ color: '#ff3333' }}>
+                {t.lives} {'❤️ '.repeat(lives)}{'🖤 '.repeat(3 - lives)}
+              </span>
               <span style={{ color: '#0f0' }}>{t.score} {score}</span>
             </div>
 
-            {/* Dynamic Monster Display Sub-engine */}
+            {/* Dynamic Monster Target Card */}
             {(() => {
               const activeMonster = MONSTER_ROSTER[currentMonsterIdx];
               const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
               const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
               const hpPercentage = (monsterHp / activeMonster.maxHp) * 100;
+              const currentTable = Math.min(9, 2 + Math.floor(currentMonsterIdx / 2));
 
               return (
                 <div style={{ padding: '15px', background: '#000', border: '1px solid #0f0', marginBottom: '20px' }}>
-                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '15px', marginBottom: '10px', textTransform: 'uppercase' }}>
+                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px', textTransform: 'uppercase' }}>
                     TARGET: {activeMonster.name} [{activeMonster.tier}]
                   </div>
+                  {gameMode === 'TRAIN' && (
+                    <div style={{ color: '#0f0', fontSize: '12px', marginBottom: '8px' }}>
+                      [ STAGE STACK: BẢNG {currentTable} ]
+                    </div>
+                  )}
                   <img 
                     src={monsterImgUrl} 
                     alt={activeMonster.name} 
@@ -283,25 +368,31 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
               );
             })()}
 
-            {streak >= 3 && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
+            {flashError && <div style={{ color: '#ff3333', fontWeight: 'bold', marginBottom: '10px' }}>{t.wrongWarn}</div>}
+            {streak >= 3 && !flashError && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
 
-            <div style={{ fontSize: '4rem', fontWeight: 'bold', color: '#fff', margin: '20px 0' }}>{question.text}</div>
+            <div style={{ fontSize: '4rem', fontWeight: 'bold', color: '#fff', margin: '15px 0' }}>{question.text}</div>
 
             <input
               ref={inputRef}
               type="number"
               value={userInput}
               onChange={handleInputChange}
-              style={{ background: '#000', color: '#0f0', border: '2px solid #0f0', fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }}
+              style={{ background: '#000', color: flashError ? '#ff3333' : '#0f0', border: `2px solid ${flashError ? '#ff3333' : '#0f0'}`, fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }}
               placeholder="?"
             />
           </div>
         )}
 
+        {/* GAME OVER SCREEN */}
         {gameState === 'GAMEOVER' && (
           <div>
-            <h2 style={{ color: '#ff3333', marginTop: 0 }}>{t.timesUp}</h2>
-            <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}</p>
+            <h2 style={{ color: '#ff3333', marginTop: 0 }}>
+              {deathReason === 'KILLED' ? t.killedMsg : t.timesUp}
+            </h2>
+            <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>
+              Final Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}
+            </p>
             <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
               {t.btnAgain}
             </button>
