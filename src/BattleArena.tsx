@@ -78,7 +78,11 @@ const LANG = {
     rosterTitle: "🗃️ Server Character Roster (Maintenance Panel)",
     deleteBtn: "Delete",
     protectedText: "Fighting",
-    arenaTitle: "🏆 LIVE TOURNAMENT MATCHUPS 🏆",
+    arenaTitle: "🏆 LIVE TOURNAMENT BRACKET 🏆",
+    stageTitle: "⚔️ STAGE",
+    semiFinalsTitle: "⚔️ SEMI-FINALS ⚔️",
+    grandFinalsTitle: "👑 GRAND FINALS CHAMPIONSHIP 👑",
+    championTitle: "🎉 TOURNAMENT CHAMPION CROWNED 🎉",
     rollingBtn: "🥁 Shuffling Dice & Rolling...",
     vsText: "VS",
     botLabel: "AI System Bot",
@@ -126,6 +130,10 @@ const LANG = {
     deleteBtn: "Xóa Tướng",
     protectedText: "Đang Chiến Đấu",
     arenaTitle: "🏆 BẢNG ĐẤU GIẢI TOURNAMENT LIVE 🏆",
+    stageTitle: "⚔️ VÒNG ĐẤU",
+    semiFinalsTitle: "⚔️ VÒNG BÁN KẾT ⚔️",
+    grandFinalsTitle: "👑 TRẬN CHUNG KẾT QUÁN QUÂN 👑",
+    championTitle: "🎉 QUÁN QUÂN VÔ ĐỊCH ĐẤU TRƯỜNG 🎉",
     rollingBtn: "🥁 Đang Lắc Xúc Xắc...",
     vsText: "ĐẤU VỚI",
     botLabel: "Quái Vật Máy (AI)",
@@ -143,7 +151,7 @@ const LANG = {
     noDice: "Đang đợi...",
     previewActionTitle: "🔎 XEM TRƯỚC ĐÒN ĐÁNH:",
     resetLobbyBtn: "🔄 GIẢI PHÓNG PHÒNG CHỜ",
-    btnLockAction: "🟢 CHỐT CHIÊU & SẴN SÀNG HiỆP",
+    btnLockAction: "🟢 CHỐT CHIÊU & SẴN SÀNG HIỆP",
     statusLocked: "🔒 ĐÃ CHỐT CHIÊU! Đang chờ đối thủ...",
     statusOpponentLocked: "⚡ Đối thủ đã sẵn sàng!"
   }
@@ -242,6 +250,10 @@ export function BattleArena() {
     displayDice2: string;
     p1_action: string | null;
     p2_action: string | null;
+    p1_char_id: string | number;
+    p2_char_id: string | number;
+    player1_name: string;
+    player2_name: string;
   }>>({});
 
   const [playerActions, setPlayerActions] = useState<Record<string, string>>({});
@@ -260,39 +272,32 @@ export function BattleArena() {
     .sort((a, b) => (a.assigned_to || '').localeCompare(b.assigned_to || ''));
 
   const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
-
-  const generateTournamentPairs = () => {
-    if (!isTournamentActive) return [];
-    const pairs: [Combatant, Combatant][] = [];
-    
-    for (let i = 0; i < activeClaimed.length; i += 2) {
-      if (i + 1 < activeClaimed.length) {
-        pairs.push([activeClaimed[i], activeClaimed[i + 1]]);
-      } else {
-        const unclaimedPool = characters.filter(c => c.assigned_to === null || c.assigned_to === '');
-        let botTemplate = unclaimedPool[0] || IMMUTABLE_SYSTEM_BOTS[i % IMMUTABLE_SYSTEM_BOTS.length];
-        
-        const shadowBot: Combatant = {
-          id: botTemplate.id.toString().includes('sys') ? botTemplate.id : `bot_${botTemplate.id}_${i}`,
-          name: botTemplate.name,
-          job_class: botTemplate.job_class,
-          might: botTemplate.might,
-          vitality: botTemplate.vitality,
-          reflex: botTemplate.reflex,
-          skills: botTemplate.skills,
-          assigned_to: `[${t.botLabel}]`,
-          is_ready: true,
-          isBot: true
-        };
-        pairs.push([activeClaimed[i], shadowBot]);
-      }
-    }
-    return pairs;
-  };
-
-  const tournamentMatches = generateTournamentPairs();
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
   const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
+
+  // Helper function to reconstruct Combatant from name or ID
+  const getCombatantByNameOrId = (identifier: string | number): Combatant => {
+    const strId = identifier.toString();
+    const byId = characters.find(c => c.id.toString() === strId);
+    if (byId) return byId;
+
+    const byName = characters.find(c => c.name === identifier);
+    if (byName) return byName;
+
+    const sysBot = IMMUTABLE_SYSTEM_BOTS.find(b => b.id === strId || b.name === identifier);
+    if (sysBot) return { ...sysBot, isBot: true };
+
+    return {
+      id: strId.startsWith('bot_') || strId.startsWith('sys_') ? strId : `bot_${strId}`,
+      name: typeof identifier === 'string' ? identifier : "Warrior",
+      job_class: "Fighter",
+      might: 3, vitality: 3, reflex: 3,
+      skills: ["Shield Slam", "Heavy Slash"],
+      assigned_to: strId.includes('bot') ? `[${t.botLabel}]` : null,
+      is_ready: true,
+      isBot: true
+    };
+  };
 
   // 🧹 EMERGENCY RESET LOBBY FUNCTION
   const handleResetLobby = async () => {
@@ -304,7 +309,6 @@ export function BattleArena() {
 
   // ⚡ AUTOMATED DICE ROLLING ENGINE
   const autoTriggerCombatRound = async (matchRow: any, p1: Combatant, p2: Combatant) => {
-    // Lock rolling status globally in cloud database to prevent double invocation
     await supabase.from('matches').update({ is_rolling: true }).eq('id', matchRow.id);
 
     setTimeout(async () => {
@@ -364,7 +368,6 @@ export function BattleArena() {
       let finalWinner = null;
       if (h1 <= 0 || h2 <= 0) finalWinner = h1 > h2 ? p1.name : p2.name;
 
-      // Reset round readiness and write results back to Supabase
       await supabase.from('matches').update({
         p1_hp: Math.max(0, h1), p2_hp: Math.max(0, h2), round_number: rNum + 1,
         p1_action: null, p2_action: null, dice1: finalIcon1, dice2: finalIcon2,
@@ -398,19 +401,20 @@ export function BattleArena() {
                 displayDice1: match.dice1,
                 displayDice2: match.dice2,
                 p1_action: match.p1_action,
-                p2_action: match.p2_action
+                p2_action: match.p2_action,
+                p1_char_id: match.p1_char_id,
+                p2_char_id: match.p2_char_id,
+                player1_name: match.player1_name,
+                player2_name: match.player2_name
               }
             }));
 
-            // AUTO-ROLL TRIGGER CHECK: Are BOTH players locked in and ready?
+            // AUTO-ROLL TRIGGER CHECK
             if (match.p1_action && match.p2_action && !match.is_rolling && !match.winner) {
-              const pair = tournamentMatches.find(p => `match_${p[0].id}_vs_${p[1].id}` === matchId);
-              if (pair) {
-                const [p1, p2] = pair;
-                // Designated host (P1 device or creator) fires the roll logic
-                if (currentPlayerName === p1.assigned_to || p1.isBot || !currentPlayerName) {
-                  autoTriggerCombatRound(match, p1, p2);
-                }
+              const p1Obj = getCombatantByNameOrId(match.p1_char_id);
+              const p2Obj = getCombatantByNameOrId(match.p2_char_id);
+              if (currentPlayerName === p1Obj.assigned_to || p1Obj.isBot || !currentPlayerName) {
+                autoTriggerCombatRound(match, p1Obj, p2Obj);
               }
             }
           }
@@ -421,41 +425,119 @@ export function BattleArena() {
     return () => {
       supabase.removeChannel(matchesChannel);
     };
-  }, [tournamentMatches, currentPlayerName]);
+  }, [currentPlayerName, characters]);
 
-  useEffect(() => {
-    if (!isTournamentActive || tournamentMatches.length === 0) return;
+  // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE (Quarter-Finals -> Semi-Finals -> Grand Finals)
+  const computeTournamentStages = () => {
+    if (!isTournamentActive || activeClaimed.length === 0) return [];
 
-    const seedLiveTournamentMatches = async () => {
-      for (const match of tournamentMatches) {
-        const [p1, p2] = match;
-        
-        const { data: existing } = await supabase
-          .from('matches')
-          .select('*')
-          .eq('p1_char_id', p1.id)
-          .eq('p2_char_id', p2.id);
+    const stages: Array<{
+      stageIndex: number;
+      pairs: [Combatant, Combatant][];
+      matchKeys: string[];
+      isComplete: boolean;
+      winners: Combatant[];
+    }> = [];
 
-        if (!existing || existing.length === 0) {
-          await supabase.from('matches').insert([{
-            player1_name: p1.name,
-            player2_name: p2.name,
-            p1_char_id: p1.id,
-            p2_char_id: p2.id,
-            p1_hp: 40 + p1.vitality * 5,
-            p2_hp: 40 + p2.vitality * 5,
-            round_number: 1,
-            dice1: '❓',
-            dice2: '❓',
-            is_rolling: false,
-            logs: [locale === 'vi' ? `🏁 Trận đấu đấu trường trực tuyến được khởi tạo!` : `🏁 Arena Match officially initialized!`]
-          }]);
+    let currentParticipants: Combatant[] = [...activeClaimed];
+    let stageIndex = 1;
+
+    while (currentParticipants.length > 1) {
+      const pairs: [Combatant, Combatant][] = [];
+      for (let i = 0; i < currentParticipants.length; i += 2) {
+        if (i + 1 < currentParticipants.length) {
+          pairs.push([currentParticipants[i], currentParticipants[i + 1]]);
+        } else {
+          // Odd player paired with Shadow Bot
+          const botTemplate = IMMUTABLE_SYSTEM_BOTS[stageIndex % IMMUTABLE_SYSTEM_BOTS.length];
+          const shadowBot: Combatant = {
+            id: `sys_bot_stage_${stageIndex}_${i}`,
+            name: botTemplate.name,
+            job_class: botTemplate.job_class,
+            might: botTemplate.might,
+            vitality: botTemplate.vitality,
+            reflex: botTemplate.reflex,
+            skills: botTemplate.skills,
+            assigned_to: `[${t.botLabel}]`,
+            is_ready: true,
+            isBot: true
+          };
+          pairs.push([currentParticipants[i], shadowBot]);
         }
+      }
+
+      const matchKeys = pairs.map(([p1, p2]) => `match_${p1.id}_vs_${p2.id}`);
+      const stageMatches = matchKeys.map(key => arenaState[key]).filter(Boolean);
+
+      const isStageComplete = matchKeys.length > 0 && 
+        stageMatches.length === matchKeys.length && 
+        stageMatches.every(m => m.winner !== null);
+
+      const stageWinners: Combatant[] = isStageComplete
+        ? stageMatches.map(m => getCombatantByNameOrId(m.winner!))
+        : [];
+
+      stages.push({
+        stageIndex,
+        pairs,
+        matchKeys,
+        isComplete: isStageComplete,
+        winners: stageWinners
+      });
+
+      if (isStageComplete && stageWinners.length > 1) {
+        currentParticipants = stageWinners;
+        stageIndex++;
+      } else {
+        break; // Stop evaluating further unreached stages
+      }
+    }
+
+    return stages;
+  };
+
+  const computedStages = computeTournamentStages();
+  const lastStage = computedStages[computedStages.length - 1];
+  const grandFinalsWinner = (lastStage && lastStage.isComplete && lastStage.winners.length === 1)
+    ? lastStage.winners[0].name
+    : null;
+
+  // 🚀 AUTOMATED STAGE SEEDING EFFECT
+  useEffect(() => {
+    if (!isTournamentActive || computedStages.length === 0) return;
+
+    const seedActiveStageMatches = async () => {
+      for (const stage of computedStages) {
+        for (const pair of stage.pairs) {
+          const [p1, p2] = pair;
+          const { data: existing } = await supabase
+            .from('matches')
+            .select('id')
+            .eq('p1_char_id', p1.id)
+            .eq('p2_char_id', p2.id);
+
+          if (!existing || existing.length === 0) {
+            await supabase.from('matches').insert([{
+              player1_name: p1.name,
+              player2_name: p2.name,
+              p1_char_id: p1.id,
+              p2_char_id: p2.id,
+              p1_hp: 40 + p1.vitality * 5,
+              p2_hp: 40 + p2.vitality * 5,
+              round_number: 1,
+              dice1: '❓',
+              dice2: '❓',
+              is_rolling: false,
+              logs: [locale === 'vi' ? `🏁 Vòng ${stage.stageIndex} Khởi Tạo Trực Tuyến!` : `🏁 Stage ${stage.stageIndex} Match Officially Initialized!`]
+            }]);
+          }
+        }
+        if (!stage.isComplete) break; // Wait for current stage to resolve before seeding next stage
       }
     };
 
-    seedLiveTournamentMatches();
-  }, [isTournamentActive, tournamentMatches, locale]);
+    seedActiveStageMatches();
+  }, [isTournamentActive, computedStages, locale]);
 
   useEffect(() => {
     fetchCharacters();
@@ -565,7 +647,6 @@ export function BattleArena() {
     if (isP1) updateData.p1_action = chosenAction;
     if (isP2) updateData.p2_action = chosenAction;
 
-    // If fighting an AI system Bot, auto-generate bot's action simultaneously
     if (p2.isBot && isP1) {
       const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
       updateData.p2_action = botOptions[Math.floor(Math.random() * botOptions.length)];
@@ -658,173 +739,185 @@ export function BattleArena() {
         </section>
       )}
 
-      {/* TOURNAMENT LIVE INTERFACE */}
-      {isTournamentActive && tournamentMatches.length > 0 && (
+      {/* 🏆 TOURNAMENT CHAMPION CROWN BANNER */}
+      {grandFinalsWinner && (
+        <section style={{ margin: '20px 0', padding: '25px', border: '3px double #ff0', backgroundColor: '#1a1800', textAlign: 'center' }}>
+          <h1 style={{ color: '#ff0', margin: 0, fontSize: '2.2rem', textShadow: '0 0 10px #ff0' }}>{t.championTitle}</h1>
+          <h2 style={{ color: '#fff', fontSize: '2rem', margin: '10px 0' }}>👑 {grandFinalsWinner} 👑</h2>
+          <button onClick={handleResetLobby} style={{ background: '#ff3333', color: '#fff', fontWeight: 'bold', border: 'none', padding: '12px 30px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px', marginTop: '10px' }}>
+            {t.matchOverBtn}
+          </button>
+        </section>
+      )}
+
+      {/* TOURNAMENT DYNAMIC STAGES BRACKET INTERFACE */}
+      {isTournamentActive && computedStages.length > 0 && (
         <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
-          <h2 style={{ fontFamily: 'monospace', textAlign: 'center', color: '#fff', letterSpacing: '2px' }}>{t.arenaTitle}</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', marginTop: '20px' }}>
-            {tournamentMatches.map((match) => {
-              const [p1, p2] = match;
-              const matchId = `match_${p1.id}_vs_${p2.id}`;
-              
-              const liveState = arenaState[matchId] || {
-                id: '',
-                hp1: 40 + p1.vitality * 5,
-                hp2: 40 + p2.vitality * 5,
-                round: 1,
-                logs: [locale === 'vi' ? `🏁 Phòng chờ hoàn tất. Vui lòng chọn chiêu và nhấn Chốt Chiêu!` : `🏁 Ready Check Verified. Choose action and lock in!`],
-                winner: null,
-                isRolling: false,
-                displayDice1: "❓",
-                displayDice2: "❓",
-                p1_action: null,
-                p2_action: null
-              };
+          <h2 style={{ fontFamily: 'monospace', textAlign: 'center', color: '#fff', letterSpacing: '2px', marginBottom: '30px' }}>{t.arenaTitle}</h2>
 
-              // Identify local device combatant dynamically
-              const isMyP1 = currentPlayerName === p1.assigned_to;
-              const isMyP2 = currentPlayerName === p2.assigned_to;
-              const myCombatant = isMyP1 ? p1 : (isMyP2 ? p2 : p1);
+          {computedStages.map((stage) => {
+            const isGrandFinals = stage.pairs.length === 1 && computedStages.length > 1;
+            const isSemiFinals = stage.pairs.length === 2 && computedStages.length > 2;
 
-              const currentSelectedTactic = playerActions[matchId] || 'attack';
-              const myLockedAction = isMyP1 ? liveState.p1_action : (isMyP2 ? liveState.p2_action : null);
-              const opponentLockedAction = isMyP1 ? liveState.p2_action : (isMyP2 ? liveState.p1_action : null);
+            const stageHeading = isGrandFinals 
+              ? t.grandFinalsTitle 
+              : isSemiFinals 
+                ? t.semiFinalsTitle 
+                : `${t.stageTitle} ${stage.stageIndex}`;
 
-              let activeTacticName = "Basic Attack";
-              let activeTacticLookup = "basic_attack";
-              
-              if (currentSelectedTactic === 'defend') {
-                activeTacticName = "Defend Stance";
-                activeTacticLookup = "defend_stance";
-              } else if (currentSelectedTactic.startsWith('skill')) {
-                const sIdx = parseInt(currentSelectedTactic.replace('skill', ''));
-                activeTacticName = myCombatant.skills[sIdx] || "Basic Attack";
-                activeTacticLookup = activeTacticName;
-              }
+            return (
+              <div key={`stage_${stage.stageIndex}`} style={{ marginBottom: '40px' }}>
+                <h2 style={{ color: isGrandFinals ? '#ff0' : '#0f0', textAlign: 'center', borderBottom: `2px dashed ${isGrandFinals ? '#ff0' : '#0f0'}`, paddingBottom: '8px', marginBottom: '20px' }}>
+                  {stageHeading}
+                </h2>
 
-              const tacticDetails = SKILLS_LIBRARY[activeTacticName] || { en: "Standard combat dynamic card execution.", vi: "Chiêu thức hành động chiến đấu chuẩn hệ phái." };
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                  {stage.matchKeys.map((matchId) => {
+                    const liveState = arenaState[matchId];
+                    if (!liveState) return null;
 
-              return (
-                <div key={matchId} style={{ border: '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                    const p1 = getCombatantByNameOrId(liveState.p1_char_id);
+                    const p2 = getCombatantByNameOrId(liveState.p2_char_id);
+
+                    const isMyP1 = currentPlayerName === p1.assigned_to;
+                    const isMyP2 = currentPlayerName === p2.assigned_to;
+                    const myCombatant = isMyP1 ? p1 : (isMyP2 ? p2 : p1);
+
+                    const currentSelectedTactic = playerActions[matchId] || 'attack';
+                    const myLockedAction = isMyP1 ? liveState.p1_action : (isMyP2 ? liveState.p2_action : null);
+                    const opponentLockedAction = isMyP1 ? liveState.p2_action : (isMyP2 ? liveState.p1_action : null);
+
+                    let activeTacticName = "Basic Attack";
+                    let activeTacticLookup = "basic_attack";
                     
-                    {/* Left Challenger Card Block */}
-                    <div style={{ minWidth: '180px', textAlign: 'center' }}>
-                      <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
-                      <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
-                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
-                      <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
+                    if (currentSelectedTactic === 'defend') {
+                      activeTacticName = "Defend Stance";
+                      activeTacticLookup = "defend_stance";
+                    } else if (currentSelectedTactic.startsWith('skill')) {
+                      const sIdx = parseInt(currentSelectedTactic.replace('skill', ''));
+                      activeTacticName = myCombatant.skills[sIdx] || "Basic Attack";
+                      activeTacticLookup = activeTacticName;
+                    }
 
-                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
-                        {liveState.displayDice1}
-                      </div>
-                    </div>
+                    const tacticDetails = SKILLS_LIBRARY[activeTacticName] || { en: "Standard combat dynamic card execution.", vi: "Chiêu thức hành động chiến đấu chuẩn hệ phái." };
 
-                    <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
+                    return (
+                      <div key={matchId} style={{ border: isGrandFinals ? '2px solid #ff0' : '1px solid #0f0', padding: '20px', backgroundColor: '#000' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                          
+                          {/* Left Challenger Card Block */}
+                          <div style={{ minWidth: '180px', textAlign: 'center' }}>
+                            <img src={getGameAssetUrl(liveState.winner === p1.name ? 'win' : liveState.winner === p2.name ? 'lost' : 'avatar', p1.job_class)} style={{ width: '110px', height: '110px', border: '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                            <h3 style={{ color: '#fff', margin: '5px 0 0 0' }}>{p1.name}</h3>
+                            <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp1)}</div>
+                            <span style={{ color: '#888', fontSize: '12px' }}>@{p1.assigned_to}</span>
 
-                    {/* Right Challenger Card Block */}
-                    <div style={{ minWidth: '180px', textAlign: 'center' }}>
-                      <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
-                      <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
-                      <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
-                      <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
-
-                      <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
-                        {liveState.displayDice2}
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* 🔎 DYNAMIC ACTION PREVIEW BAY */}
-                  <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
-                    <div style={{ flexShrink: 0 }}>
-                      <img 
-                        src={getGameAssetUrl('skill', myCombatant.job_class, activeTacticLookup)} 
-                        alt={activeTacticName}
-                        style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
-                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
-                      />
-                    </div>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                      <span style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>{t.previewActionTitle}</span>
-                      <strong style={{ color: '#ff0', fontSize: '18px', display: 'block', marginBottom: '6px' }}>{activeTacticName}</strong>
-                      <p style={{ color: '#0f0', margin: 0, fontStyle: 'italic', fontSize: '14px', lineHeight: '1.4' }}>
-                        {locale === 'en' ? tacticDetails.en : tacticDetails.vi}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
-                  {!liveState.winner && !liveState.isRolling && (isMyP1 || isMyP2) && (
-                    <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
-                      <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
-                      
-                      {/* Move selector buttons */}
-                      {!myLockedAction ? (
-                        <>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '15px' }}>
-                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentSelectedTactic === 'attack' ? '#0f0' : '#000', color: currentSelectedTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
-                              {t.optAttack}
-                            </button>
-                            <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentSelectedTactic === 'defend' ? '#0f0' : '#000', color: currentSelectedTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
-                              {t.optDefend}
-                            </button>
-                            {myCombatant.skills?.map((skill, sIdx) => (
-                              <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentSelectedTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentSelectedTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
-                                💥 {skill}
-                              </button>
-                            ))}
+                            <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
+                              {liveState.displayDice1}
+                            </div>
                           </div>
 
-                          {/* 🟢 LOCK IN BUTTON */}
-                          <div style={{ textAlign: 'center' }}>
-                            <button 
-                              onClick={() => handleLockAction(p1, p2, currentSelectedTactic)} 
-                              style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px 30px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px' }}
-                            >
-                              {t.btnLockAction}
-                            </button>
+                          <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff0' }}>{t.vsText}</div>
+
+                          {/* Right Challenger Card Block */}
+                          <div style={{ minWidth: '180px', textAlign: 'center' }}>
+                            <img src={getGameAssetUrl(liveState.winner === p2.name ? 'win' : liveState.winner === p1.name ? 'lost' : 'avatar', p2.job_class)} style={{ width: '110px', height: '110px', border: p2.isBot ? '1px dashed #ff0' : '1px solid #0f0', objectFit: 'cover' }} alt="avatar" />
+                            <h3 style={{ color: p2.isBot ? '#ff0' : '#fff', margin: '5px 0 0 0' }}>{p2.name} {p2.isBot && `(${t.botLabel})`}</h3>
+                            <div style={{ color: '#0f0', fontSize: '14px', marginTop: '3px' }}>❤️ HP: {Math.max(0, liveState.hp2)}</div>
+                            <span style={{ color: '#888', fontSize: '12px' }}>@{p2.assigned_to}</span>
+
+                            <div style={{ margin: '15px auto 0 auto', width: '85px', height: '85px', border: p2.isBot ? '2px dashed #ff0' : '2px dashed #0f0', backgroundColor: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '68px', color: '#ff0', lineHeight: '1' }}>
+                              {liveState.displayDice2}
+                            </div>
                           </div>
-                        </>
-                      ) : (
-                        <div style={{ textAlign: 'center', padding: '10px', color: '#ff0', fontWeight: 'bold' }}>
-                          {t.statusLocked}
-                        </div>
-                      )}
 
-                      {/* Opponent Status Indicator */}
-                      {opponentLockedAction && (
-                        <div style={{ textAlign: 'center', marginTop: '8px', color: '#0f0', fontSize: '13px' }}>
-                          {t.statusOpponentLocked}
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* Operational Status Display Container */}
-                  <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                    {liveState.winner ? (
-                      <button onClick={handleResetLobby} style={{ background: '#ff3333', color: '#fff', fontWeight: 'bold', border: '1px solid #ff3333', padding: '12px 25px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px' }}>
-                        {t.matchOverBtn}
-                      </button>
-                    ) : liveState.isRolling ? (
-                      <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '18px' }}>
-                        {t.rollingBtn}
+                        {/* 🔎 DYNAMIC ACTION PREVIEW BAY */}
+                        <div style={{ marginTop: '20px', border: '1px dashed #0f0', padding: '15px', display: 'flex', alignItems: 'center', gap: '20px', backgroundColor: '#030a03', flexWrap: 'wrap' }}>
+                          <div style={{ flexShrink: 0 }}>
+                            <img 
+                              src={getGameAssetUrl('skill', myCombatant.job_class, activeTacticLookup)} 
+                              alt={activeTacticName}
+                              style={{ width: '120px', height: '120px', border: '2px solid #0f0', backgroundColor: '#000', objectFit: 'cover' }}
+                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/120x120/000000/00ff00?text=' + activeTacticName.replace(' ', '+'); }}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: '200px' }}>
+                            <span style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>{t.previewActionTitle}</span>
+                            <strong style={{ color: '#ff0', fontSize: '18px', display: 'block', marginBottom: '6px' }}>{activeTacticName}</strong>
+                            <p style={{ color: '#0f0', margin: 0, fontStyle: 'italic', fontSize: '14px', lineHeight: '1.4' }}>
+                              {locale === 'en' ? tacticDetails.en : tacticDetails.vi}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
+                        {!liveState.winner && !liveState.isRolling && (isMyP1 || isMyP2) && (
+                          <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
+                            <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
+                            
+                            {!myLockedAction ? (
+                              <>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '15px' }}>
+                                  <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'attack' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentSelectedTactic === 'attack' ? '#0f0' : '#000', color: currentSelectedTactic === 'attack' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                                    {t.optAttack}
+                                  </button>
+                                  <button onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: 'defend' }))} style={{ padding: '8px 12px', border: '1px solid #0f0', background: currentSelectedTactic === 'defend' ? '#0f0' : '#000', color: currentSelectedTactic === 'defend' ? '#000' : '#0f0', cursor: 'pointer', fontWeight: 'bold' }}>
+                                    {t.optDefend}
+                                  </button>
+                                  {myCombatant.skills?.map((skill, sIdx) => (
+                                    <button key={skill} onClick={() => setPlayerActions(prev => ({ ...prev, [matchId]: `skill${sIdx}` }))} style={{ padding: '8px 12px', border: '1px solid #ff0', background: currentSelectedTactic === `skill${sIdx}` ? '#ff0' : '#000', color: currentSelectedTactic === `skill${sIdx}` ? '#000' : '#ff0', cursor: 'pointer', fontWeight: 'bold' }}>
+                                      💥 {skill}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                <div style={{ textAlign: 'center' }}>
+                                  <button 
+                                    onClick={() => handleLockAction(p1, p2, currentSelectedTactic)} 
+                                    style={{ background: '#0f0', color: '#000', border: 'none', padding: '12px 30px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '16px' }}
+                                  >
+                                    {t.btnLockAction}
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ textAlign: 'center', padding: '10px', color: '#ff0', fontWeight: 'bold' }}>
+                                {t.statusLocked}
+                              </div>
+                            )}
+
+                            {opponentLockedAction && (
+                              <div style={{ textAlign: 'center', marginTop: '8px', color: '#0f0', fontSize: '13px' }}>
+                                {t.statusOpponentLocked}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Operational Status Display Container */}
+                        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                          {liveState.isRolling && (
+                            <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '18px' }}>
+                              {t.rollingBtn}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Terminal Log Box Output */}
+                        <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '180px', overflowY: 'auto', fontSize: '13px' }}>
+                          {liveState.logs.map((log: string, lIdx: number) => (
+                            <div key={lIdx} style={{ margin: '5px 0', color: log.includes('CHIẾN THẮNG') || log.includes('WINNER') ? '#ff0' : log.includes('HIỆP ĐẤU') || log.includes('ROUND') ? '#fff' : '#888' }}>{log}</div>
+                          ))}
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
-
-                  {/* Terminal Log Box Output */}
-                  <div style={{ marginTop: '15px', border: '1px dashed #050', padding: '12px', backgroundColor: '#050505', maxHeight: '200px', overflowY: 'auto', fontSize: '13px' }}>
-                    {liveState.logs.map((log: string, lIdx: number) => (
-                      <div key={lIdx} style={{ margin: '5px 0', color: log.includes('CHIẾN THẮNG') || log.includes('WINNER') ? '#ff0' : log.includes('HIỆP ĐẤU') || log.includes('ROUND') ? '#fff' : '#888' }}>{log}</div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </section>
       )}
 
