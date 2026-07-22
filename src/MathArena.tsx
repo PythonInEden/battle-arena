@@ -9,6 +9,7 @@ interface ScoreRecord {
   username: string;
   score: number;
   attempts: number;
+  max_monster?: number;
 }
 
 interface MonsterData {
@@ -65,7 +66,6 @@ const MATH_LANG = {
     badgeTrain: "🎓 TRAINING MODE",
     badgeChallenge: "⚡ CHALLENGE ARENA",
     tableFocus: "FOCUS: TABLE",
-    mixedFocus: "FOCUS: ALL TABLES MIXED (2-9)",
     combo: "🔥 BEYOND GODLIKE COMBO! 🔥",
     timesUp: "⌛ TIME'S UP!",
     killedMsg: "💀 YOU WERE KILLED BY THE MONSTER!",
@@ -73,10 +73,14 @@ const MATH_LANG = {
     points: "points!",
     btnStart: "ENTER THE ARENA",
     btnAgain: "PLAY AGAIN",
+    victoryTitle: "🎉 MONSTER SLAIN! 🎉",
+    victorySub: "You crushed",
+    btnNextStage: "NEXT MONSTER ⚔️",
     ladderTitle: "📊 DAILY LADDER SCOREBOARD 📊",
     colRank: "RANK",
     colName: "PLAYER",
-    colScore: "MAX SCORE",
+    colMonster: "MAX LEVEL",
+    colScore: "SCORE",
     colTries: "TRIES"
   },
   vi: {
@@ -94,7 +98,6 @@ const MATH_LANG = {
     badgeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP",
     badgeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH",
     tableFocus: "ĐANG TẬP BẢNG",
-    mixedFocus: "TỔNG HỢP BẢNG 2 ĐẾN 9",
     combo: "🔥 LIÊN HOÀN BẠO KÍCH! 🔥",
     timesUp: "⌛ HẾT GIỜ!",
     killedMsg: "💀 BẠN ĐÃ BỊ QUÁI VẬT BẮT BÀI & HẠ GỤC!",
@@ -102,9 +105,13 @@ const MATH_LANG = {
     points: "điểm!",
     btnStart: "BẮT ĐẦU CHIẾN",
     btnAgain: "TIẾP TỤC TẤN CÔNG",
+    victoryTitle: "🎉 ĐÃ DIỆT ĐƯỢC QUÁI VẬT! 🎉",
+    victorySub: "Chiến binh đã hạ gục thành công",
+    btnNextStage: "SĂN QUÁI TIẾP THEO ⚔️",
     ladderTitle: "📊 BẢNG XẾP HẠNG HÔM NAY 📊",
     colRank: "HẠNG",
     colName: "CHIẾN BINH",
+    colMonster: "CẤP QUÁI",
     colScore: "ĐIỂM CAO",
     colTries: "SỐ LƯỢT"
   }
@@ -128,7 +135,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const [username, setUsername] = useState(() => localStorage.getItem('math_brother_name') || '');
   const [typedName, setTypedName] = useState('');
   const [gameMode, setGameMode] = useState<'TRAIN' | 'CHALLENGE'>('TRAIN');
-  const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'GAMEOVER'>('START');
+  const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'VICTORY' | 'GAMEOVER'>('START');
   const [deathReason, setDeathReason] = useState<'TIMEOUT' | 'KILLED' | null>(null);
   
   const [question, setQuestion] = useState<Question>({ text: '', answer: 0 });
@@ -139,6 +146,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const [flashError, setFlashError] = useState(false);
   
   const [currentMonsterIdx, setCurrentMonsterIdx] = useState(0);
+  const [highestMonsterReached, setHighestMonsterReached] = useState(1);
   const [monsterHp, setMonsterHp] = useState(MONSTER_ROSTER[0].maxHp);
   const [timeLeft, setTimeLeft] = useState(60);
   const [leaderboard, setLeaderboard] = useState<ScoreRecord[]>([]);
@@ -147,8 +155,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const t = MATH_LANG[locale];
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Dynamic Theme Colors
-  const themeColor = gameMode === 'TRAIN' ? '#00f0ff' : '#ffaa00'; // Cyan vs Orange/Gold
+  const themeColor = gameMode === 'TRAIN' ? '#00f0ff' : '#ffaa00'; 
 
   useEffect(() => {
     fetchLeaderboard();
@@ -161,7 +168,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const fetchLeaderboard = async () => {
     const { data } = await supabase
       .from('math_scores')
-      .select('username, score, attempts')
+      .select('username, score, attempts, max_monster')
       .eq('score_date', todayStr)
       .order('score', { ascending: false });
     if (data) setLeaderboard(data);
@@ -181,6 +188,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     setLives(3);
     setDeathReason(null);
     setCurrentMonsterIdx(0);
+    setHighestMonsterReached(1);
     setMonsterHp(MONSTER_ROSTER[0].maxHp);
     setTimeLeft(60);
     setQuestion(generateQuestion(gameMode, 0));
@@ -189,6 +197,21 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  const startNextStage = () => {
+    const nextIdx = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
+    setCurrentMonsterIdx(nextIdx);
+    
+    const newHighest = Math.max(highestMonsterReached, nextIdx + 1);
+    setHighestMonsterReached(newHighest);
+
+    setMonsterHp(MONSTER_ROSTER[nextIdx].maxHp);
+    setQuestion(generateQuestion(gameMode, nextIdx));
+    setGameState('BATTLE');
+    setUserInput('');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  // Timer loop - Pauses during VICTORY screen!
   useEffect(() => {
     if (gameState !== 'BATTLE') return;
     if (timeLeft <= 0) {
@@ -205,27 +228,27 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
 
     const targetAnsStr = question.answer.toString();
 
+    // 1. Correct Answer Match
     if (parseInt(value) === question.answer) {
       const newStreak = streak + 1;
       setStreak(newStreak);
       setScore(score + 10 + (newStreak > 3 ? 5 : 0));
       
-      let nextMonsterIndex = currentMonsterIdx;
-      setMonsterHp((prev) => {
-        const nextHp = prev - 20;
-        if (nextHp <= 0) {
-          nextMonsterIndex = (currentMonsterIdx + 1) % MONSTER_ROSTER.length;
-          setCurrentMonsterIdx(nextMonsterIndex);
-          return MONSTER_ROSTER[nextMonsterIndex].maxHp;
-        }
-        return nextHp;
-      });
+      const newHp = monsterHp - 20;
+      if (newHp <= 0) {
+        // Monster Killed! Pause game timer & trigger Victory Interstitial
+        setMonsterHp(0);
+        setGameState('VICTORY');
+        return;
+      }
 
-      setQuestion(generateQuestion(gameMode, nextMonsterIndex));
+      setMonsterHp(newHp);
+      setQuestion(generateQuestion(gameMode, currentMonsterIdx));
       setUserInput('');
       return;
     }
 
+    // 2. Anti-Luck Miss Check
     if (value.length >= targetAnsStr.length && parseInt(value) !== question.answer) {
       const remainingLives = lives - 1;
       setLives(remainingLives);
@@ -253,12 +276,14 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     const existingRow = data && data.length > 0 ? data[0] : null;
     const currentAttempts = existingRow ? parseInt(existingRow.attempts) : 0;
     const currentHighScore = existingRow ? parseInt(existingRow.score) : 0;
+    const currentMaxMonster = existingRow && existingRow.max_monster ? parseInt(existingRow.max_monster) : 1;
 
     await supabase.from('math_scores').upsert(
       {
         username: username,
         score: Math.max(currentHighScore, score),
         attempts: currentAttempts + 1,
+        max_monster: Math.max(currentMaxMonster, highestMonsterReached),
         score_date: todayStr
       },
       { onConflict: 'username,score_date' }
@@ -290,6 +315,10 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     );
   }
 
+  const activeMonster = MONSTER_ROSTER[currentMonsterIdx];
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '800px', margin: '0 auto', gap: '30px', boxSizing: 'border-box' }}>
       
@@ -299,7 +328,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         <p style={{ color: '#888', margin: '0' }}>{t.sub} | USER: <span style={{color: '#ff0'}}>{username}</span></p>
       </div>
 
-      {/* Main Play Arena Box with Dynamic Theme Borders */}
+      {/* Main Play Arena Box */}
       <div style={{ 
         border: flashError ? '3px solid #ff0000' : `3px solid ${themeColor}`, 
         padding: '30px', 
@@ -372,20 +401,10 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         {/* BATTLE SCREEN */}
         {gameState === 'BATTLE' && (
           <div>
-            {/* 🏷️ VERY OBVIOUS MODE BADGE HEADER */}
-            <div style={{ 
-              background: themeColor, 
-              color: '#000', 
-              fontWeight: 'bold', 
-              padding: '6px', 
-              marginBottom: '15px', 
-              fontSize: '13px', 
-              letterSpacing: '1px' 
-            }}>
+            <div style={{ background: themeColor, color: '#000', fontWeight: 'bold', padding: '6px', marginBottom: '15px', fontSize: '13px', letterSpacing: '1px' }}>
               {gameMode === 'TRAIN' ? `${t.badgeTrain}: ${t.tableFocus} ${Math.min(9, 2 + Math.floor(currentMonsterIdx / 2))}` : `${t.badgeChallenge}`}
             </div>
 
-            {/* Top Status HUD Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '15px', fontSize: '15px' }}>
               <span style={{ color: '#ff0' }}>{t.time} {timeLeft}s</span>
               <span style={{ color: '#ff3333' }}>
@@ -395,32 +414,23 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
             </div>
 
             {/* Dynamic Monster Target Card */}
-            {(() => {
-              const activeMonster = MONSTER_ROSTER[currentMonsterIdx];
-              const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-              const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
-              const hpPercentage = (monsterHp / activeMonster.maxHp) * 100;
-
-              return (
-                <div style={{ padding: '15px', background: '#000', border: `1px solid ${themeColor}`, marginBottom: '20px' }}>
-                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
-                    TARGET: {activeMonster.name} [{activeMonster.tier}]
-                  </div>
-                  <img 
-                    src={monsterImgUrl} 
-                    alt={activeMonster.name} 
-                    style={{ width: '150px', height: '150px', objectFit: 'cover', border: `2px solid ${themeColor}`, marginBottom: '10px', backgroundColor: '#111' }}
-                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=' + activeMonster.name; }}
-                  />
-                  <div style={{ background: '#000', height: '15px', border: `1px solid ${themeColor}`, overflow: 'hidden' }}>
-                    <div style={{ background: themeColor, height: '100%', width: `${hpPercentage}%`, transition: 'width 0.1s' }}></div>
-                  </div>
-                  <div style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>
-                    HP: {monsterHp} / {activeMonster.maxHp}
-                  </div>
-                </div>
-              );
-            })()}
+            <div style={{ padding: '15px', background: '#000', border: `1px solid ${themeColor}`, marginBottom: '20px' }}>
+              <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
+                TARGET #{currentMonsterIdx + 1}: {activeMonster.name} [{activeMonster.tier}]
+              </div>
+              <img 
+                src={monsterImgUrl} 
+                alt={activeMonster.name} 
+                style={{ width: '150px', height: '150px', objectFit: 'cover', border: `2px solid ${themeColor}`, marginBottom: '10px', backgroundColor: '#111' }}
+                onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=' + activeMonster.name; }}
+              />
+              <div style={{ background: '#000', height: '15px', border: `1px solid ${themeColor}`, overflow: 'hidden' }}>
+                <div style={{ background: themeColor, height: '100%', width: `${(monsterHp / activeMonster.maxHp) * 100}%`, transition: 'width 0.1s' }}></div>
+              </div>
+              <div style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>
+                HP: {monsterHp} / {activeMonster.maxHp}
+              </div>
+            </div>
 
             {flashError && <div style={{ color: '#ff3333', fontWeight: 'bold', marginBottom: '10px' }}>{t.wrongWarn}</div>}
             {streak >= 3 && !flashError && <div style={{ color: '#ff0', fontWeight: 'bold', marginBottom: '10px' }}>{t.combo}</div>}
@@ -447,12 +457,50 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
           </div>
         )}
 
+        {/* 🏆 VICTORY PAUSE SCREEN */}
+        {gameState === 'VICTORY' && (
+          <div style={{ padding: '10px 0' }}>
+            <h2 style={{ color: '#0f0', margin: '0 0 10px 0', fontSize: '22px' }}>{t.victoryTitle}</h2>
+            <p style={{ color: '#fff', fontSize: '16px', margin: '0 0 15px 0' }}>
+              {t.victorySub} <strong style={{ color: '#ff0' }}>{activeMonster.name}</strong>!
+            </p>
+            <img 
+              src={monsterImgUrl} 
+              alt={activeMonster.name} 
+              style={{ width: '130px', height: '130px', objectFit: 'cover', border: '2px solid #0f0', marginBottom: '15px', filter: 'grayscale(70%) opacity(0.8)' }}
+              onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/130x130/000000/00ff00?text=' + activeMonster.name; }}
+            />
+            <p style={{ color: '#00f0ff', fontWeight: 'bold', fontSize: '15px', marginBottom: '20px' }}>
+              Current Score: {score} pts | Time Left: {timeLeft}s
+            </p>
+            <button 
+              onClick={startNextStage}
+              style={{ 
+                background: '#0f0', 
+                color: '#000', 
+                border: 'none', 
+                padding: '15px 20px', 
+                fontWeight: 'bold', 
+                fontSize: '18px', 
+                cursor: 'pointer', 
+                width: '100%', 
+                fontFamily: 'monospace' 
+              }}
+            >
+              {t.btnNextStage}
+            </button>
+          </div>
+        )}
+
         {/* GAME OVER SCREEN */}
         {gameState === 'GAMEOVER' && (
           <div>
             <h2 style={{ color: '#ff3333', marginTop: 0 }}>
               {deathReason === 'KILLED' ? t.killedMsg : t.timesUp}
             </h2>
+            <p style={{ fontSize: '18px', color: '#fff' }}>
+              Reached Stage: <strong style={{ color: '#00f0ff' }}>Monster #{highestMonsterReached}</strong>
+            </p>
             <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>
               Final Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}
             </p>
@@ -476,21 +524,25 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         )}
       </div>
 
-      {/* Cyberpunk Daily Ladder Scoreboard Table */}
-      <div style={{ width: '100%', maxWidth: '600px', border: '1px solid #0f0', padding: '20px', backgroundColor: '#000', boxSizing: 'border-box' }}>
+      {/* Cyberpunk Daily Ladder Scoreboard Table with Highest Monster Column */}
+      <div style={{ width: '100%', maxWidth: '650px', border: '1px solid #0f0', padding: '20px', backgroundColor: '#000', boxSizing: 'border-box' }}>
         <h3 style={{ color: '#ff0', textAlign: 'center', marginTop: 0, borderBottom: '1px solid #0f0', paddingBottom: '10px' }}>{t.ladderTitle}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#0f0', borderBottom: '1px dashed #0f0', paddingBottom: '5px', fontSize: '14px' }}>
-            <span style={{ width: '15%' }}>{t.colRank}</span>
-            <span style={{ width: '45%' }}>{t.colName}</span>
-            <span style={{ width: '25%', textAlign: 'right' }}>{t.colScore}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#0f0', borderBottom: '1px dashed #0f0', paddingBottom: '5px', fontSize: '13px' }}>
+            <span style={{ width: '10%' }}>{t.colRank}</span>
+            <span style={{ width: '35%' }}>{t.colName}</span>
+            <span style={{ width: '25%', textAlign: 'center' }}>{t.colMonster}</span>
+            <span style={{ width: '15%', textAlign: 'right' }}>{t.colScore}</span>
             <span style={{ width: '15%', textAlign: 'right' }}>{t.colTries}</span>
           </div>
           {leaderboard.map((row, idx) => (
-            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: row.username === username ? '#ff0' : '#fff', fontSize: '15px', padding: '4px 0' }}>
-              <span style={{ width: '15%' }}>#{idx + 1}</span>
-              <span style={{ width: '45%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.username}</span>
-              <span style={{ width: '25%', textAlign: 'right', fontWeight: 'bold' }}>{row.score}</span>
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: row.username === username ? '#ff0' : '#fff', fontSize: '14px', padding: '4px 0' }}>
+              <span style={{ width: '10%' }}>#{idx + 1}</span>
+              <span style={{ width: '35%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.username}</span>
+              <span style={{ width: '25%', textAlign: 'center', color: '#00f0ff' }}>
+                #{row.max_monster || 1} {MONSTER_ROSTER[(row.max_monster || 1) - 1]?.name || 'Kobold'}
+              </span>
+              <span style={{ width: '15%', textAlign: 'right', fontWeight: 'bold' }}>{row.score}</span>
               <span style={{ width: '15%', textAlign: 'right', color: '#888' }}>{row.attempts}</span>
             </div>
           ))}
