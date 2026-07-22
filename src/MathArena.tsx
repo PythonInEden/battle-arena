@@ -20,28 +20,28 @@ interface MonsterData {
 }
 
 const MONSTER_ROSTER: MonsterData[] = [
-  // 🟢 TIER 1: TRASH MOBS (Score 0 - 30) - Tables 2 & 3
+  // 🟢 TIER 1: TRASH MOBS - Tables 2 & 3
   { id: 1, name: "Kobold", imageKey: "kobold", tier: "TRASH", maxHp: 30 },
   { id: 2, name: "Goblin", imageKey: "goblin", tier: "TRASH", maxHp: 40 },
   { id: 3, name: "Zombie", imageKey: "zombie", tier: "TRASH", maxHp: 50 },
   { id: 4, name: "Skeleton Warrior", imageKey: "skeleton_warrior", tier: "TRASH", maxHp: 60 },
   { id: 5, name: "Gelatinous Cube", imageKey: "gelatinous_cube", tier: "TRASH", maxHp: 70 },
 
-  // 🟡 TIER 2: ELITES (Score 30 - 70) - Tables 4, 5 & 6
+  // 🟡 TIER 2: ELITES - Tables 4, 5 & 6
   { id: 6, name: "Orc Berserker", imageKey: "orc_berserker", tier: "ELITE", maxHp: 80 },
   { id: 7, name: "Bugbear", imageKey: "bugbear", tier: "ELITE", maxHp: 90 },
   { id: 8, name: "Gargoyle", imageKey: "gargoyle", tier: "ELITE", maxHp: 100 },
   { id: 9, name: "Mimic Chest", imageKey: "mimic_chest", tier: "ELITE", maxHp: 110 },
   { id: 10, name: "Owlbear", imageKey: "owlbear", tier: "ELITE", maxHp: 120 },
 
-  // 🟠 TIER 3: MINI-BOSSES (Score 70 - 120) - Tables 7 & 8
+  // 🟠 TIER 3: MINI-BOSSES - Tables 7 & 8
   { id: 11, name: "Displacer Beast", imageKey: "displacer_beast", tier: "BOSS", maxHp: 140 },
   { id: 12, name: "Cave Troll", imageKey: "cave_troll", tier: "BOSS", maxHp: 160 },
   { id: 13, name: "Chimera", imageKey: "chimera", tier: "BOSS", maxHp: 180 },
   { id: 14, name: "Mind Flayer", imageKey: "mind_flayer", tier: "BOSS", maxHp: 200 },
   { id: 15, name: "Iron Golem", imageKey: "iron_golem", tier: "BOSS", maxHp: 220 },
 
-  // 🔴 TIER 4: LEGENDARY BOSSES (Score 120+) - Table 9
+  // 🔴 TIER 4: LEGENDARY BOSSES - Table 9
   { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 250 },
   { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 300 },
   { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 350 },
@@ -62,6 +62,10 @@ const MATH_LANG = {
     modeTrain: "🎓 TRAINING MODE (Table 2 → 9)",
     modeChallenge: "⚡ CHALLENGE ARENA (Mixed Blitz)",
     selectMode: "SELECT GAME MODE:",
+    badgeTrain: "🎓 TRAINING MODE",
+    badgeChallenge: "⚡ CHALLENGE ARENA",
+    tableFocus: "FOCUS: TABLE",
+    mixedFocus: "FOCUS: ALL TABLES MIXED (2-9)",
     combo: "🔥 BEYOND GODLIKE COMBO! 🔥",
     timesUp: "⌛ TIME'S UP!",
     killedMsg: "💀 YOU WERE KILLED BY THE MONSTER!",
@@ -87,6 +91,10 @@ const MATH_LANG = {
     modeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP (Bảng 2 → 9)",
     modeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH (Ngẫu Nhiên)",
     selectMode: "CHỌN CHẾ ĐỘ CHƠI:",
+    badgeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP",
+    badgeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH",
+    tableFocus: "ĐANG TẬP BẢNG",
+    mixedFocus: "TỔNG HỢP BẢNG 2 ĐẾN 9",
     combo: "🔥 LIÊN HOÀN BẠO KÍCH! 🔥",
     timesUp: "⌛ HẾT GIỜ!",
     killedMsg: "💀 BẠN ĐÃ BỊ QUÁI VẬT BẮT BÀI & HẠ GỤC!",
@@ -102,14 +110,12 @@ const MATH_LANG = {
   }
 };
 
-// Smart Question Engine
 const generateQuestion = (mode: 'TRAIN' | 'CHALLENGE', monsterIdx: number): Question => {
   let num1 = 2;
   if (mode === 'TRAIN') {
-    // Stage Progression: Monster 0-1 => Table 2, Monster 2-3 => Table 3 ... Max Table 9
     num1 = Math.min(9, 2 + Math.floor(monsterIdx / 2));
   } else {
-    num1 = Math.floor(Math.random() * 8) + 2; // Random 2-9
+    num1 = Math.floor(Math.random() * 8) + 2; 
   }
 
   const num2 = Math.floor(Math.random() * 8) + 2; 
@@ -140,6 +146,9 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
   const inputRef = useRef<HTMLInputElement>(null);
   const t = MATH_LANG[locale];
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // Dynamic Theme Colors
+  const themeColor = gameMode === 'TRAIN' ? '#00f0ff' : '#ffaa00'; // Cyan vs Orange/Gold
 
   useEffect(() => {
     fetchLeaderboard();
@@ -180,7 +189,6 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // Timer loop
   useEffect(() => {
     if (gameState !== 'BATTLE') return;
     if (timeLeft <= 0) {
@@ -191,14 +199,12 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     return () => clearTimeout(timer);
   }, [timeLeft, gameState]);
 
-  // Anti-Luck & Live Typing Check
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setUserInput(value);
 
     const targetAnsStr = question.answer.toString();
 
-    // 1. Correct Answer Match
     if (parseInt(value) === question.answer) {
       const newStreak = streak + 1;
       setStreak(newStreak);
@@ -220,7 +226,6 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
       return;
     }
 
-    // 2. Anti-Spam Miss Check: Trigger miss if typed digits match/exceed answer length & is wrong
     if (value.length >= targetAnsStr.length && parseInt(value) !== question.answer) {
       const remainingLives = lives - 1;
       setLives(remainingLives);
@@ -294,8 +299,18 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         <p style={{ color: '#888', margin: '0' }}>{t.sub} | USER: <span style={{color: '#ff0'}}>{username}</span></p>
       </div>
 
-      {/* Main Play Arena Box */}
-      <div style={{ border: flashError ? '2px solid #ff0000' : '2px solid #0f0', padding: '30px', width: '100%', maxWidth: '450px', backgroundColor: '#000', textAlign: 'center', boxSizing: 'border-box', transition: 'border 0.2s' }}>
+      {/* Main Play Arena Box with Dynamic Theme Borders */}
+      <div style={{ 
+        border: flashError ? '3px solid #ff0000' : `3px solid ${themeColor}`, 
+        padding: '30px', 
+        width: '100%', 
+        maxWidth: '450px', 
+        backgroundColor: '#000', 
+        textAlign: 'center', 
+        boxSizing: 'border-box', 
+        transition: 'border 0.2s',
+        boxShadow: `0 0 15px ${flashError ? '#ff0000' : themeColor}44`
+      }}>
         
         {/* START SCREEN: Mode Selection */}
         {gameState === 'START' && (
@@ -304,19 +319,51 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
             
             <button 
               onClick={() => setGameMode('TRAIN')} 
-              style={{ background: gameMode === 'TRAIN' ? '#0f0' : '#000', color: gameMode === 'TRAIN' ? '#000' : '#0f0', border: '2px solid #0f0', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', textAlign: 'left' }}
+              style={{ 
+                background: gameMode === 'TRAIN' ? '#00f0ff' : '#000', 
+                color: gameMode === 'TRAIN' ? '#000' : '#00f0ff', 
+                border: '2px solid #00f0ff', 
+                padding: '12px', 
+                fontWeight: 'bold', 
+                cursor: 'pointer', 
+                fontFamily: 'monospace', 
+                textAlign: 'left' 
+              }}
             >
               {t.modeTrain}
             </button>
 
             <button 
               onClick={() => setGameMode('CHALLENGE')} 
-              style={{ background: gameMode === 'CHALLENGE' ? '#0f0' : '#000', color: gameMode === 'CHALLENGE' ? '#000' : '#0f0', border: '2px solid #0f0', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', textAlign: 'left' }}
+              style={{ 
+                background: gameMode === 'CHALLENGE' ? '#ffaa00' : '#000', 
+                color: gameMode === 'CHALLENGE' ? '#000' : '#ffaa00', 
+                border: '2px solid #ffaa00', 
+                padding: '12px', 
+                fontWeight: 'bold', 
+                cursor: 'pointer', 
+                fontFamily: 'monospace', 
+                textAlign: 'left' 
+              }}
             >
               {t.modeChallenge}
             </button>
 
-            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace', marginTop: '10px' }}>
+            <button 
+              onClick={startGame} 
+              style={{ 
+                background: themeColor, 
+                color: '#000', 
+                border: 'none', 
+                padding: '15px 30px', 
+                fontWeight: 'bold', 
+                fontSize: '18px', 
+                cursor: 'pointer', 
+                width: '100%', 
+                fontFamily: 'monospace', 
+                marginTop: '10px' 
+              }}
+            >
               {t.btnStart}
             </button>
           </div>
@@ -325,6 +372,19 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         {/* BATTLE SCREEN */}
         {gameState === 'BATTLE' && (
           <div>
+            {/* 🏷️ VERY OBVIOUS MODE BADGE HEADER */}
+            <div style={{ 
+              background: themeColor, 
+              color: '#000', 
+              fontWeight: 'bold', 
+              padding: '6px', 
+              marginBottom: '15px', 
+              fontSize: '13px', 
+              letterSpacing: '1px' 
+            }}>
+              {gameMode === 'TRAIN' ? `${t.badgeTrain}: ${t.tableFocus} ${Math.min(9, 2 + Math.floor(currentMonsterIdx / 2))}` : `${t.badgeChallenge}`}
+            </div>
+
             {/* Top Status HUD Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '15px', fontSize: '15px' }}>
               <span style={{ color: '#ff0' }}>{t.time} {timeLeft}s</span>
@@ -340,26 +400,20 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
               const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
               const monsterImgUrl = `${supabaseUrl}/storage/v1/object/public/hero-images/${activeMonster.imageKey}.webp`;
               const hpPercentage = (monsterHp / activeMonster.maxHp) * 100;
-              const currentTable = Math.min(9, 2 + Math.floor(currentMonsterIdx / 2));
 
               return (
-                <div style={{ padding: '15px', background: '#000', border: '1px solid #0f0', marginBottom: '20px' }}>
-                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px', textTransform: 'uppercase' }}>
+                <div style={{ padding: '15px', background: '#000', border: `1px solid ${themeColor}`, marginBottom: '20px' }}>
+                  <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
                     TARGET: {activeMonster.name} [{activeMonster.tier}]
                   </div>
-                  {gameMode === 'TRAIN' && (
-                    <div style={{ color: '#0f0', fontSize: '12px', marginBottom: '8px' }}>
-                      [ STAGE STACK: BẢNG {currentTable} ]
-                    </div>
-                  )}
                   <img 
                     src={monsterImgUrl} 
                     alt={activeMonster.name} 
-                    style={{ width: '150px', height: '150px', objectFit: 'cover', border: '2px solid #0f0', marginBottom: '10px', backgroundColor: '#111' }}
+                    style={{ width: '150px', height: '150px', objectFit: 'cover', border: `2px solid ${themeColor}`, marginBottom: '10px', backgroundColor: '#111' }}
                     onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/150x150/000000/00ff00?text=' + activeMonster.name; }}
                   />
-                  <div style={{ background: '#000', height: '15px', border: '1px solid #0f0', overflow: 'hidden' }}>
-                    <div style={{ background: '#0f0', height: '100%', width: `${hpPercentage}%`, transition: 'width 0.1s' }}></div>
+                  <div style={{ background: '#000', height: '15px', border: `1px solid ${themeColor}`, overflow: 'hidden' }}>
+                    <div style={{ background: themeColor, height: '100%', width: `${hpPercentage}%`, transition: 'width 0.1s' }}></div>
                   </div>
                   <div style={{ color: '#888', fontSize: '12px', marginTop: '5px' }}>
                     HP: {monsterHp} / {activeMonster.maxHp}
@@ -378,7 +432,16 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
               type="number"
               value={userInput}
               onChange={handleInputChange}
-              style={{ background: '#000', color: flashError ? '#ff3333' : '#0f0', border: `2px solid ${flashError ? '#ff3333' : '#0f0'}`, fontSize: '3rem', width: '140px', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }}
+              style={{ 
+                background: '#000', 
+                color: flashError ? '#ff3333' : themeColor, 
+                border: `2px solid ${flashError ? '#ff3333' : themeColor}`, 
+                fontSize: '3rem', 
+                width: '140px', 
+                textAlign: 'center', 
+                outline: 'none', 
+                fontFamily: 'monospace' 
+              }}
               placeholder="?"
             />
           </div>
@@ -393,7 +456,20 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
             <p style={{ fontSize: '20px', color: '#fff', marginBottom: '25px' }}>
               Final Score: <strong style={{color:'#ff0'}}>{score}</strong> {t.points}
             </p>
-            <button onClick={startGame} style={{ background: '#0f0', color: '#000', border: 'none', padding: '15px 30px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer', width: '100%', fontFamily: 'monospace' }}>
+            <button 
+              onClick={startGame} 
+              style={{ 
+                background: themeColor, 
+                color: '#000', 
+                border: 'none', 
+                padding: '15px 30px', 
+                fontWeight: 'bold', 
+                fontSize: '18px', 
+                cursor: 'pointer', 
+                width: '100%', 
+                fontFamily: 'monospace' 
+              }}
+            >
               {t.btnAgain}
             </button>
           </div>
