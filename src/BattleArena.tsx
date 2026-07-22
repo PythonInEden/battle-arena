@@ -709,7 +709,7 @@ export function BattleArena() {
   };
 
   // Helper to calculate Skill Usage Charges & Cooldowns
-  const getSkillStatus = (matchLogs: string[], fighterName: string, skillName: string, currentRound: number) => {
+  const getSkillStatus = (matchLogs: string[], fighterName: string, skillName: string, _currentRound: number) => {
     const skillLogs = matchLogs.filter(log => log.includes(fighterName) && log.includes(`[${skillName}]`));
     const timesUsed = skillLogs.length;
     const chargesLeft = Math.max(0, 2 - timesUsed); // 2 Max Uses per match
