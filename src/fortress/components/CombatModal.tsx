@@ -114,8 +114,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <img
                   src={getMonsterImageUrl(encounter.monster.imageKey)}
                   alt={encounter.monster.id}
-                  style={{ width: '130px', height: '130px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #ff3333', backgroundColor: '#000' }}
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/130x130/000000/ff3333?text=' + encounter.monster.id; }}
+                  style={{ width: '180px', height: '180px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #ff3333', backgroundColor: '#000' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/180x180/000000/ff3333?text=' + encounter.monster.id; }}
                 />
               </div>
               <div>{t.spottedMonster} <strong style={{ color: '#ff3333' }}>x{encounter.quantity} {getMonsterName(encounter.monster.nameKey)}</strong></div>
@@ -154,8 +154,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <img
                   src={getMonsterImageUrl(encounter.monster.imageKey)}
                   alt={encounter.monster.id}
-                  style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ff3333', margin: '0 auto 6px auto', display: 'block' }}
-                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/80x80/000000/ff3333?text=' + encounter.monster.id; }}
+                  style={{ width: '130px', height: '130px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ff3333', margin: '0 auto 8px auto', display: 'block' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/130x130/000000/ff3333?text=' + encounter.monster.id; }}
                 />
                 <h4 style={{ color: '#ff3333', margin: '4px 0 6px 0' }}>{getMonsterName(encounter.monster.nameKey)} (x{encounter.quantity})</h4>
                 <div>❤️ HP: {currentMonsterHp} / {encounter.maxHp}</div>

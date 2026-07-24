@@ -29,6 +29,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2
   });
 
+  const [maxWarriors, setMaxWarriors] = useState<number>(30);
+
   const [inventory, setInventory] = useState<PlayerInventory>({
     gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0
   });
@@ -243,6 +245,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
     setTroops((prev) => ({ ...prev, warriors: 15 }));
+    setMaxWarriors(15);
     setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
     setRemainingMF(10);
     setLogs((prev) => [`💀 Frontline routed! Washed ashore at Sanctuary with rescue pack.`, ...prev]);
@@ -253,7 +256,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     let updatedTroops = { ...troops };
     if (item.id === 'rations') setInventory((prev) => ({ ...prev, rations: prev.rations + 10 }));
-    if (item.id === 'warriors') updatedTroops.warriors += 5;
+    if (item.id === 'warriors') {
+      updatedTroops.warriors += 5;
+      setMaxWarriors((prev) => prev + 5);
+    }
     if (item.id === 'scouts') updatedTroops.scouts += 1;
     if (item.id === 'clerics') updatedTroops.clerics += 1;
     if (item.id === 'raiders') updatedTroops.raiders += 1;
@@ -298,10 +304,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       logMsg += ` ${t.logStarvation} ${casualties} ${t.logWarriorsLost}`;
     }
 
-    // Passive Cleric Healing on Rest/Pass Turn (+1 Warrior per Cleric)
+    // Passive Cleric Healing on Rest/Pass Turn (+1 Warrior per Cleric up to max recruited capacity)
     let clericHealedMsg = '';
-    if (troops.clerics > 0) {
-      const healedWarriors = Math.min(50, newWarriors + troops.clerics);
+    if (troops.clerics > 0 && newWarriors < maxWarriors) {
+      const healedWarriors = Math.min(maxWarriors, newWarriors + troops.clerics);
       if (healedWarriors > newWarriors) {
         const diff = healedWarriors - newWarriors;
         newWarriors = healedWarriors;
@@ -351,7 +357,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       {/* Dev Sandbox Army Tweaker */}
       <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #333', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
-        <button onClick={() => setTroops(p => ({ ...p, warriors: p.warriors + 10 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
+        <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
         <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>
     {t.addGold}
   </button>
