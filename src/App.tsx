@@ -98,9 +98,36 @@ export default function App() {
   if (currentMode === 'fortress') {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#050505', padding: '20px' }}>
-        <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}>
-          {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
-        </button>
+        {/* Top Navigation Bar with Language Switcher */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <button 
+            onClick={() => navigateToMode('menu')} 
+            style={{ ...backButtonStyle, marginBottom: 0, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}
+          >
+            {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
+          </button>
+
+          {/* Retro Fortress Language Selector */}
+          <select 
+            value={locale} 
+            onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: '#000',
+              color: '#00ff00',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: '14px',
+              outline: 'none',
+            }}
+          >
+            <option value="vi">🇻🇳 Tiếng Việt</option>
+            <option value="en">🇬🇧 English</option>
+          </select>
+        </div>
+
         <FortressWorkspace locale={locale} />
       </div>
     );
