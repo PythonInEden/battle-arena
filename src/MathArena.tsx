@@ -18,36 +18,36 @@ interface MonsterData {
   imageKey: string;
   tier: 'TRASH' | 'ELITE' | 'BOSS' | 'LEGENDARY';
   maxHp: number;
-  damagePerHit: number; // Low damage = More math practice per level!
+  damagePerHit: number;
 }
 
 const MONSTER_ROSTER: MonsterData[] = [
-  // 🟢 TIER 1: TRASH MOBS (3 HP/hit = 20 to 25 math questions per monster)
+  // 🟢 TIER 1: TRASH MOBS (Table 2 & Table 3)
   { id: 1, name: "Kobold", imageKey: "kobold", tier: "TRASH", maxHp: 40, damagePerHit: 2 },
   { id: 2, name: "Goblin", imageKey: "goblin", tier: "TRASH", maxHp: 50, damagePerHit: 2 },
   { id: 3, name: "Zombie", imageKey: "zombie", tier: "TRASH", maxHp: 50, damagePerHit: 2 },
   { id: 4, name: "Skeleton Warrior", imageKey: "skeleton_warrior", tier: "TRASH", maxHp: 60, damagePerHit: 2 },
   { id: 5, name: "Gelatinous Cube", imageKey: "gelatinous_cube", tier: "TRASH", maxHp: 60, damagePerHit: 2 },
 
-  // 🟡 TIER 2: ELITES (4 HP/hit = 20 to 25 math questions per monster)
+  // 🟡 TIER 2: ELITES (Table 4, Table 5 & Table 6)
   { id: 6, name: "Orc Berserker", imageKey: "orc_berserker", tier: "ELITE", maxHp: 80, damagePerHit: 4 },
   { id: 7, name: "Bugbear", imageKey: "bugbear", tier: "ELITE", maxHp: 85, damagePerHit: 4 },
   { id: 8, name: "Gargoyle", imageKey: "gargoyle", tier: "ELITE", maxHp: 90, damagePerHit: 4 },
   { id: 9, name: "Mimic Chest", imageKey: "mimic_chest", tier: "ELITE", maxHp: 95, damagePerHit: 4 },
   { id: 10, name: "Owlbear", imageKey: "owlbear", tier: "ELITE", maxHp: 100, damagePerHit: 4 },
 
-  // 🟠 TIER 3: MINI-BOSSES (5 HP/hit = 24 to 28 math questions per monster)
+  // 🟠 TIER 3: MINI-BOSSES (Table 7 & Table 8)
   { id: 11, name: "Displacer Beast", imageKey: "displacer_beast", tier: "BOSS", maxHp: 120, damagePerHit: 5 },
   { id: 12, name: "Cave Troll", imageKey: "cave_troll", tier: "BOSS", maxHp: 125, damagePerHit: 5 },
   { id: 13, name: "Chimera", imageKey: "chimera", tier: "BOSS", maxHp: 130, damagePerHit: 5 },
   { id: 14, name: "Mind Flayer", imageKey: "mind_flayer", tier: "BOSS", maxHp: 135, damagePerHit: 5 },
   { id: 15, name: "Iron Golem", imageKey: "iron_golem", tier: "BOSS", maxHp: 140, damagePerHit: 5 },
 
-  // 🔴 TIER 4: LEGENDARY BOSSES (6 HP/hit = 20 to 25 math questions per monster)
-  { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 200, damagePerHit: 6 },
-  { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 210, damagePerHit: 6 },
-  { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 220, damagePerHit: 7 },
-  { id: 19, name: "Ancient Red Dragon", imageKey: "ancient_red_dragon", tier: "LEGENDARY", maxHp: 230, damagePerHit: 7 },
+  // 🔴 TIER 4: LEGENDARY BOSSES (Table 9)
+  { id: 16, name: "Frost Giant", imageKey: "frost_giant", tier: "LEGENDARY", maxHp: 200, damagePerHit: 10 },
+  { id: 17, name: "Shadow Lich", imageKey: "shadow_lich", tier: "LEGENDARY", maxHp: 210, damagePerHit: 10 },
+  { id: 18, name: "Beholder", imageKey: "beholder", tier: "LEGENDARY", maxHp: 220, damagePerHit: 10 },
+  { id: 19, name: "Ancient Red Dragon", imageKey: "ancient_red_dragon", tier: "LEGENDARY", maxHp: 230, damagePerHit: 10 },
   { id: 20, name: "The Tarrasque", imageKey: "the_tarrasque", tier: "LEGENDARY", maxHp: 250, damagePerHit: 10 },
 ];
 
@@ -61,9 +61,11 @@ const MATH_LANG = {
     time: "⏳ Time:",
     score: "🏆 Score:",
     lives: "❤️ Lives:",
-    modeTrain: "🎓 TRAINING MODE (Table 2 → 9)",
-    modeChallenge: "⚡ CHALLENGE ARENA (Mixed Blitz)",
+    modeTrain: "🎓 TRAINING MODE (Select Table)",
+    modeChallenge: "⚡ CHALLENGE ARENA (Mixed 2-9)",
     selectMode: "SELECT GAME MODE:",
+    selectTableLabel: "🎯 TARGET TIMES TABLE TO PRACTICE:",
+    optTable: "Table",
     badgeTrain: "🎓 TRAINING MODE",
     badgeChallenge: "⚡ CHALLENGE ARENA",
     tableFocus: "FOCUS: TABLE",
@@ -94,9 +96,11 @@ const MATH_LANG = {
     time: "⏳ Thời gian:",
     score: "🏆 Điểm số:",
     lives: "❤️ Máu:",
-    modeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP (Bảng 2 → 9)",
-    modeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH (Ngẫu Nhiên)",
+    modeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP (Chọn Bảng)",
+    modeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH (Tổng Hợp)",
     selectMode: "CHỌN CHẾ ĐỘ CHƠI:",
+    selectTableLabel: "🎯 CHỌN BẢNG CẦN TẬP TRUNG LUYỆN:",
+    optTable: "Bảng",
     badgeTrain: "🎓 CHẾ ĐỘ LUYỆN TẬP",
     badgeChallenge: "⚡ ĐẤU TRƯỜNG THỬ THÁCH",
     tableFocus: "ĐANG TẬP BẢNG",
@@ -120,12 +124,13 @@ const MATH_LANG = {
   }
 };
 
-const generateQuestion = (mode: 'TRAIN' | 'CHALLENGE', monsterIdx: number): Question => {
+// Generates targeted questions based on mode and chosen table
+const generateQuestion = (mode: 'TRAIN' | 'CHALLENGE', targetTable: number): Question => {
   let table = 2;
   if (mode === 'TRAIN') {
-    table = Math.min(9, 2 + Math.floor(monsterIdx / 2));
+    table = targetTable; // Lock 100% of questions to the kid's chosen practice table!
   } else {
-    table = Math.floor(Math.random() * 8) + 2; 
+    table = Math.floor(Math.random() * 8) + 2; // Random 2 to 9
   }
 
   const multiplier = Math.floor(Math.random() * 10) + 1; // 1 to 10
@@ -142,10 +147,27 @@ const generateQuestion = (mode: 'TRAIN' | 'CHALLENGE', monsterIdx: number): Ques
   }
 };
 
+// Maps chosen Times Table (2-9) to initial starting Monster index
+const getInitialMonsterIndexForTable = (table: number): number => {
+  switch (table) {
+    case 2: return 0;  // Kobold
+    case 3: return 2;  // Zombie
+    case 4: return 4;  // Gelatinous Cube
+    case 5: return 6;  // Orc Berserker
+    case 6: return 8;  // Mimic Chest
+    case 7: return 10; // Displacer Beast
+    case 8: return 12; // Chimera
+    case 9: return 15; // Frost Giant
+    default: return 0;
+  }
+};
+
 export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; supabase: any }) {
   const [username, setUsername] = useState(() => localStorage.getItem('math_brother_name') || '');
   const [typedName, setTypedName] = useState('');
   const [gameMode, setGameMode] = useState<'TRAIN' | 'CHALLENGE'>('TRAIN');
+  const [selectedTable, setSelectedTable] = useState<number>(2); // Default to Table 2
+  
   const [gameState, setGameState] = useState<'START' | 'BATTLE' | 'VICTORY' | 'GAMEOVER'>('START');
   const [deathReason, setDeathReason] = useState<'TIMEOUT' | 'KILLED' | null>(null);
   
@@ -198,11 +220,15 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     setStreak(0);
     setLives(3);
     setDeathReason(null);
-    setCurrentMonsterIdx(0);
-    setHighestMonsterReached(1);
-    setMonsterHp(MONSTER_ROSTER[0].maxHp);
+    
+    // Jump directly to appropriate monster level based on mode & chosen table!
+    const startIdx = gameMode === 'TRAIN' ? getInitialMonsterIndexForTable(selectedTable) : 0;
+    
+    setCurrentMonsterIdx(startIdx);
+    setHighestMonsterReached(startIdx + 1);
+    setMonsterHp(MONSTER_ROSTER[startIdx].maxHp);
     setTimeLeft(60);
-    setQuestion(generateQuestion(gameMode, 0));
+    setQuestion(generateQuestion(gameMode, selectedTable));
     setGameState('BATTLE');
     setUserInput('');
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -216,7 +242,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
     setHighestMonsterReached(newHighest);
 
     setMonsterHp(MONSTER_ROSTER[nextIdx].maxHp);
-    setQuestion(generateQuestion(gameMode, nextIdx));
+    setQuestion(generateQuestion(gameMode, selectedTable));
     setGameState('BATTLE');
     setUserInput('');
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -252,7 +278,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
       }
 
       setMonsterHp(newHp);
-      setQuestion(generateQuestion(gameMode, currentMonsterIdx));
+      setQuestion(generateQuestion(gameMode, selectedTable));
       setUserInput('');
       return;
     }
@@ -350,11 +376,12 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         boxShadow: `0 0 15px ${flashError ? '#ff0000' : themeColor}44`
       }}>
         
-        {/* START SCREEN: Mode Selection */}
+        {/* START SCREEN: Mode & Times Table Selection */}
         {gameState === 'START' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <div style={{ color: '#ff0', fontWeight: 'bold', fontSize: '15px' }}>{t.selectMode}</div>
             
+            {/* Mode 1: Training Mode Button */}
             <button 
               onClick={() => setGameMode('TRAIN')} 
               style={{ 
@@ -372,6 +399,38 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
               {t.modeTrain}
             </button>
 
+            {/* 🎯 TARGET TABLE DROPDOWN (Visible when Training Mode active) */}
+            {gameMode === 'TRAIN' && (
+              <div style={{ background: '#021820', border: '1px dashed #00f0ff', padding: '12px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ color: '#00f0ff', fontSize: '12px', fontWeight: 'bold' }}>
+                  {t.selectTableLabel}
+                </label>
+                <select 
+                  value={selectedTable} 
+                  onChange={(e) => setSelectedTable(parseInt(e.target.value))}
+                  style={{
+                    background: '#000',
+                    color: '#00f0ff',
+                    border: '2px solid #00f0ff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    fontFamily: 'monospace',
+                    outline: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    width: '100%'
+                  }}
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9].map((tbl) => (
+                    <option key={tbl} value={tbl}>
+                      🎯 {t.optTable} {tbl} ({tbl} × 1 → {tbl} × 10 & ÷ {tbl})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Mode 2: Challenge Mode Button */}
             <button 
               onClick={() => setGameMode('CHALLENGE')} 
               style={{ 
@@ -413,7 +472,7 @@ export default function MathArena({ locale, supabase }: { locale: 'en' | 'vi'; s
         {gameState === 'BATTLE' && (
           <div>
             <div style={{ background: themeColor, color: '#000', fontWeight: 'bold', padding: '6px', marginBottom: '12px', fontSize: '12px', letterSpacing: '1px' }}>
-              {gameMode === 'TRAIN' ? `${t.badgeTrain}: ${t.tableFocus} ${Math.min(9, 2 + Math.floor(currentMonsterIdx / 2))}` : `${t.badgeChallenge}`}
+              {gameMode === 'TRAIN' ? `${t.badgeTrain}: ${t.tableFocus} ${selectedTable}` : `${t.badgeChallenge}`}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#fff', fontWeight: 'bold', marginBottom: '12px', fontSize: '13px' }}>
