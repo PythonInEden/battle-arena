@@ -40,6 +40,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [activeEncounter, setActiveEncounter] = useState<EncounterGroup | null>(null);
   const [allowSurpriseRetreat, setAllowSurpriseRetreat] = useState<boolean>(false);
 
+  // Dropped Gold Modal State
+  const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -81,13 +84,59 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     );
   };
 
-  // Helper to add gold with capacity guardrail checks
+  // Deposit excess gold onto current tile ground stack & trigger modal
+  const depositExcessGoldToTile = (pos: Position, excessAmount: number) => {
+    if (excessAmount <= 0) return;
+
+    setGrid((prevGrid) =>
+      prevGrid.map((row) =>
+        row.map((tile) => {
+          if (tile.x === pos.x && tile.y === pos.y) {
+            const currentTileGold = tile.droppedGold ?? 0;
+            return { ...tile, droppedGold: currentTileGold + excessAmount };
+          }
+          return tile;
+        })
+      )
+    );
+
+    setDroppedGoldNotice({ amount: excessAmount, pos });
+  };
+
+  // Helper to add gold with capacity guardrails + ground drop
   const addGoldSafely = (goldAmount: number) => {
     const result = StructuralGuardrails.protectInventoryState(inventory, troops, goldAmount, 0);
     setInventory(result.updatedInventory);
 
     if (result.droppedGold > 0) {
-      setLogs((prev) => [`${t.droppedGoldWarn} ${result.droppedGold} GP!`, ...prev]);
+      depositExcessGoldToTile(playerPosition, result.droppedGold);
+    }
+  };
+
+  // Check and auto-pickup ground gold when stepping on a tile
+  const checkGroundLootPickup = (pos: Position, currentGold: number, currentCap: number) => {
+    const targetTile = grid[pos.x]?.[pos.y];
+    const tileGold = targetTile?.droppedGold ?? 0;
+
+    if (tileGold > 0 && currentGold < currentCap) {
+      const freeCap = currentCap - currentGold;
+      const pickupAmount = Math.min(tileGold, freeCap);
+      const remainingTileGold = tileGold - pickupAmount;
+
+      setInventory((prev) => ({ ...prev, gold: prev.gold + pickupAmount }));
+
+      setGrid((prevGrid) =>
+        prevGrid.map((row) =>
+          row.map((tile) => {
+            if (tile.x === pos.x && tile.y === pos.y) {
+              return { ...tile, droppedGold: remainingTileGold };
+            }
+            return tile;
+          })
+        )
+      );
+
+      setLogs((prev) => [`${t.pickupGoldLog} +${pickupAmount} GP [${pos.x}, ${pos.y}]!`, ...prev]);
     }
   };
 
@@ -117,6 +166,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setRemainingMF(nextMF);
 
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+
+      // Check auto-pickup ground gold on tile arrival
+      checkGroundLootPickup({ x: targetTile.x, y: targetTile.y }, inventory.gold, maxGoldCapacity);
 
       const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
       setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
@@ -167,6 +219,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     );
     setInventory(guardrailResult.updatedInventory);
 
+    if (guardrailResult.droppedGold > 0) {
+      depositExcessGoldToTile(playerPosition, guardrailResult.droppedGold);
+    }
+
     let victoryLog = `🏆 Defeated ${activeEncounter?.quantity}x ${monsterName}! Looted +${goldLooted} GP, Harvested +${rationsGained} Rations.`;
     if (guardrailResult.droppedGold > 0) {
       victoryLog += ` (${t.droppedGoldWarn} ${guardrailResult.droppedGold} GP)`;
@@ -191,21 +247,28 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
     setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - pricePaid) }));
 
+    let updatedTroops = { ...troops };
     if (item.id === 'rations') setInventory((prev) => ({ ...prev, rations: prev.rations + 10 }));
-    if (item.id === 'warriors') setTroops((prev) => ({ ...prev, warriors: prev.warriors + 5 }));
-    if (item.id === 'scouts') {
-      const newScoutCount = troops.scouts + 1;
-      setTroops((prev) => ({ ...prev, scouts: newScoutCount }));
-      revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(newScoutCount));
-    }
-    if (item.id === 'clerics') setTroops((prev) => ({ ...prev, clerics: prev.clerics + 1 }));
-    if (item.id === 'raiders') setTroops((prev) => ({ ...prev, raiders: prev.raiders + 1 }));
-    if (item.id === 'mules') setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
-    if (item.id === 'wizard') setTroops((prev) => ({ ...prev, wizards: 1 }));
+    if (item.id === 'warriors') updatedTroops.warriors += 5;
+    if (item.id === 'scouts') updatedTroops.scouts += 1;
+    if (item.id === 'clerics') updatedTroops.clerics += 1;
+    if (item.id === 'raiders') updatedTroops.raiders += 1;
+    if (item.id === 'mules') updatedTroops.mules += 1;
+    if (item.id === 'wizard') updatedTroops.wizards = 1;
     if (item.id === 'raft_bundle') {
       setInventory((prev) => ({ ...prev, hasRaft: true }));
-      setTroops((prev) => ({ ...prev, mules: prev.mules + 4 }));
+      updatedTroops.mules += 4;
     }
+
+    setTroops(updatedTroops);
+
+    if (item.id === 'scouts') {
+      revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(updatedTroops.scouts));
+    }
+
+    // Auto-pickup ground gold if capacity increased from bought Mules/Warriors!
+    const newCap = StructuralGuardrails.calculateMaxGoldCapacity(updatedTroops);
+    checkGroundLootPickup(playerPosition, inventory.gold - pricePaid, newCap);
 
     const itemName = (t as any)[item.nameKey] || item.id;
     setIsShopOpen(false);
@@ -348,6 +411,28 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         />
       )}
 
+{/* Dropped Gold Modal Dialog (Requires explicit OK click) */}
+      {droppedGoldNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.droppedGoldModalTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.droppedGoldModalMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff0', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+              <div>💰 {t.droppedAmountLabel} <strong style={{ color: '#ff0' }}>+{droppedGoldNotice.amount} GP</strong></div>
+              <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{droppedGoldNotice.pos.x}, {droppedGoldNotice.pos.y}]</strong></div>
+            </div>
+
+            <button
+              onClick={() => setDroppedGoldNotice(null)}
+              style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Action Ticker Log */}
       <div style={{ backgroundColor: '#050505', border: '1px solid #00ff00', padding: '12px', maxHeight: '150px', overflowY: 'auto' }}>
         <h4 style={{ margin: '0 0 6px 0', color: '#fff', borderBottom: '1px solid #222' }}>{t.logHeader}</h4>

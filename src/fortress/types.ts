@@ -15,11 +15,8 @@ export interface TileState {
   terrain: TerrainType;
   isExplored: boolean;
   hasRelic: QuestRelic | null;
-  hasHiddenLoot: {
-    gold: number;
-    hasRaft: boolean;
-    turnsRemaining: number;
-  } | null;
+  hasHiddenLoot: number | null;
+  droppedGold?: number; // Ground Loot stack deposited when capacity is exceeded
 }
 
 export interface TroopRoster {

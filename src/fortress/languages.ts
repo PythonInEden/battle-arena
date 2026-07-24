@@ -38,6 +38,11 @@ export const FORTRESS_LANG = {
     costLabel: "Cost",
     unexploredLabel: "Unexplored (Fog of War)",
 
+    // Viewport Controls
+    zoomIn: "🔍 Zoom In",
+    zoomOut: "🔍 Zoom Out",
+    centerCam: "🎯 Center Player",
+
     // Header & Nav
     headerTitle: "🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.3-ALPHA",
     headerSub: "Live Navigation & Town Marketplace Integration",
@@ -132,6 +137,11 @@ export const FORTRESS_LANG = {
     inedibleMsg: "🦴 Inedible carcass. No meat can be harvested.",
     goldLootGained: "Gold looted from monsters:",
     droppedGoldWarn: "⚠️ Excess Gold dropped due to carrying capacity limit! Dropped",
+    droppedGoldModalTitle: "📦 EXCESS GOLD DROPPED ON GROUND!",
+    droppedGoldModalMsg: "Your army reached maximum carrying capacity! Excess gold was placed on the ground tile. Return here with Mules or Warriors to reclaim it.",
+    droppedAmountLabel: "Gold Dropped on Ground:",
+    locationLabel: "Coordinates:",
+    pickupGoldLog: "💰 Recovered ground loot! Picked up",
 
     // Monster Names
     monsterKobold: "Kobold Scout",
@@ -207,6 +217,11 @@ export const FORTRESS_LANG = {
     terrainCitadel: "Pháo Đài",
     costLabel: "Chi Phí",
     unexploredLabel: "Chưa Thám Hiểm (Sương Mù)",
+
+    // Viewport Controls
+    zoomIn: "🔍 Phóng To",
+    zoomOut: "🔍 Thu Nhỏ",
+    centerCam: "🎯 Định Vị Người Chơi",
 
     // Header & Nav
     headerTitle: "🎮 ĐẤU TRƯỜNG PHÁO ĐÀI VƯƠNG GIẢ v0.0.3-ALPHA",
@@ -302,6 +317,11 @@ export const FORTRESS_LANG = {
     inedibleMsg: "🦴 Xác quái vật rỗng/không thể ăn được.",
     goldLootGained: "Vàng cướp được từ quái vật:",
     droppedGoldWarn: "⚠️ Rơi bớt Vàng do vượt quá sức chứa túi đồ! Đã rơi",
+    droppedGoldModalTitle: "📦 VÀNG VƯỢT DUNG TÍCH ĐÃ RƠI XUỐNG ĐẤT!",
+    droppedGoldModalMsg: "Quân đội của bạn đã hết sức chứa vàng! Số vàng dư thừa đã được để lại trên ô đất này. Hãy quay lại đây cùng Lừa Thồ hoặc Binh Lính để nhặt lại.",
+    droppedAmountLabel: "Số Vàng Rơi Trên Đất:",
+    locationLabel: "Tọa Độ Ô:",
+    pickupGoldLog: "💰 Đã nhặt lại vàng trên đất! Thu hồi",
 
     // Monster Names
     monsterKobold: "Trinh Sát Kobold",
