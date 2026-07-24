@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { MapEngine } from '../MapEngine';
 import { LogisticalEngine } from '../LogisticalEngine';
 import { StructuralGuardrails } from '../utils/guardrails';
+import { MarketplaceEngine, ShopItem } from '../MarketplaceEngine';
 import { TileState, Position, TroopRoster, PlayerInventory } from '../types';
 import { MapView } from './MapView';
+import { MarketplaceModal } from './MarketplaceModal';
 
 export const FortressWorkspace: React.FC = () => {
   const [roomSeed, setRoomSeed] = useState<number>(54931);
@@ -22,13 +24,15 @@ export const FortressWorkspace: React.FC = () => {
   });
 
   const [logs, setLogs] = useState<string[]>([]);
+  
+  // Marketplace Modal Control
+  const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
+  const [shopCatalog, setShopCatalog] = useState<ShopItem[]>([]);
 
-  // Initialize and spawn procedural map on mount, seed change, or difficulty change
   useEffect(() => {
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
     setGrid(generatedGrid);
 
-    // Find safe spawn hub (First Town or Sanctuary)[cite: 1]
     let spawnPos: Position = { x: 0, y: 0 };
     for (let x = 0; x < generatedGrid.length; x++) {
       for (let y = 0; y < generatedGrid[x].length; y++) {
@@ -39,10 +43,9 @@ export const FortressWorkspace: React.FC = () => {
       }
     }
     setPlayerPosition(spawnPos);
-    setLogs([`🏁 Map Generated (Seed: ${roomSeed}, Diff: ${difficulty}). Spawned at Hub [${spawnPos.x}, ${spawnPos.y}]`]);
+    setLogs([`🏁 Map Generated (Seed: ${roomSeed}). Spawned at Hub [${spawnPos.x}, ${spawnPos.y}]`]);
   }, [roomSeed, difficulty]);
 
-  // Handle tile navigation tap[cite: 1]
   const handleTileClick = (targetTile: TileState) => {
     const moveCheck = LogisticalEngine.getMovementCost(playerPosition, targetTile, inventory);
     if (!moveCheck.isValid) return;
@@ -52,17 +55,44 @@ export const FortressWorkspace: React.FC = () => {
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
 
-      const newLog = `👟 Moved to ${targetTile.terrain} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`;
-      setLogs((prev) => [newLog, ...prev]);
+      setLogs((prev) => [`👟 Moved to ${targetTile.terrain} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
-      // Check Relic Discovery[cite: 1]
-      if (targetTile.hasRelic) {
-        setLogs((prev) => [`✨ ANCIENT RELIC FOUND: ${targetTile.hasRelic}! Guardian battle triggered!`, ...prev]);
+      // Check Town Landing Trigger
+      if (targetTile.terrain === 'TOWN') {
+        const availableItems = MarketplaceEngine.generateAvailableInventory(troops, inventory);
+        setShopCatalog(availableItems);
+        setIsShopOpen(true);
+        setLogs((prev) => [`🏰 Entered Town Marketplace! Opening Merchant Shop...`, ...prev]);
       }
     }
   };
 
-  // Turn Lock / End of Turn Handshake Simulation[cite: 1]
+  const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
+    setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - pricePaid) }));
+
+    // Apply bought item effects
+    if (item.id === 'rations') setInventory((prev) => ({ ...prev, rations: prev.rations + 10 }));
+    if (item.id === 'warriors') setTroops((prev) => ({ ...prev, warriors: prev.warriors + 5 }));
+    if (item.id === 'scouts') setTroops((prev) => ({ ...prev, scouts: prev.scouts + 1 }));
+    if (item.id === 'clerics') setTroops((prev) => ({ ...prev, clerics: prev.clerics + 1 }));
+    if (item.id === 'raiders') setTroops((prev) => ({ ...prev, raiders: prev.raiders + 1 }));
+    if (item.id === 'mules') setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
+    if (item.id === 'wizard') setTroops((prev) => ({ ...prev, wizards: 1 }));
+    if (item.id === 'raft_bundle') {
+      setInventory((prev) => ({ ...prev, hasRaft: true }));
+      setTroops((prev) => ({ ...prev, mules: prev.mules + 4 }));
+    }
+
+    setIsShopOpen(false);
+    setLogs((prev) => [`🛒 Purchased [${item.name}] for ${pricePaid} GP! Shop closed.`, ...prev]);
+  };
+
+  const handleEjected = () => {
+    setIsShopOpen(false);
+    setRemainingMF((prev) => Math.max(0, prev - 1)); // Penalty 1 MF
+    setLogs((prev) => [`😡 Merchant ejected you for lowballing! Lost 1 MF!`, ...prev]);
+  };
+
   const handleEndTurn = () => {
     const rationUpkeep = LogisticalEngine.calculateRationUpkeep(troops.warriors);
     let newRations = inventory.rations - rationUpkeep;
@@ -78,7 +108,7 @@ export const FortressWorkspace: React.FC = () => {
 
     setInventory((prev) => ({ ...prev, rations: newRations }));
     setTroops((prev) => ({ ...prev, warriors: newWarriors }));
-    setRemainingMF(10); // Refresh Movement Allowance[cite: 1]
+    setRemainingMF(10);
     setLogs((prev) => [`☀️ New Turn Started! Movement refreshed to 10 MF.`, logMsg, ...prev]);
   };
 
@@ -88,12 +118,12 @@ export const FortressWorkspace: React.FC = () => {
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
       <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.2-ALPHA</h2>
-        <p style={{ margin: '4px 0 0 0', color: '#888' }}>Live Interactive Navigation & Logistical Simulator</p>
+        <h2 style={{ margin: 0 }}>🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.3-ALPHA</h2>
+        <p style={{ margin: '4px 0 0 0', color: '#888' }}>Live Navigation & Town Marketplace Integration</p>
       </header>
 
-      {/* Dev Control Toolbar: Uses setRoomSeed and setDifficulty to avoid TS6133[cite: 1] */}
-      <div style={{ display: 'flex', gap: '20px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* Dev Control Toolbar */}
+      <div style={{ display: 'flex', gap: '20px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '16px', alignItems: 'center' }}>
         <label>
           Seed Key: 
           <input 
@@ -130,7 +160,7 @@ export const FortressWorkspace: React.FC = () => {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ fontSize: '12px', color: '#888' }}>
-          * Tap highlighted dashed tiles to navigate. Green dashed borders indicate valid steps.
+          * Tap Town tiles (🏰) to open the Marketplace.
         </div>
         <button
           onClick={handleEndTurn}
@@ -149,6 +179,18 @@ export const FortressWorkspace: React.FC = () => {
           remainingMF={remainingMF}
           hasRaft={inventory.hasRaft}
           onTileClick={handleTileClick}
+        />
+      )}
+
+      {/* Marketplace Modal */}
+      {isShopOpen && (
+        <MarketplaceModal
+          availableItems={shopCatalog}
+          inventory={inventory}
+          troops={troops}
+          onPurchaseComplete={handlePurchaseComplete}
+          onEjected={handleEjected}
+          onClose={() => setIsShopOpen(false)}
         />
       )}
 
