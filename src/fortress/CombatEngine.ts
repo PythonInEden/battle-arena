@@ -22,7 +22,7 @@ export const MONSTER_DATABASE: MonsterProfile[] = [
   { id: 'frost_giant', nameKey: 'monsterGiant', strength: 20.0, imageKey: 'frost_giant', edibility: 'EDIBLE' },
   { id: 'chimera', nameKey: 'monsterChimera', strength: 35.0, imageKey: 'chimera', edibility: 'EDIBLE' },
   
-  // Toxic Monsters (Double Rations, Poison Risk)
+  // Toxic Monsters
   { id: 'mind_flayer', nameKey: 'monsterMindFlayer', strength: 25.0, imageKey: 'mind_flayer', edibility: 'TOXIC' },
   { id: 'displacer_beast', nameKey: 'monsterDisplacer', strength: 8.0, imageKey: 'displacer_beast', edibility: 'TOXIC' },
   { id: 'gelatinous_cube', nameKey: 'monsterCube', strength: 2.5, imageKey: 'gelatinous_cube', edibility: 'TOXIC' },
@@ -30,7 +30,7 @@ export const MONSTER_DATABASE: MonsterProfile[] = [
   { id: 'beholder', nameKey: 'monsterBeholder', strength: 100.0, imageKey: 'beholder', edibility: 'TOXIC' },
   { id: 'the_tarrasque', nameKey: 'monsterTarrasque', strength: 120.0, imageKey: 'the_tarrasque', edibility: 'TOXIC' },
 
-  // Inedible Monsters (0 Yield)
+  // Inedible Monsters
   { id: 'zombie', nameKey: 'monsterZombie', strength: 0.4, imageKey: 'zombie', edibility: 'INEDIBLE' },
   { id: 'skeleton_warrior', nameKey: 'monsterSkeleton', strength: 0.8, imageKey: 'skeleton_warrior', edibility: 'INEDIBLE' },
   { id: 'mimic_chest', nameKey: 'monsterMimic', strength: 5.0, imageKey: 'mimic_chest', edibility: 'INEDIBLE' },
@@ -43,23 +43,23 @@ export interface EncounterGroup {
   quantity: number;
   totalHp: number;
   maxHp: number;
+  groupStrength: number;
 }
 
 export class CombatEngine {
-  /**
-   * Calculates player combat strength.
-   * CS_base = (1.0 * W) + (3.0 * D) + (2.0 * E)
-   * CS_total = CS_base * (1.0 + B_wizard + B_thor + B_slayer)
-   */
   public static calculatePlayerCombatStrength(troops: TroopRoster): number {
     const csBase = (1.0 * troops.warriors) + (3.0 * troops.dwarves) + (2.0 * troops.elves);
     const wizardBonus = troops.wizards > 0 ? 0.20 : 0.0;
     return Math.max(1, csBase * (1.0 + wizardBonus));
   }
 
-  /**
-   * Rolls for wild encounters on Forest (28%) and Mountain (80%) tiles.
-   */
+  public static calculateWinChance(playerCS: number, monsterCS: number): number {
+    const total = playerCS + monsterCS;
+    if (total <= 0) return 50;
+    const chance = Math.round((playerCS / total) * 100);
+    return Math.min(99, Math.max(1, chance));
+  }
+
   public static checkEncounterTrigger(terrain: 'FOREST' | 'MOUNTAIN'): boolean {
     const roll = Math.random();
     if (terrain === 'FOREST') return roll <= 0.28;
@@ -67,14 +67,10 @@ export class CombatEngine {
     return false;
   }
 
-  /**
-   * Scales monster group spawn quantity dynamically against player strength.
-   */
   public static spawnEncounter(terrain: 'FOREST' | 'MOUNTAIN', troops: TroopRoster): EncounterGroup {
     const playerCS = this.calculatePlayerCombatStrength(troops);
-    const targetStrength = (0.5 + Math.random() * 0.7) * playerCS; // Random(0.5, 1.2) * Player Strength
+    const targetStrength = (0.4 + Math.random() * 0.5) * playerCS; // 40%-90% of player CS
 
-    // Filter monster candidates by terrain
     let candidates = MONSTER_DATABASE.filter(m => m.id !== 'shadow_lich');
     if (terrain === 'FOREST') {
       candidates = candidates.filter(m => m.strength <= 10.0);
@@ -82,34 +78,28 @@ export class CombatEngine {
 
     const selectedMonster = candidates[Math.floor(Math.random() * candidates.length)];
     const quantity = Math.max(1, Math.floor(targetStrength / selectedMonster.strength));
-    const totalHp = Math.round(quantity * selectedMonster.strength * 20);
+    const groupStrength = quantity * selectedMonster.strength;
+    
+    // Recalibrated HP multiplier from 20 -> 6 for fast-paced 2-4 round tactical combat
+    const totalHp = Math.max(15, Math.round(groupStrength * 6));
 
     return {
       monster: selectedMonster,
       quantity,
       totalHp,
       maxHp: totalHp,
+      groupStrength,
     };
   }
 
-  /**
-   * Pre-combat surprise check: 80% chance to allow pre-fight retreat.
-   */
   public static checkSurpriseRetreatOption(): boolean {
     return Math.random() <= 0.80;
   }
 
-  /**
-   * Calculates Scout cooking mitigation for toxic meat poisoning risk.
-   * Formula: E = max(0, 0.30 - 0.05 * Scouts)
-   */
   public static calculatePoisonRisk(scoutCount: number): number {
     return Math.max(0, 0.30 - 0.05 * scoutCount);
   }
 
-  /**
-   * Executes meat harvesting from defeated monsters.
-   */
   public static harvestMonsterMeat(
     monster: MonsterProfile,
     quantity: number,
@@ -119,13 +109,12 @@ export class CombatEngine {
       return { rationsGained: 0, isPoisoned: false };
     }
 
-    const baseYield = Math.max(1, Math.min(5, Math.floor(monster.strength * quantity)));
+    const baseYield = Math.max(1, Math.min(8, Math.floor(monster.strength * quantity)));
 
     if (monster.edibility === 'EDIBLE') {
       return { rationsGained: baseYield, isPoisoned: false };
     }
 
-    // Toxic Meat: Yields double rations, but runs poison risk check
     const toxicYield = baseYield * 2;
     const poisonRisk = this.calculatePoisonRisk(scoutCount);
     const isPoisoned = Math.random() <= poisonRisk;

@@ -4,7 +4,14 @@ export type LanguageType = 'en' | 'vi';
 
 export const FORTRESS_LANG = {
   en: {
-    // Lobby & Room Setup
+    // Sandbox Tweaker
+    sandboxTitle: "🧪 DEV SANDBOX ARMY TWEAKER",
+    addWarriors: "+10 Warriors",
+    addGold: "+500 Gold",
+    addRations: "+20 Rations",
+    addWizard: "+1 Wizard",
+
+    // Lobby & Setup
     lobbyTitle: "🏰 FORTRESS MULTIPLAYER LOBBY",
     enterName: "Enter player name...",
     enterCode: "Enter 4-letter Room Code...",
@@ -104,8 +111,11 @@ export const FORTRESS_LANG = {
     // PvE Combat & Harvesting
     combatTitle: "⚔️ WILD MONSTER ENCOUNTER",
     surpriseTitle: "🚨 AMBUSH SURPRISE DETECTED!",
-    surpriseMsg: "Your scouts spotted monsters ahead! Would you like to retreat back?",
+    surpriseMsg: "Your scouts spotted monsters ahead!",
+    spottedMonster: "Monsters Detected:",
+    winRateEstimate: "Estimated Win Rate:",
     retreatBtn: "🏃 RETREAT (SAFETY)",
+    fleeMidCombatBtn: "🏃 FLEE COMBAT (-1 MF)",
     fightBtn: "⚔️ ENGAGE IN COMBAT",
     attackRoundBtn: "🎲 ATTACK ROUND",
     victoryTitle: "🎉 COMBAT VICTORY!",
@@ -160,7 +170,14 @@ export const FORTRESS_LANG = {
     logRetreated: "🏃 Safely retreated from wild encounter."
   },
   vi: {
-    // Lobby & Room Setup
+    // Sandbox Tweaker
+    sandboxTitle: "🧪 CÔNG CỤ THỬ NGHIỆM QUÂN ĐỘI",
+    addWarriors: "+10 Lính",
+    addGold: "+500 Vàng",
+    addRations: "+20 Lương",
+    addWizard: "+1 Pháp Sư",
+
+    // Lobby & Setup
     lobbyTitle: "🏰 PHÒNG CHỜ ĐẤU TRƯỜNG PHÁO ĐÀI",
     enterName: "Nhập tên người chơi...",
     enterCode: "Nhập mã phòng 4 chữ cái...",
@@ -260,8 +277,11 @@ export const FORTRESS_LANG = {
     // PvE Combat & Harvesting
     combatTitle: "⚔️ ĐỤNG ĐỘ QUÁI VẬT HOANG DÃ",
     surpriseTitle: "🚨 PHÁT HIỆN ĐỘT KÍCH BẤT NGỜ!",
-    surpriseMsg: "Trinh sát phát hiện quái vật phía trước! Bạn có muốn rút lui an toàn?",
+    surpriseMsg: "Trinh sát đã phát hiện quái vật phía trước!",
+    spottedMonster: "Quái Vật Phát Hiện:",
+    winRateEstimate: "Tỷ Lệ Thắng Dự Đoán:",
     retreatBtn: "🏃 RÚT LUI AN TOÀN",
+    fleeMidCombatBtn: "🏃 THÁO CHẠY (-1 MF)",
     fightBtn: "⚔️ LAO VÀO NGHÊNH CHIẾN",
     attackRoundBtn: "🎲 ĐỔ XÚC XẮC TẤN CÔNG",
     victoryTitle: "🎉 CHIẾN THẮNG RỰC RỠ!",

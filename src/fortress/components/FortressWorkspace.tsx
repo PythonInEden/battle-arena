@@ -37,7 +37,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
   const [shopCatalog, setShopCatalog] = useState<ShopItem[]>([]);
 
-  // Combat Modal Control
   const [activeEncounter, setActiveEncounter] = useState<EncounterGroup | null>(null);
   const [allowSurpriseRetreat, setAllowSurpriseRetreat] = useState<boolean>(false);
 
@@ -112,7 +111,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
       setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
-      // 1. Check Town
       if (targetTile.terrain === 'TOWN') {
         const availableItems = MarketplaceEngine.generateAvailableInventory(troops, inventory);
         setShopCatalog(availableItems);
@@ -121,7 +119,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
-      // 2. Check Forest/Mountain Wild Encounter Roll
       if (targetTile.terrain === 'FOREST' || targetTile.terrain === 'MOUNTAIN') {
         if (CombatEngine.checkEncounterTrigger(targetTile.terrain)) {
           const encounter = CombatEngine.spawnEncounter(targetTile.terrain, troops);
@@ -136,30 +133,38 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const handleRetreatFromCombat = () => {
     setActiveEncounter(null);
-    setPlayerPosition(previousPosition); // Step back safely
+    setPlayerPosition(previousPosition);
     setLogs((prev) => [t.logRetreated, ...prev]);
   };
 
-  const handleCombatVictory = (updatedTroops: TroopRoster, updatedInventory: PlayerInventory, isPoisoned: boolean) => {
+  const handleCombatVictory = (
+    updatedTroops: TroopRoster,
+    updatedInventory: PlayerInventory,
+    rationsGained: number,
+    goldLooted: number,
+    isPoisoned: boolean
+  ) => {
+    const monsterName = activeEncounter ? (t as any)[activeEncounter.monster.nameKey] : 'Monster';
     setActiveEncounter(null);
     setTroops(updatedTroops);
     setInventory(updatedInventory);
 
+    const victoryLog = `🏆 Defeated ${activeEncounter?.quantity}x ${monsterName}! Looted +${goldLooted} GP, Harvested +${rationsGained} Rations.`;
+
     if (isPoisoned) {
       setRemainingMF((prev) => Math.max(0, prev - 1));
-      setLogs((prev) => [t.poisonedMsg, t.logCombatWon, ...prev]);
+      setLogs((prev) => [t.poisonedMsg, victoryLog, ...prev]);
     } else {
-      setLogs((prev) => [t.logCombatWon, ...prev]);
+      setLogs((prev) => [victoryLog, ...prev]);
     }
   };
 
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
-    // Wash ashore at sanctuary with rescue pack
     setTroops((prev) => ({ ...prev, warriors: 15 }));
     setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
     setRemainingMF(10);
-    setLogs((prev) => [`💀 Frontline routed! Washed ashore at Sanctuary with rescue pack (15 Warriors, 15 Rations).`, ...prev]);
+    setLogs((prev) => [`💀 Frontline routed! Washed ashore at Sanctuary with rescue pack.`, ...prev]);
   };
 
   const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
@@ -221,7 +226,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       </header>
 
       {/* Dev Control Toolbar */}
-      <div style={{ display: 'flex', gap: '20px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '16px', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           {t.seedLabel} 
           <input 
@@ -242,6 +247,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '6px', padding: '4px', width: '50px', fontFamily: 'monospace' }} 
           />
         </label>
+      </div>
+
+      {/* Dev Sandbox Army Tweaker */}
+      <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #333', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
+        <button onClick={() => setTroops(p => ({ ...p, warriors: p.warriors + 10 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
+        <button onClick={() => setInventory(p => ({ ...p, gold: p.gold + 500 }))} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
+        <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
+        <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
       </div>
 
       {/* Logistical HUD Bar */}

@@ -11,7 +11,7 @@ interface CombatModalProps {
   locale: LanguageType;
   allowSurpriseRetreat: boolean;
   onRetreat: () => void;
-  onVictory: (updatedTroops: TroopRoster, updatedInventory: PlayerInventory, isPoisoned: boolean) => void;
+  onVictory: (updatedTroops: TroopRoster, updatedInventory: PlayerInventory, rationsGained: number, goldLooted: number, isPoisoned: boolean) => void;
   onDefeat: () => void;
 }
 
@@ -37,15 +37,16 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const [goldLoot, setGoldLoot] = useState<number>(0);
 
   const getMonsterName = (nameKey: string) => (t as any)[nameKey] || nameKey;
+  const playerCS = CombatEngine.calculatePlayerCombatStrength({ ...troops, warriors: currentWarriors });
+  const winChance = CombatEngine.calculateWinChance(playerCS, encounter.groupStrength);
 
   // Execute Combat Round
   const handleAttackRound = () => {
-    const playerCS = CombatEngine.calculatePlayerCombatStrength({ ...troops, warriors: currentWarriors });
-    const playerDmg = Math.round((0.8 + Math.random() * 0.4) * playerCS * 5);
+    const playerDmg = Math.round((0.9 + Math.random() * 0.4) * playerCS * 4);
     const nextMonsterHp = Math.max(0, currentMonsterHp - playerDmg);
 
-    const monsterDmg = Math.round((0.8 + Math.random() * 0.4) * encounter.monster.strength * encounter.quantity * 3);
-    const warriorLosses = Math.min(currentWarriors, Math.floor(monsterDmg / 10));
+    const monsterDmg = Math.round((0.5 + Math.random() * 0.3) * encounter.groupStrength * 2);
+    const warriorLosses = Math.min(currentWarriors, Math.floor(monsterDmg / 8));
     const nextWarriors = Math.max(0, currentWarriors - warriorLosses);
 
     setCurrentMonsterHp(nextMonsterHp);
@@ -55,7 +56,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     setCombatLogs((prev) => [roundLog, ...prev]);
 
     if (nextMonsterHp <= 0) {
-      const loot = Math.round(encounter.monster.strength * encounter.quantity * 10);
+      const loot = Math.round(encounter.monster.strength * encounter.quantity * 12);
       setGoldLoot(loot);
       setPhase('VICTORY');
     } else if (nextWarriors <= 0) {
@@ -85,7 +86,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       rations: inventory.rations + gainedRations,
     };
 
-    onVictory(updatedTroops, updatedInventory, isPoisoned);
+    onVictory(updatedTroops, updatedInventory, gainedRations, goldLoot, isPoisoned);
   };
 
   return (
@@ -100,7 +101,13 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         {phase === 'SURPRISE_PROMPT' && (
           <div style={{ textAlign: 'center' }}>
             <h3 style={{ color: '#ff0' }}>{t.surpriseTitle}</h3>
-            <p style={{ margin: '16px 0 24px 0', color: '#aaa' }}>{t.surpriseMsg}</p>
+            <p style={{ margin: '8px 0', color: '#aaa' }}>{t.surpriseMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', margin: '16px 0', borderRadius: '4px' }}>
+              <div>{t.spottedMonster} <strong style={{ color: '#ff3333' }}>x{encounter.quantity} {getMonsterName(encounter.monster.nameKey)}</strong></div>
+              <div style={{ marginTop: '6px' }}>{t.winRateEstimate} <strong style={{ color: winChance >= 60 ? '#00ff00' : '#ff3333' }}>{winChance}%</strong></div>
+            </div>
+
             <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
               <button
                 onClick={onRetreat}
@@ -121,11 +128,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         {/* Active Fighting View */}
         {phase === 'FIGHTING' && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div style={{ border: '1px solid #00ff00', padding: '12px', backgroundColor: '#050505', textAlign: 'center' }}>
                 <h4 style={{ color: '#00ff00', margin: '0 0 6px 0' }}>🧙 Your Army</h4>
                 <div>⚔️ Warriors: {currentWarriors}</div>
-                <div>⚡ CS: {Math.round(CombatEngine.calculatePlayerCombatStrength({ ...troops, warriors: currentWarriors }))}</div>
+                <div>⚡ CS: {Math.round(playerCS)}</div>
+                <div style={{ color: winChance >= 60 ? '#00ff00' : '#ff3333', marginTop: '4px' }}>Win Rate: {winChance}%</div>
               </div>
 
               <div style={{ border: '1px solid #ff3333', padding: '12px', backgroundColor: '#050505', textAlign: 'center' }}>
@@ -135,14 +143,24 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               </div>
             </div>
 
-            <button
-              onClick={handleAttackRound}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', width: '100%', marginBottom: '16px' }}
-            >
-              {t.attackRoundBtn}
-            </button>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <button
+                onClick={handleAttackRound}
+                style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', fontFamily: 'monospace', flex: 2 }}
+              >
+                {t.attackRoundBtn}
+              </button>
+              
+              {/* Mid-Combat Flee Button */}
+              <button
+                onClick={onRetreat}
+                style={{ backgroundColor: '#333', color: '#00ff00', border: '1px solid #00ff00', padding: '12px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
+              >
+                {t.fleeMidCombatBtn}
+              </button>
+            </div>
 
-            <div style={{ backgroundColor: '#000', border: '1px dashed #444', padding: '10px', maxHeight: '120px', overflowY: 'auto', fontSize: '12px' }}>
+            <div style={{ backgroundColor: '#000', border: '1px dashed #444', padding: '10px', maxHeight: '100px', overflowY: 'auto', fontSize: '12px' }}>
               {combatLogs.map((log, idx) => (
                 <div key={idx} style={{ color: '#aaa', margin: '2px 0' }}>{log}</div>
               ))}
@@ -150,7 +168,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           </div>
         )}
 
-        {/* Victory Screen & Meat Harvesting */}
+        {/* Victory Screen */}
         {phase === 'VICTORY' && (
           <div style={{ textAlign: 'center' }}>
             <h2 style={{ color: '#00ff00' }}>{t.victoryTitle}</h2>
@@ -190,7 +208,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               onClick={onDefeat}
               style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', marginTop: '16px' }}
             >
-              OK (WASH ASHORE AT SANCTUARY)
+              OK (RESCUED TO SANCTUARY)
             </button>
           </div>
         )}
