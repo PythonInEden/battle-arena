@@ -43,6 +43,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // Dropped Gold Modal State
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
 
+  // Collected Gold Modal State
+  const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -137,6 +140,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       );
 
       setLogs((prev) => [`${t.pickupGoldLog} +${pickupAmount} GP [${pos.x}, ${pos.y}]!`, ...prev]);
+      setCollectedGoldNotice({ amount: pickupAmount, pos });
     }
   };
 
@@ -294,10 +298,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       logMsg += ` ${t.logStarvation} ${casualties} ${t.logWarriorsLost}`;
     }
 
+    // Passive Cleric Healing on Rest/Pass Turn (+1 Warrior per Cleric)
+    let clericHealedMsg = '';
+    if (troops.clerics > 0) {
+      const healedWarriors = Math.min(50, newWarriors + troops.clerics);
+      if (healedWarriors > newWarriors) {
+        const diff = healedWarriors - newWarriors;
+        newWarriors = healedWarriors;
+        clericHealedMsg = ` 📿 Clerics healed +${diff} wounded Warriors during rest!`;
+      }
+    }
+
     setInventory((prev) => ({ ...prev, rations: newRations }));
     setTroops((prev) => ({ ...prev, warriors: newWarriors }));
     setRemainingMF(10);
-    setLogs((prev) => [t.logNewTurn, logMsg, ...prev]);
+    setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg, ...prev]);
   };
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
@@ -428,6 +443,28 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
             >
               ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Gold Collected Modal Dialog */}
+      {collectedGoldNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #00ff00', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#00ff00', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.goldCollectedModalTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.goldCollectedModalMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #00ff00', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+              <div>💰 {t.goldCollectedAmountLabel} <strong style={{ color: '#00ff00' }}>+{collectedGoldNotice.amount} GP</strong></div>
+              <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{collectedGoldNotice.pos.x}, {collectedGoldNotice.pos.y}]</strong></div>
+            </div>
+
+            <button
+              onClick={() => setCollectedGoldNotice(null)}
+              style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ EXCELLENT
             </button>
           </div>
         </div>

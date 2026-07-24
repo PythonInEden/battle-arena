@@ -142,6 +142,9 @@ export const FORTRESS_LANG = {
     droppedAmountLabel: "Gold Dropped on Ground:",
     locationLabel: "Coordinates:",
     pickupGoldLog: "💰 Recovered ground loot! Picked up",
+    goldCollectedModalTitle: "💰 GROUND LOOT COLLECTED!",
+    goldCollectedModalMsg: "Your troops recovered lost gold resting on this tile!",
+    goldCollectedAmountLabel: "Gold Recovered:",
 
     // Monster Names
     monsterKobold: "Kobold Scout",
@@ -322,6 +325,9 @@ export const FORTRESS_LANG = {
     droppedAmountLabel: "Số Vàng Rơi Trên Đất:",
     locationLabel: "Tọa Độ Ô:",
     pickupGoldLog: "💰 Đã nhặt lại vàng trên đất! Thu hồi",
+    goldCollectedModalTitle: "💰 ĐÃ NHẶT LẠI VÀNG TRÊN ĐẤT!",
+    goldCollectedModalMsg: "Quân đội của bạn đã thu hồi lại số vàng thất lạc tại ô này!",
+    goldCollectedAmountLabel: "Số Vàng Thu Hồi:",
 
     // Monster Names
     monsterKobold: "Trinh Sát Kobold",

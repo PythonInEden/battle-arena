@@ -37,6 +37,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const [goldLoot, setGoldLoot] = useState<number>(0);
 
   const getMonsterName = (nameKey: string) => (t as any)[nameKey] || nameKey;
+  // Dynamic Monster Image Fetcher from Supabase Public Storage
+  const getMonsterImageUrl = (imageKey: string) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const cleanKey = imageKey.toLowerCase().trim();
+    return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanKey}.webp`;
+  };
   const playerCS = CombatEngine.calculatePlayerCombatStrength({ ...troops, warriors: currentWarriors });
   const winChance = CombatEngine.calculateWinChance(playerCS, encounter.groupStrength);
 
@@ -103,7 +109,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             <h3 style={{ color: '#ff0' }}>{t.surpriseTitle}</h3>
             <p style={{ margin: '8px 0', color: '#aaa' }}>{t.surpriseMsg}</p>
             
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', margin: '16px 0', borderRadius: '4px' }}>
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '16px', margin: '16px 0', borderRadius: '6px', textAlign: 'center' }}>
+              <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'center' }}>
+                <img
+                  src={getMonsterImageUrl(encounter.monster.imageKey)}
+                  alt={encounter.monster.id}
+                  style={{ width: '130px', height: '130px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #ff3333', backgroundColor: '#000' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/130x130/000000/ff3333?text=' + encounter.monster.id; }}
+                />
+              </div>
               <div>{t.spottedMonster} <strong style={{ color: '#ff3333' }}>x{encounter.quantity} {getMonsterName(encounter.monster.nameKey)}</strong></div>
               <div style={{ marginTop: '6px' }}>{t.winRateEstimate} <strong style={{ color: winChance >= 60 ? '#00ff00' : '#ff3333' }}>{winChance}%</strong></div>
             </div>
@@ -137,7 +151,13 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               </div>
 
               <div style={{ border: '1px solid #ff3333', padding: '12px', backgroundColor: '#050505', textAlign: 'center' }}>
-                <h4 style={{ color: '#ff3333', margin: '0 0 6px 0' }}>👹 {getMonsterName(encounter.monster.nameKey)} (x{encounter.quantity})</h4>
+                <img
+                  src={getMonsterImageUrl(encounter.monster.imageKey)}
+                  alt={encounter.monster.id}
+                  style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ff3333', margin: '0 auto 6px auto', display: 'block' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/80x80/000000/ff3333?text=' + encounter.monster.id; }}
+                />
+                <h4 style={{ color: '#ff3333', margin: '4px 0 6px 0' }}>{getMonsterName(encounter.monster.nameKey)} (x{encounter.quantity})</h4>
                 <div>❤️ HP: {currentMonsterHp} / {encounter.maxHp}</div>
                 <div>💪 Str: {encounter.monster.strength}</div>
               </div>
