@@ -97,9 +97,11 @@ export default function App() {
 
   if (currentMode === 'fortress') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#050505', padding: '15px', boxSizing: 'border-box' }}>
-        <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}>{t.backBtn}</button>
-        <FortressWorkspace />
+      <div style={{ minHeight: '100vh', backgroundColor: '#050505', padding: '20px' }}>
+        <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}>
+          {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
+        </button>
+        <FortressWorkspace locale={locale} />
       </div>
     );
   }
