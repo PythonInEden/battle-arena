@@ -20,6 +20,17 @@ export const FORTRESS_LANG = {
     activePlayers: "Connected Players in Lobby:",
     backToLobby: "← Exit to Lobby",
 
+    // Terrain Names & Tooltips
+    terrainPlains: "Plains",
+    terrainForest: "Forest",
+    terrainMountain: "Mountain",
+    terrainLake: "Lake",
+    terrainTown: "Town",
+    terrainSanctuary: "Sanctuary",
+    terrainCitadel: "Citadel",
+    costLabel: "Cost",
+    unexploredLabel: "Unexplored (Fog of War)",
+
     // Header & Nav
     headerTitle: "🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.3-ALPHA",
     headerSub: "Live Navigation & Town Marketplace Integration",
@@ -121,6 +132,17 @@ export const FORTRESS_LANG = {
     joinRoom: "⚔️ VÀO PHÒNG CÓ SẴN",
     activePlayers: "Người Chơi Đang Trong Phòng:",
     backToLobby: "← Trở Về Phòng Chờ",
+
+    // Terrain Names & Tooltips
+    terrainPlains: "Đồng Bằng",
+    terrainForest: "Rừng Rậm",
+    terrainMountain: "Núi Cao",
+    terrainLake: "Hồ Nước",
+    terrainTown: "Thành Trị",
+    terrainSanctuary: "Thánh Địa",
+    terrainCitadel: "Pháo Đài",
+    costLabel: "Chi Phí",
+    unexploredLabel: "Chưa Thám Hiểm (Sương Mù)",
 
     // Header & Nav
     headerTitle: "🎮 ĐẤU TRƯỜNG PHÁO ĐÀI VƯƠNG GIẢ v0.0.3-ALPHA",

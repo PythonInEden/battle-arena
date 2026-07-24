@@ -7,10 +7,10 @@ import { MarketplaceEngine, ShopItem } from '../MarketplaceEngine';
 import { TileState, Position, TroopRoster, PlayerInventory } from '../types';
 import { MapView } from './MapView';
 import { MarketplaceModal } from './MarketplaceModal';
-import { FORTRESS_LANG } from '../languages';
+import { FORTRESS_LANG, LanguageType } from '../languages';
 
 interface FortressWorkspaceProps {
-  locale?: 'en' | 'vi';
+  locale?: LanguageType;
 }
 
 export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = 'vi' }) => {
@@ -34,9 +34,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
   const [shopCatalog, setShopCatalog] = useState<ShopItem[]>([]);
 
+  const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
+
+  // Initialize and spawn procedural map
   useEffect(() => {
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
-    setGrid(generatedGrid);
 
     let spawnPos: Position = { x: 0, y: 0 };
     for (let x = 0; x < generatedGrid.length; x++) {
@@ -47,9 +49,33 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         }
       }
     }
+
+    // Mark initial spawn vision radius as explored![cite: 1]
+    const updatedGrid = generatedGrid.map((row) =>
+      row.map((tile) => {
+        const dx = Math.abs(spawnPos.x - tile.x);
+        const dy = Math.abs(spawnPos.y - tile.y);
+        return dx <= sightRadius && dy <= sightRadius ? { ...tile, isExplored: true } : tile;
+      })
+    );
+
+    setGrid(updatedGrid);
     setPlayerPosition(spawnPos);
     setLogs([`${t.logSpawn} [${spawnPos.x}, ${spawnPos.y}]`]);
   }, [roomSeed, difficulty, locale]);
+
+  // Reveal tiles whenever player moves or sight changes[cite: 1]
+  const revealSightArea = (pos: Position, radius: number) => {
+    setGrid((prevGrid) =>
+      prevGrid.map((row) =>
+        row.map((tile) => {
+          const dx = Math.abs(pos.x - tile.x);
+          const dy = Math.abs(pos.y - tile.y);
+          return dx <= radius && dy <= radius ? { ...tile, isExplored: true } : tile;
+        })
+      )
+    );
+  };
 
   const handleTileClick = (targetTile: TileState) => {
     const isSameTile = playerPosition.x === targetTile.x && playerPosition.y === targetTile.y;
@@ -75,7 +101,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
 
-      setLogs((prev) => [`${t.logMoved} ${targetTile.terrain} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
+      // Permanently reveal newly explored tiles around new position![cite: 1]
+      revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+
+      const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
+      setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
       if (targetTile.terrain === 'TOWN') {
         const availableItems = MarketplaceEngine.generateAvailableInventory(troops, inventory);
@@ -91,7 +121,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     if (item.id === 'rations') setInventory((prev) => ({ ...prev, rations: prev.rations + 10 }));
     if (item.id === 'warriors') setTroops((prev) => ({ ...prev, warriors: prev.warriors + 5 }));
-    if (item.id === 'scouts') setTroops((prev) => ({ ...prev, scouts: prev.scouts + 1 }));
+    if (item.id === 'scouts') {
+      const newScoutCount = troops.scouts + 1;
+      setTroops((prev) => ({ ...prev, scouts: newScoutCount }));
+      // Immediately expand vision radius when buying Scouts![cite: 1]
+      revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(newScoutCount));
+    }
     if (item.id === 'clerics') setTroops((prev) => ({ ...prev, clerics: prev.clerics + 1 }));
     if (item.id === 'raiders') setTroops((prev) => ({ ...prev, raiders: prev.raiders + 1 }));
     if (item.id === 'mules') setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
@@ -132,7 +167,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
-  const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
@@ -197,6 +231,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           sightRadius={sightRadius}
           remainingMF={remainingMF}
           hasRaft={inventory.hasRaft}
+          locale={locale}
           onTileClick={handleTileClick}
         />
       )}
@@ -225,4 +260,4 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       </div>
     </div>
   );
-};  
+};

@@ -2,6 +2,7 @@
 import React from 'react';
 import { TileState, Position } from '../types';
 import { LogisticalEngine } from '../LogisticalEngine';
+import { FORTRESS_LANG, LanguageType } from '../languages';
 
 interface MapViewProps {
   grid: TileState[][];
@@ -9,6 +10,7 @@ interface MapViewProps {
   sightRadius: number;
   remainingMF: number;
   hasRaft: boolean;
+  locale: LanguageType;
   onTileClick: (targetTile: TileState) => void;
 }
 
@@ -18,18 +20,31 @@ export const MapView: React.FC<MapViewProps> = ({
   sightRadius,
   remainingMF,
   hasRaft,
+  locale,
   onTileClick,
 }) => {
+  const t = FORTRESS_LANG[locale];
   const gridSize = grid.length;
 
-  // Helper to check if coordinate is inside player sight radius[cite: 1]
-  const isTileVisible = (x: number, y: number): boolean => {
+  const isTileInSight = (x: number, y: number): boolean => {
     const dx = Math.abs(playerPosition.x - x);
     const dy = Math.abs(playerPosition.y - y);
     return dx <= sightRadius && dy <= sightRadius;
   };
 
-  // Helper to render terrain styling and emoji indicators[cite: 1]
+  const getTerrainName = (terrain: string) => {
+    switch (terrain) {
+      case 'PLAINS': return t.terrainPlains;
+      case 'FOREST': return t.terrainForest;
+      case 'MOUNTAIN': return t.terrainMountain;
+      case 'LAKE': return t.terrainLake;
+      case 'TOWN': return t.terrainTown;
+      case 'SANCTUARY': return t.terrainSanctuary;
+      case 'CITADEL': return t.terrainCitadel;
+      default: return terrain;
+    }
+  };
+
   const getTerrainVisuals = (tile: TileState) => {
     switch (tile.terrain) {
       case 'PLAINS': return { color: '#2e7d32', label: '🌿' };
@@ -62,9 +77,9 @@ export const MapView: React.FC<MapViewProps> = ({
         {grid.map((row, x) =>
           row.map((tile, y) => {
             const isPlayerHere = playerPosition.x === x && playerPosition.y === y;
-            const visible = isTileVisible(x, y);
+            const inSight = isTileInSight(x, y);
+            const isExplored = tile.isExplored || inSight; // Keep explored tiles revealed!
 
-            // Calculate movement validity for adjacent tiles[cite: 1]
             const moveCheck = LogisticalEngine.getMovementCost(
               playerPosition,
               tile,
@@ -76,6 +91,11 @@ export const MapView: React.FC<MapViewProps> = ({
             const isSelectable = isAdjacent && canAfford;
 
             const visuals = getTerrainVisuals(tile);
+            const terrainName = getTerrainName(tile.terrain);
+
+            const tooltipText = isExplored
+              ? `[${x},${y}] ${terrainName} (${t.costLabel}: ${moveCheck.cost} MF)`
+              : t.unexploredLabel;
 
             return (
               <div
@@ -84,7 +104,7 @@ export const MapView: React.FC<MapViewProps> = ({
                 style={{
                   width: '32px',
                   height: '32px',
-                  backgroundColor: visible ? visuals.color : '#000000',
+                  backgroundColor: isExplored ? visuals.color : '#000000',
                   border: isPlayerHere
                     ? '2px solid #ffffff'
                     : isSelectable
@@ -95,15 +115,15 @@ export const MapView: React.FC<MapViewProps> = ({
                   justifyContent: 'center',
                   fontSize: '14px',
                   cursor: isSelectable ? 'pointer' : 'default',
-                  opacity: visible ? 1 : 0.15,
+                  opacity: inSight ? 1 : isExplored ? 0.55 : 0.15, // Dims explored tiles outside active sight
                   position: 'relative',
                   userSelect: 'none',
                 }}
-                title={visible ? `[${x},${y}] ${tile.terrain} (Cost: ${moveCheck.cost} MF)` : 'Unexplored (Fog of War)'}
+                title={tooltipText}
               >
                 {isPlayerHere ? (
                   <span style={{ fontSize: '18px', zIndex: 2 }}>🧙‍♂️</span>
-                ) : visible ? (
+                ) : isExplored ? (
                   <>
                     <span>{visuals.label}</span>
                     {tile.hasRelic && <span style={{ position: 'absolute', top: 0, right: 0, fontSize: '10px' }}>✨</span>}
