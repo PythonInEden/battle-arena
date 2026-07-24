@@ -82,7 +82,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   // Helper to add gold with capacity guardrail checks
-  const addGoldSafely = (goldAmount: number, sourceName: string) => {
+  const addGoldSafely = (goldAmount: number) => {
     const result = StructuralGuardrails.protectInventoryState(inventory, troops, goldAmount, 0);
     setInventory(result.updatedInventory);
 
@@ -274,7 +274,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #333', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
         <button onClick={() => setTroops(p => ({ ...p, warriors: p.warriors + 10 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
-        <button onClick={() => addGoldSafely(500, 'SANDBOX')} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
+        <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>
+    {t.addGold}
+  </button>
         <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
         <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
       </div>
