@@ -50,6 +50,9 @@ export const FORTRESS_LANG = {
     warriorsLabel: "⚔️ Warriors:",
     scoutsLabel: "🏹 Scouts:",
     mulesLabel: "🫏 Mules:",
+    wizardsLabel: "🧙‍♂️ Wizard:",
+    clericsLabel: "📿 Clerics:",
+    raidersLabel: "🗡️ Raiders:",
     raftLabel: "🚣 Raft:",
     yes: "YES",
     no: "NO",
@@ -128,6 +131,7 @@ export const FORTRESS_LANG = {
     cleanEatMsg: "😋 Scouts prepared the meat safely! Gained rations with 0 poison!",
     inedibleMsg: "🦴 Inedible carcass. No meat can be harvested.",
     goldLootGained: "Gold looted from monsters:",
+    droppedGoldWarn: "⚠️ Excess Gold dropped due to carrying capacity limit! Dropped",
 
     // Monster Names
     monsterKobold: "Kobold Scout",
@@ -216,6 +220,9 @@ export const FORTRESS_LANG = {
     warriorsLabel: "⚔️ Binh Lính:",
     scoutsLabel: "🏹 Trinh Sát:",
     mulesLabel: "🫏 Lừa Thồ:",
+    wizardsLabel: "🧙‍♂️ Pháp Sư:",
+    clericsLabel: "📿 Mục Sư:",
+    raidersLabel: "🗡️ Đạo Tặc:",
     raftLabel: "🚣 Bè Gỗ:",
     yes: "CÓ",
     no: "KHÔNG",
@@ -294,6 +301,7 @@ export const FORTRESS_LANG = {
     cleanEatMsg: "😋 Trinh sát đã chế biến sạch sẽ! Thu hoạch lương thực an toàn!",
     inedibleMsg: "🦴 Xác quái vật rỗng/không thể ăn được.",
     goldLootGained: "Vàng cướp được từ quái vật:",
+    droppedGoldWarn: "⚠️ Rơi bớt Vàng do vượt quá sức chứa túi đồ! Đã rơi",
 
     // Monster Names
     monsterKobold: "Trinh Sát Kobold",

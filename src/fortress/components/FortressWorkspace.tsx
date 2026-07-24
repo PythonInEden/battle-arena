@@ -81,6 +81,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     );
   };
 
+  // Helper to add gold with capacity guardrail checks
+  const addGoldSafely = (goldAmount: number, sourceName: string) => {
+    const result = StructuralGuardrails.protectInventoryState(inventory, troops, goldAmount, 0);
+    setInventory(result.updatedInventory);
+
+    if (result.droppedGold > 0) {
+      setLogs((prev) => [`${t.droppedGoldWarn} ${result.droppedGold} GP!`, ...prev]);
+    }
+  };
+
   const handleTileClick = (targetTile: TileState) => {
     const isSameTile = playerPosition.x === targetTile.x && playerPosition.y === targetTile.y;
     const moveCheck = LogisticalEngine.getMovementCost(playerPosition, targetTile, inventory);
@@ -147,9 +157,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const monsterName = activeEncounter ? (t as any)[activeEncounter.monster.nameKey] : 'Monster';
     setActiveEncounter(null);
     setTroops(updatedTroops);
-    setInventory(updatedInventory);
 
-    const victoryLog = `🏆 Defeated ${activeEncounter?.quantity}x ${monsterName}! Looted +${goldLooted} GP, Harvested +${rationsGained} Rations.`;
+    // Apply Gold Guardrails on combat loot
+    const guardrailResult = StructuralGuardrails.protectInventoryState(
+      updatedInventory,
+      updatedTroops,
+      0,
+      0
+    );
+    setInventory(guardrailResult.updatedInventory);
+
+    let victoryLog = `🏆 Defeated ${activeEncounter?.quantity}x ${monsterName}! Looted +${goldLooted} GP, Harvested +${rationsGained} Rations.`;
+    if (guardrailResult.droppedGold > 0) {
+      victoryLog += ` (${t.droppedGoldWarn} ${guardrailResult.droppedGold} GP)`;
+    }
 
     if (isPoisoned) {
       setRemainingMF((prev) => Math.max(0, prev - 1));
@@ -253,20 +274,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #333', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
         <button onClick={() => setTroops(p => ({ ...p, warriors: p.warriors + 10 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
-        <button onClick={() => setInventory(p => ({ ...p, gold: p.gold + 500 }))} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
+        <button onClick={() => addGoldSafely(500, 'SANDBOX')} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
         <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
         <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
       </div>
 
-      {/* Logistical HUD Bar */}
+      {/* Logistical HUD Bar with Wizards, Clerics, & Raiders Displayed! */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px' }}>
         <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
         <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / 10</strong></div>
         <div>{t.rationsLabel} <strong>{inventory.rations}</strong></div>
-        <div>{t.goldLabel} <strong>{inventory.gold} / {maxGoldCapacity} GP</strong></div>
+        <div>{t.goldLabel} <strong style={{ color: inventory.gold >= maxGoldCapacity ? '#ff0' : '#00ff00' }}>{inventory.gold} / {maxGoldCapacity} GP</strong></div>
         <div>{t.warriorsLabel} <strong>{troops.warriors}</strong></div>
         <div>{t.scoutsLabel} <strong>{troops.scouts} ({t.sightLabel} {sightRadius})</strong></div>
         <div>{t.mulesLabel} <strong>{troops.mules}</strong></div>
+        <div>{t.wizardsLabel} <strong style={{ color: troops.wizards > 0 ? '#ab47bc' : '#888' }}>{troops.wizards > 0 ? t.yes : t.no}</strong></div>
+        <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
+        <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
         <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
       </div>
 
