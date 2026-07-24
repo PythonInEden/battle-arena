@@ -101,6 +101,46 @@ export const FORTRESS_LANG = {
     claimContinueBtn: "✅ OK, CLAIM ITEM & CONTINUE",
     leaveShopBtn: "🚪 OK, LEAVE MARKETPLACE",
 
+    // PvE Combat & Harvesting
+    combatTitle: "⚔️ WILD MONSTER ENCOUNTER",
+    surpriseTitle: "🚨 AMBUSH SURPRISE DETECTED!",
+    surpriseMsg: "Your scouts spotted monsters ahead! Would you like to retreat back?",
+    retreatBtn: "🏃 RETREAT (SAFETY)",
+    fightBtn: "⚔️ ENGAGE IN COMBAT",
+    attackRoundBtn: "🎲 ATTACK ROUND",
+    victoryTitle: "🎉 COMBAT VICTORY!",
+    defeatTitle: "💀 FRONTLINE COLLAPSED!",
+    harvestBtn: "🍖 HARVEST MEAT FOR RATIONS",
+    skipHarvestBtn: "⏭️ SKIP HARVEST & LEAVE",
+    safeMeatYield: "Safe Meat Harvested:",
+    toxicMeatWarning: "⚠️ TOXIC MEAT WARNING: Harvesting yields 2x Rations, but carries a poisoning risk!",
+    poisonedMsg: "🤢 POISONED! Uncooked toxic meat weakened your party (-1 MF next turn)!",
+    cleanEatMsg: "😋 Scouts prepared the meat safely! Gained rations with 0 poison!",
+    inedibleMsg: "🦴 Inedible carcass. No meat can be harvested.",
+    goldLootGained: "Gold looted from monsters:",
+
+    // Monster Names
+    monsterKobold: "Kobold Scout",
+    monsterGoblin: "Goblin Frontliner",
+    monsterBugbear: "Bugbear Marauder",
+    monsterOrc: "Orc Berserker",
+    monsterOwlbear: "Owlbear Beast",
+    monsterTroll: "Cave Troll",
+    monsterGargoyle: "Stone Gargoyle",
+    monsterGiant: "Frost Giant Colossus",
+    monsterChimera: "Mountain Chimera",
+    monsterMindFlayer: "Mind Flayer",
+    monsterDisplacer: "Displacer Beast",
+    monsterCube: "Gelatinous Cube",
+    monsterDragon: "Ancient Red Dragon",
+    monsterBeholder: "Beholder",
+    monsterTarrasque: "The Tarrasque",
+    monsterZombie: "Zombie",
+    monsterSkeleton: "Skeleton Warrior",
+    monsterMimic: "Mimic Chest",
+    monsterIronGolem: "Iron Golem",
+    monsterLich: "Shadow Lich",
+
     // Action Logs
     logSpawn: "🏁 Map Generated. Spawned at Hub",
     logMoved: "👟 Moved to",
@@ -114,7 +154,10 @@ export const FORTRESS_LANG = {
     logStarvation: "⚠️ STARVATION! Lost",
     logWarriorsLost: "Warriors due to lack of food!",
     logNewTurn: "☀️ New Turn Started! Movement refreshed to 10 MF.",
-    logRelicFound: "✨ ANCIENT RELIC FOUND:"
+    logRelicFound: "✨ ANCIENT RELIC FOUND:",
+    logEncounterTrigger: "⚔️ Wild Encounter Triggered! Battle initiated!",
+    logCombatWon: "🏆 Defeated monster group! Victory secured.",
+    logRetreated: "🏃 Safely retreated from wild encounter."
   },
   vi: {
     // Lobby & Room Setup
@@ -214,6 +257,46 @@ export const FORTRESS_LANG = {
     claimContinueBtn: "✅ OK, NHẬN MÓN HÀNG & TIẾP TỤC",
     leaveShopBtn: "🚪 OK, RỜI KHỎI CHỢ",
 
+    // PvE Combat & Harvesting
+    combatTitle: "⚔️ ĐỤNG ĐỘ QUÁI VẬT HOANG DÃ",
+    surpriseTitle: "🚨 PHÁT HIỆN ĐỘT KÍCH BẤT NGỜ!",
+    surpriseMsg: "Trinh sát phát hiện quái vật phía trước! Bạn có muốn rút lui an toàn?",
+    retreatBtn: "🏃 RÚT LUI AN TOÀN",
+    fightBtn: "⚔️ LAO VÀO NGHÊNH CHIẾN",
+    attackRoundBtn: "🎲 ĐỔ XÚC XẮC TẤN CÔNG",
+    victoryTitle: "🎉 CHIẾN THẮNG RỰC RỠ!",
+    defeatTitle: "💀 QUÂN TIỀN TUYẾN THẤT THỦ!",
+    harvestBtn: "🍖 THU HOẠCH THỊT QUÁI LÀM LƯƠNG THỰC",
+    skipHarvestBtn: "⏭️ BỎ QUA & RỜI ĐI",
+    safeMeatYield: "Lương thực sạch thu hoạch được:",
+    toxicMeatWarning: "⚠️ CẢNH BÁO THỊT ĐỘC: Thu hoạch gấp đôi lương thực nhưng có nguy cơ trúng độc!",
+    poisonedMsg: "🤢 TRÚNG ĐỘC! ĂN THỊT ĐỘC CHƯA CHẾ BIẾN LÀM SUY YẾU CƠ THỂ (-1 MF lượt sau)!",
+    cleanEatMsg: "😋 Trinh sát đã chế biến sạch sẽ! Thu hoạch lương thực an toàn!",
+    inedibleMsg: "🦴 Xác quái vật rỗng/không thể ăn được.",
+    goldLootGained: "Vàng cướp được từ quái vật:",
+
+    // Monster Names
+    monsterKobold: "Trinh Sát Kobold",
+    monsterGoblin: "Lính Tiên Phong Goblin",
+    monsterBugbear: "Kẻ Cướp Bugbear",
+    monsterOrc: "Cuồng Chiến Binh Orc",
+    monsterOwlbear: "Quái Bố Owlbear",
+    monsterTroll: "Troll Hang Động",
+    monsterGargoyle: "Quỷ Đá Gargoyle",
+    monsterGiant: "Khổng Lồ Băng Băng",
+    monsterChimera: "Quái Thú Chimera",
+    monsterMindFlayer: "Quỷ Hút Não Mind Flayer",
+    monsterDisplacer: "Báo Biến Hình Displacer",
+    monsterCube: "Khối Nhầy Gelatinous",
+    monsterDragon: "Rồng Đỏ Cổ Đại",
+    monsterBeholder: "Quái Nhãn Beholder",
+    monsterTarrasque: "Thảm Họa Tarrasque",
+    monsterZombie: "Thây Ma Zombie",
+    monsterSkeleton: "Chiến Binh Xương Khô",
+    monsterMimic: "Rương Ma Mimic",
+    monsterIronGolem: "Người Sắt Iron Golem",
+    monsterLich: "Chúa Tể Bóng Tối Lich",
+
     // Action Logs
     logSpawn: "🏁 Khởi tạo bản đồ. Xuất phát tại Thành Trị",
     logMoved: "👟 Đã bước tới",
@@ -227,6 +310,9 @@ export const FORTRESS_LANG = {
     logStarvation: "⚠️ CHẠY ĂN TỪNG BỮA! Mất",
     logWarriorsLost: "Chiến Binh do chết đói!",
     logNewTurn: "☀️ Bắt đầu lượt mới! Thể lực hồi phục 10 MF.",
-    logRelicFound: "✨ BẢO VẬT CỔ ĐẠI:"
+    logRelicFound: "✨ BẢO VẬT CỔ ĐẠI:",
+    logEncounterTrigger: "⚔️ Đụng độ quái vật hoang dã! Bắt đầu giao tranh!",
+    logCombatWon: "🏆 Tiêu diệt sạch quái vật! Giành chiến thắng.",
+    logRetreated: "🏃 Rút lui an toàn khỏi quái vật hoang dã."
   }
 };

@@ -4,9 +4,11 @@ import { MapEngine } from '../MapEngine';
 import { LogisticalEngine } from '../LogisticalEngine';
 import { StructuralGuardrails } from '../utils/guardrails';
 import { MarketplaceEngine, ShopItem } from '../MarketplaceEngine';
+import { CombatEngine, EncounterGroup } from '../CombatEngine';
 import { TileState, Position, TroopRoster, PlayerInventory } from '../types';
 import { MapView } from './MapView';
 import { MarketplaceModal } from './MarketplaceModal';
+import { CombatModal } from './CombatModal';
 import { FORTRESS_LANG, LanguageType } from '../languages';
 
 interface FortressWorkspaceProps {
@@ -20,6 +22,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [difficulty, setDifficulty] = useState<number>(2);
   const [grid, setGrid] = useState<TileState[][]>([]);
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
+  const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
   const [remainingMF, setRemainingMF] = useState<number>(10);
   
   const [troops, setTroops] = useState<TroopRoster>({
@@ -34,9 +37,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
   const [shopCatalog, setShopCatalog] = useState<ShopItem[]>([]);
 
+  // Combat Modal Control
+  const [activeEncounter, setActiveEncounter] = useState<EncounterGroup | null>(null);
+  const [allowSurpriseRetreat, setAllowSurpriseRetreat] = useState<boolean>(false);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
-  // Initialize and spawn procedural map
   useEffect(() => {
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
 
@@ -50,7 +56,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    // Mark initial spawn vision radius as explored![cite: 1]
     const updatedGrid = generatedGrid.map((row) =>
       row.map((tile) => {
         const dx = Math.abs(spawnPos.x - tile.x);
@@ -61,10 +66,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     setGrid(updatedGrid);
     setPlayerPosition(spawnPos);
+    setPreviousPosition(spawnPos);
     setLogs([`${t.logSpawn} [${spawnPos.x}, ${spawnPos.y}]`]);
   }, [roomSeed, difficulty, locale]);
 
-  // Reveal tiles whenever player moves or sight changes[cite: 1]
   const revealSightArea = (pos: Position, radius: number) => {
     setGrid((prevGrid) =>
       prevGrid.map((row) =>
@@ -98,22 +103,63 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
+      setPreviousPosition(playerPosition);
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
 
-      // Permanently reveal newly explored tiles around new position![cite: 1]
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
 
       const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
       setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
+      // 1. Check Town
       if (targetTile.terrain === 'TOWN') {
         const availableItems = MarketplaceEngine.generateAvailableInventory(troops, inventory);
         setShopCatalog(availableItems);
         setIsShopOpen(true);
         setLogs((prev) => [t.logEnteredTown, ...prev]);
+        return;
+      }
+
+      // 2. Check Forest/Mountain Wild Encounter Roll
+      if (targetTile.terrain === 'FOREST' || targetTile.terrain === 'MOUNTAIN') {
+        if (CombatEngine.checkEncounterTrigger(targetTile.terrain)) {
+          const encounter = CombatEngine.spawnEncounter(targetTile.terrain, troops);
+          const allowRetreat = CombatEngine.checkSurpriseRetreatOption();
+          setActiveEncounter(encounter);
+          setAllowSurpriseRetreat(allowRetreat);
+          setLogs((prev) => [t.logEncounterTrigger, ...prev]);
+        }
       }
     }
+  };
+
+  const handleRetreatFromCombat = () => {
+    setActiveEncounter(null);
+    setPlayerPosition(previousPosition); // Step back safely
+    setLogs((prev) => [t.logRetreated, ...prev]);
+  };
+
+  const handleCombatVictory = (updatedTroops: TroopRoster, updatedInventory: PlayerInventory, isPoisoned: boolean) => {
+    setActiveEncounter(null);
+    setTroops(updatedTroops);
+    setInventory(updatedInventory);
+
+    if (isPoisoned) {
+      setRemainingMF((prev) => Math.max(0, prev - 1));
+      setLogs((prev) => [t.poisonedMsg, t.logCombatWon, ...prev]);
+    } else {
+      setLogs((prev) => [t.logCombatWon, ...prev]);
+    }
+  };
+
+  const handleCombatDefeat = () => {
+    setActiveEncounter(null);
+    // Wash ashore at sanctuary with rescue pack
+    setTroops((prev) => ({ ...prev, warriors: 15 }));
+    setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
+    setRemainingMF(10);
+    setLogs((prev) => [`💀 Frontline routed! Washed ashore at Sanctuary with rescue pack (15 Warriors, 15 Rations).`, ...prev]);
   };
 
   const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
@@ -124,7 +170,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     if (item.id === 'scouts') {
       const newScoutCount = troops.scouts + 1;
       setTroops((prev) => ({ ...prev, scouts: newScoutCount }));
-      // Immediately expand vision radius when buying Scouts![cite: 1]
       revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(newScoutCount));
     }
     if (item.id === 'clerics') setTroops((prev) => ({ ...prev, clerics: prev.clerics + 1 }));
@@ -246,6 +291,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           onPurchaseComplete={handlePurchaseComplete}
           onEjected={handleEjected}
           onClose={() => setIsShopOpen(false)}
+        />
+      )}
+
+      {/* PvE Combat Modal */}
+      {activeEncounter && (
+        <CombatModal
+          encounter={activeEncounter}
+          troops={troops}
+          inventory={inventory}
+          locale={locale}
+          allowSurpriseRetreat={allowSurpriseRetreat}
+          onRetreat={handleRetreatFromCombat}
+          onVictory={handleCombatVictory}
+          onDefeat={handleCombatDefeat}
         />
       )}
 
