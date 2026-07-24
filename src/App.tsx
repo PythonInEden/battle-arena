@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BattleArena } from './BattleArena';
-import { FortressWorkspace } from './components/FortressWorkspace';
+import { FortressWorkspace } from './fortress/components/FortressWorkspace';
 import MathArena from './MathArena'; 
 import { supabase } from './supabaseClient'; 
 
