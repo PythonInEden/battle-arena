@@ -4,6 +4,23 @@ export type LanguageType = 'en' | 'vi';
 
 export const FORTRESS_LANG = {
   en: {
+    // Lobby & Room Setup
+    lobbyTitle: "🏰 FORTRESS MULTIPLAYER LOBBY",
+    enterName: "Enter player name...",
+    enterCode: "Enter 4-letter Room Code...",
+    chooseDifficulty: "Choose Starting Difficulty Class:",
+    difficultyLvl: "Level",
+    level1Desc: "Hero of Prophecy (Easy) - 50 Warriors, 3 Scouts, 2 Clerics, 500 GP, 30 Rations, Dragon Sword",
+    level2Desc: "Seasoned Commander (Normal) - 30 Warriors, 2 Scouts, 1 Cleric, 300 GP, 20 Rations",
+    level3Desc: "Daring Explorer (Hard) - 15 Warriors, 1 Scout, 1 Cleric, 150 GP, 10 Rations",
+    level4Desc: "Solo Survivor (Legendary) - 5 Warriors, 1 Scout, 0 Cleric, 50 GP, 5 Rations",
+    mapDifficulty: "Map Difficulty Scale (1-20):",
+    createRoom: "👑 CREATE NEW ROOM",
+    joinRoom: "⚔️ JOIN EXISTING ROOM",
+    activePlayers: "Connected Players in Lobby:",
+    backToLobby: "← Exit to Lobby",
+
+    // Header & Nav
     headerTitle: "🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.3-ALPHA",
     headerSub: "Live Navigation & Town Marketplace Integration",
     seedLabel: "Seed Key:",
@@ -89,6 +106,23 @@ export const FORTRESS_LANG = {
     logRelicFound: "✨ ANCIENT RELIC FOUND:"
   },
   vi: {
+    // Lobby & Room Setup
+    lobbyTitle: "🏰 PHÒNG CHỜ ĐẤU TRƯỜNG PHÁO ĐÀI",
+    enterName: "Nhập tên người chơi...",
+    enterCode: "Nhập mã phòng 4 chữ cái...",
+    chooseDifficulty: "Chọn Cấp Độ Khởi Đầu:",
+    difficultyLvl: "Cấp",
+    level1Desc: "Anh Hùng Tiên Tri (Dễ) - 50 Lính, 3 Trinh sát, 2 Mục sư, 500 Vàng, 30 Lương, Kiếm Diệt Rồng",
+    level2Desc: "Tướng Lĩnh Dày Dạn (Thường) - 30 Lính, 2 Trinh sát, 1 Mục sư, 300 Vàng, 20 Lương",
+    level3Desc: "Thám Hiểm Liều Lĩnh (Khó) - 15 Lính, 1 Trinh sát, 1 Mục sư, 150 Vàng, 10 Lương",
+    level4Desc: "Sinh Tồn Đơn Lộc (Huyền Thoại) - 5 Lính, 1 Trinh sát, 0 Mục sư, 50 Vàng, 5 Lương",
+    mapDifficulty: "Mức Khó Bản Đồ (1-20):",
+    createRoom: "👑 TẠO PHÒNG MỚI",
+    joinRoom: "⚔️ VÀO PHÒNG CÓ SẴN",
+    activePlayers: "Người Chơi Đang Trong Phòng:",
+    backToLobby: "← Trở Về Phòng Chờ",
+
+    // Header & Nav
     headerTitle: "🎮 ĐẤU TRƯỜNG PHÁO ĐÀI VƯƠNG GIẢ v0.0.3-ALPHA",
     headerSub: "Mô Phỏng Di Chuyển & Chợ Thương Nhân Trực Tiếp",
     seedLabel: "Mã Map Seed:",
