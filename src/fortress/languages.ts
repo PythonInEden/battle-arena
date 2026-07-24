@@ -1,5 +1,7 @@
 // src/fortress/languages.ts
 
+export type LanguageType = 'en' | 'vi';
+
 export const FORTRESS_LANG = {
   en: {
     headerTitle: "🎮 WITCH KING OVERWORLD ENGINE DECK v0.0.3-ALPHA",
