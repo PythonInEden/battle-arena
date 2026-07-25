@@ -21,6 +21,9 @@ const getMonsterAssetUrl = (imageKey: string) => {
   return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
 };
 
+// 🎯 Base Tactical Movement Factor (MF) Budget per Round
+const BASE_TURN_MF = 3;
+
 interface FortressWorkspaceProps {
   locale?: LanguageType;
 }
@@ -46,6 +49,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isGameStarted, setIsGameStarted] = useState<boolean>(false);
 
+  // Synchronized Turn State
+  const [isTurnLocked, setIsTurnLocked] = useState<boolean>(false);
+  const [showManualModal, setShowManualModal] = useState<boolean>(false);
+
+  // Admin Dev Tweaker States
+  const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
+  const [showDebugPasswordModal, setShowDebugPasswordModal] = useState<boolean>(false);
+  const [debugPasswordInput, setDebugPasswordInput] = useState<string>('');
+  const DEV_PASSCODE = '1234';
+
   const [otherPlayers, setOtherPlayers] = useState<Record<string, { 
     id: string; 
     name: string; 
@@ -53,6 +66,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     gold: number; 
     mules: number; 
     isReady: boolean;
+    isTurnLocked: boolean;
   }>>({});
 
   const [isTeleportTargeting, setIsTeleportTargeting] = useState<boolean>(false);
@@ -62,7 +76,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [grid, setGrid] = useState<TileState[][]>([]);
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
   const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
-  const [remainingMF, setRemainingMF] = useState<number>(10);
+  const [remainingMF, setRemainingMF] = useState<number>(BASE_TURN_MF);
 
   const [troops, setTroops] = useState<TroopRoster>({
     warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2
@@ -96,26 +110,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isTeleportTrapModal, setIsTeleportTrapModal] = useState<boolean>(false);
   const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
   const [isDuelDefeatNotice, setIsDuelDefeatNotice] = useState<boolean>(false);
-
-  // Admin Dev Tweaker Lock & Password States
-  const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
-  const [showDebugPasswordModal, setShowDebugPasswordModal] = useState<boolean>(false);
-  const [debugPasswordInput, setDebugPasswordInput] = useState<string>('');
-
-  // Default Passcode (Change '1234' to whatever PIN you prefer!)
-  const DEV_PASSCODE = '6378';
-
-  const handleUnlockDebug = () => {
-    if (debugPasswordInput === DEV_PASSCODE) {
-      setIsDebugUnlocked(true);
-      setShowDebugPasswordModal(false);
-      setDebugPasswordInput('');
-    } else {
-      alert('❌ Incorrect Admin Passcode!');
-      setDebugPasswordInput('');
-    }
-  };
-
   const [pendingDungeonRoomIndex, setPendingDungeonRoomIndex] = useState<number | null>(null);
 
   const [fortressRooms, setFortressRooms] = useState<Array<{
@@ -154,7 +148,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
-  // 📡 Realtime Supabase Channel for Lobby Synchronization
+  // 📡 Realtime Supabase Channel for Lobby & Turn Lock Sync
   useEffect(() => {
     sessionStorage.setItem('fortress_player_name', playerName);
 
@@ -176,12 +170,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               gold: data.gold, 
               mules: data.mules,
               isReady: data.isReady ?? false,
+              isTurnLocked: data.isTurnLocked ?? false,
             },
           }));
         }
       })
       .on('broadcast', { event: 'start_game_trigger' }, () => {
         setIsGameStarted(true);
+      })
+      .on('broadcast', { event: 'global_new_round' }, () => {
+        // Execute End-of-Turn logistics when all players unlock together!
+        executeEndTurnUpkeep();
       })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
@@ -279,6 +278,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               gold: inventory.gold, 
               mules: troops.mules,
               isReady,
+              isTurnLocked,
             },
           });
         }
@@ -289,29 +289,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules, isReady]);
+  }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked]);
 
-  // Broadcast readiness state changes
   const toggleReadyState = () => {
     const nextReady = !isReady;
     setIsReady(nextReady);
-    if (channelRef.current) {
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'player_update',
-        payload: {
-          id: playerId,
-          name: playerName,
-          pos: playerPosition,
-          gold: inventory.gold,
-          mules: troops.mules,
-          isReady: nextReady,
-        },
-      });
+    broadcastMyState(playerPosition, nextReady, isTurnLocked);
+  };
+
+  const handleUnlockDebug = () => {
+    if (debugPasswordInput === DEV_PASSCODE) {
+      setIsDebugUnlocked(true);
+      setShowDebugPasswordModal(false);
+      setDebugPasswordInput('');
+    } else {
+      alert('❌ Incorrect Admin Passcode!');
+      setDebugPasswordInput('');
     }
   };
 
-  // 🗺️ Map Generation & Distinct Safe-Hub Player Spawning Logic
+  // 🗺️ Map Generation & Wild Land (Plains/Forest) Player Spawning
   useEffect(() => {
     if (!isGameStarted) return;
 
@@ -330,22 +327,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    // Collect ALL safe starting hubs (Towns and Sanctuaries) on the map
-    const safeHubs: Position[] = [];
+    // Collect ALL valid land spawn tiles (Plains & Forest, excluding Lake, Mountain, Citadel)
+    const validLandSpawns: Position[] = [];
     for (let x = 0; x < generatedGrid.length; x++) {
       for (let y = 0; y < generatedGrid[x].length; y++) {
-        if (generatedGrid[x][y].terrain === 'TOWN' || generatedGrid[x][y].terrain === 'SANCTUARY') {
-          safeHubs.push({ x, y });
+        const t = generatedGrid[x][y].terrain;
+        if (t === 'PLAINS' || t === 'FOREST' || t === 'TOWN' || t === 'SANCTUARY') {
+          validLandSpawns.push({ x, y });
         }
       }
     }
 
-    // Sort player IDs deterministically to give every player a distinct starting hub
+    // Deterministically assign each player their own distinct starting tile
     const allPlayerIds = [playerId, ...Object.keys(otherPlayers)].sort();
     const myIndex = Math.max(0, allPlayerIds.indexOf(playerId));
 
-    const finalSpawnPos: Position = safeHubs.length > 0
-      ? safeHubs[myIndex % safeHubs.length]
+    const finalSpawnPos: Position = validLandSpawns.length > 0
+      ? validLandSpawns[(myIndex * 7) % validLandSpawns.length]
       : { x: 0, y: 0 };
 
     const updatedGrid = generatedGrid.map((row) =>
@@ -361,10 +359,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setPreviousPosition(finalSpawnPos);
     setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
 
-    broadcastMyState(finalSpawnPos);
+    broadcastMyState(finalSpawnPos, isReady, false);
   }, [isGameStarted, roomSeed, difficulty, playerId]);
 
-  const broadcastMyState = (newPos?: Position) => {
+  const broadcastMyState = (newPos?: Position, readyState?: boolean, lockedState?: boolean) => {
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -375,7 +373,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           pos: newPos || playerPosition,
           gold: inventory.gold,
           mules: troops.mules,
-          isReady,
+          isReady: readyState ?? isReady,
+          isTurnLocked: lockedState ?? isTurnLocked,
         },
       });
     }
@@ -518,6 +517,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   const handleTileClick = (targetTile: TileState) => {
+    if (isTurnLocked) return;
+
     if (isTeleportTargeting) {
       setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
       setIsTeleportTargeting(false);
@@ -530,7 +531,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         setInventory((prev) => ({ ...prev, gold: 0, rations: Math.floor(prev.rations / 2) }));
         setTroops((prev) => ({ ...prev, warriors: survivingWarriors, mules: 0 }));
         setMaxWarriors(survivingWarriors);
-        setRemainingMF(10);
+        setRemainingMF(BASE_TURN_MF);
         revealSightArea(safePos, sightRadius);
         broadcastMyState(safePos);
         setDrownNotice({ pos: safePos });
@@ -847,7 +848,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setTroops((prev) => ({ ...prev, warriors: 15 }));
     setMaxWarriors(15);
     setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
-    setRemainingMF(10);
+    setRemainingMF(BASE_TURN_MF);
     revealSightArea(safePos, sightRadius);
     broadcastMyState(safePos);
     setLogs((prev) => [`💀 Frontline routed! Retreating to safe grid [${safePos.x}, ${safePos.y}].`, ...prev]);
@@ -889,7 +890,30 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLogs((prev) => [t.logEjected, ...prev]);
   };
 
-  const handleEndTurn = () => {
+  // Synchronized Turn Lock & Advance Engine
+  const handleLockTurnClick = () => {
+    const nextLocked = true;
+    setIsTurnLocked(nextLocked);
+    broadcastMyState(playerPosition, isReady, nextLocked);
+
+    // Check if ALL players are locked
+    const rivals = Object.values(otherPlayers);
+    const areAllRivalsLocked = rivals.length === 0 || rivals.every((r) => r.isTurnLocked);
+
+    if (areAllRivalsLocked) {
+      // Advance turn globally for everyone
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'global_new_round',
+          payload: {},
+        });
+      }
+      executeEndTurnUpkeep();
+    }
+  };
+
+  const executeEndTurnUpkeep = () => {
     const rationUpkeep = LogisticalEngine.calculateRationUpkeep(troops.warriors);
     let newRations = inventory.rations - rationUpkeep;
     let newWarriors = troops.warriors;
@@ -914,13 +938,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     setInventory((prev) => ({ ...prev, rations: newRations }));
     setTroops((prev) => ({ ...prev, warriors: newWarriors }));
-    setRemainingMF(10);
+    setRemainingMF(BASE_TURN_MF);
+    setIsTurnLocked(false);
     setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg, ...prev]);
+
+    broadcastMyState(playerPosition, isReady, false);
   };
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
 
-  // Compute dynamic map size based on connected players
   const totalPlayersCount = 1 + Object.keys(otherPlayers).length;
   const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
   const allPlayersReady = isReady && (Object.values(otherPlayers).length === 0 || Object.values(otherPlayers).every((p) => p.isReady));
@@ -934,7 +960,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
         <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
 
-        {/* Hero Identity Setup */}
         <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
           <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '8px' }}>
             {t.enterNamePrompt}
@@ -970,12 +995,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           </div>
         </div>
 
-        {/* Dynamic Map Info Card */}
         <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '24px', fontSize: '13px', color: '#fff' }}>
           <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Players)</div>
         </div>
 
-        {/* Connected Players Roster */}
         <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
           <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
           
@@ -996,7 +1019,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           ))}
         </div>
 
-        {/* Action Controls */}
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
           <button
             onClick={toggleReadyState}
@@ -1022,49 +1044,48 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // --------------------------------------------------------------------------
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
-      <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>{t.headerTitle}</h2>
-        <p style={{ margin: '4px 0 0 0', color: '#888' }}>{t.headerSub}</p>
+      <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>{t.headerTitle}</h2>
+          <p style={{ margin: '4px 0 0 0', color: '#888' }}>{t.headerSub}</p>
+        </div>
+        <button
+          onClick={() => setShowManualModal(true)}
+          style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+        >
+          {t.openManualBtn}
+        </button>
       </header>
 
-      {/* Dev Control Toolbar & Player Identity */}
+      {/* Dev Control Toolbar (Read-only Seed & Difficulty during active game) */}
       <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ color: '#ff0', fontWeight: 'bold' }}>
-          {t.playerNameLabel} 
-          <input 
-            type="text" 
-            value={playerName} 
-            onChange={(e) => setPlayerName(e.target.value)}
-            style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '6px', padding: '4px', width: '130px', fontFamily: 'monospace', fontWeight: 'bold' }} 
-          />
-        </label>
-        <label>
-          {t.seedLabel} 
-          <input 
-            type="number" 
-            value={roomSeed} 
-            onChange={(e) => setRoomSeed(parseInt(e.target.value) || 10000)}
-            style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '6px', padding: '4px', width: '90px', fontFamily: 'monospace' }} 
-          />
-        </label>
-        <label>
-          {t.diffLabel} 
-          <input 
-            type="number" 
-            min="1" 
-            max="4" 
-            value={difficulty} 
-            onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
-            style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '6px', padding: '4px', width: '50px', fontFamily: 'monospace' }} 
-          />
-        </label>
+        <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName}</span>
+        <span style={{ color: '#888', fontSize: '12px' }}>{t.seedLabel} <strong>{roomSeed}</strong></span>
+        <span style={{ color: '#888', fontSize: '12px' }}>{t.diffLabel} <strong>Level {difficulty}</strong></span>
+        
         <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
           {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => p.name).join(', ') || 'None'}</strong>
         </div>
+
+        {isDebugUnlocked ? (
+          <button
+            onClick={() => setIsDebugUnlocked(false)}
+            style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold', borderRadius: '3px' }}
+          >
+            🔒 LOCK TWEAKER
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowDebugPasswordModal(true)}
+            style={{ backgroundColor: '#111', color: '#555', border: '1px solid #222', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}
+          >
+            🔒 Admin Dev Tools
+          </button>
+        )}
       </div>
 
-      {/* Dev Sandbox Army Tweaker (Locked behind Admin Passcode!) */}
-      {isDebugUnlocked ? (
+      {/* Dev Sandbox Army Tweaker */}
+      {isDebugUnlocked && (
         <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #ff0', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
           <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
@@ -1078,29 +1099,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
           <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
           <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
-
-          <button
-            onClick={() => setIsDebugUnlocked(false)}
-            style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', marginLeft: 'auto', fontWeight: 'bold', borderRadius: '3px' }}
-          >
-            🔒 LOCK TWEAKER
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-          <button
-            onClick={() => setShowDebugPasswordModal(true)}
-            style={{ backgroundColor: '#111', color: '#555', border: '1px solid #222', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}
-          >
-            🔒 Admin Dev Tools
-          </button>
         </div>
       )}
 
       {/* Logistical HUD Bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px' }}>
         <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
-        <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / 10</strong></div>
+        <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / {BASE_TURN_MF}</strong></div>
         <div>{t.rationsLabel} <strong>{inventory.rations}</strong></div>
         <div>{t.goldLabel} <strong style={{ color: inventory.gold >= maxGoldCapacity ? '#ff0' : '#00ff00' }}>{inventory.gold} / {maxGoldCapacity} GP</strong></div>
         <div>{t.warriorsLabel} <strong>{troops.warriors}</strong></div>
@@ -1130,24 +1135,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={handleCastSeeingScroll}
-            disabled={inventory.scrollsSeeing <= 0}
-            style={{ backgroundColor: '#111', color: inventory.scrollsSeeing > 0 ? '#00ffff' : '#555', border: `1px solid ${inventory.scrollsSeeing > 0 ? '#00ffff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeing > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            disabled={inventory.scrollsSeeing <= 0 || isTurnLocked}
+            style={{ backgroundColor: '#111', color: inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#555', border: `1px solid ${inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeing > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
           >
             {t.castSeeingBtn} ({inventory.scrollsSeeing})
           </button>
 
           <button
             onClick={handleCastTeleportScroll}
-            disabled={inventory.scrollsTeleport <= 0}
-            style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            disabled={inventory.scrollsTeleport <= 0 || isTurnLocked}
+            style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
           >
             {t.castTeleportBtn} ({inventory.scrollsTeleport})
           </button>
 
           <button
             onClick={handleExecuteCampRaid}
-            disabled={troops.raiders <= 0}
-            style={{ backgroundColor: '#111', color: troops.raiders > 0 ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            disabled={troops.raiders <= 0 || isTurnLocked}
+            style={{ backgroundColor: '#111', color: troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
           >
             {getValidRaidTarget()
               ? `🗡️ Raid [${getValidRaidTarget()?.name}]'s Camp` 
@@ -1156,12 +1161,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
 
         <button
-          onClick={handleEndTurn}
-          style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
+          onClick={handleLockTurnClick}
+          disabled={isTurnLocked}
+          style={{
+            backgroundColor: isTurnLocked ? '#222' : '#00ff00',
+            color: isTurnLocked ? '#ff00ff' : '#000',
+            border: `2px solid ${isTurnLocked ? '#ff00ff' : '#00ff00'}`,
+            padding: '8px 20px',
+            fontWeight: 'bold',
+            cursor: isTurnLocked ? 'default' : 'pointer',
+            fontFamily: 'monospace'
+          }}
         >
-          {t.endTurnBtn}
+          {isTurnLocked ? '🔒 TURN LOCKED' : t.endTurnBtn}
         </button>
       </div>
+
+      {isTurnLocked && (
+        <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '10px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold' }}>
+          {t.waitingTurnLockMsg}
+        </div>
+      )}
 
       {isTeleportTargeting && (
         <div style={{ backgroundColor: '#ab47bc', color: '#fff', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1184,6 +1204,81 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           locale={locale}
           onTileClick={handleTileClick}
         />
+      )}
+
+      {/* Game Manual Modal */}
+      {showManualModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '10px', padding: '24px', maxWidth: '560px', width: '90%', color: '#fff', fontFamily: 'monospace', textAlign: 'left', maxHeight: '80vh', overflowY: 'auto' }}>
+            <h2 style={{ margin: '0 0 16px 0', color: '#00ffff', fontSize: '18px', textAlign: 'center', borderBottom: '1px solid #00ffff', paddingBottom: '8px' }}>
+              {t.manualTitle}
+            </h2>
+
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={{ color: '#ff0', margin: '0 0 4px 0' }}>{t.manualSecMovementTitle}</h4>
+              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecMovementText}</p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={{ color: '#ff3333', margin: '0 0 4px 0' }}>{t.manualSecRaidingTitle}</h4>
+              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRaidingText}</p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={{ color: '#ff00ff', margin: '0 0 4px 0' }}>{t.manualSecRelicsTitle}</h4>
+              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRelicsText}</p>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <h4 style={{ color: '#ab47bc', margin: '0 0 4px 0' }}>{t.manualSecCitadelTitle}</h4>
+              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecCitadelText}</p>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={() => setShowManualModal(false)}
+                style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ✅ BACK TO ADVENTURE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Passcode Modal */}
+      {showDebugPasswordModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '380px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>🔑 DEV TOOLS PASSCODE</h3>
+            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>Enter admin passcode to unlock dev sandbox tools:</p>
+
+            <input
+              type="password"
+              value={debugPasswordInput}
+              onChange={(e) => setDebugPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleUnlockDebug()}
+              placeholder="Enter PIN..."
+              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', padding: '8px', width: '80%', fontFamily: 'monospace', textAlign: 'center', fontSize: '18px', marginBottom: '20px', letterSpacing: '4px' }}
+              autoFocus
+            />
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={handleUnlockDebug}
+                style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                🔓 UNLOCK
+              </button>
+              <button
+                onClick={() => { setShowDebugPasswordModal(false); setDebugPasswordInput(''); }}
+                style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ❌ CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {isShopOpen && (
@@ -1482,41 +1577,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <button onClick={() => setSpottedOpponentNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
-          </div>
-        </div>
-      )}
-
-{/* 🔑 Admin Dev Tools Password Modal */}
-      {showDebugPasswordModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '380px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>🔑 DEV TOOLS PASSCODE</h3>
-            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>Enter admin passcode to unlock dev sandbox tools:</p>
-
-            <input
-              type="password"
-              value={debugPasswordInput}
-              onChange={(e) => setDebugPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleUnlockDebug()}
-              placeholder="Enter PIN..."
-              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', padding: '8px', width: '80%', fontFamily: 'monospace', textAlign: 'center', fontSize: '18px', marginBottom: '20px', letterSpacing: '4px' }}
-              autoFocus
-            />
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <button
-                onClick={handleUnlockDebug}
-                style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-              >
-                🔓 UNLOCK
-              </button>
-              <button
-                onClick={() => { setShowDebugPasswordModal(false); setDebugPasswordInput(''); }}
-                style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-              >
-                ❌ CANCEL
-              </button>
-            </div>
           </div>
         </div>
       )}
