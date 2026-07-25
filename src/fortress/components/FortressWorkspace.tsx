@@ -78,6 +78,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // Relic Claimed Modal State
   const [relicNotice, setRelicNotice] = useState<string | null>(null);
 
+  // Pending Relic Reward State
+  const [pendingRelicReward, setPendingRelicReward] = useState<QuestRelic | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -470,6 +473,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
+      // 🏛️ Check Relic Tile Guardian Encounter Trigger
+      const tileRelic = (targetTile as any).relic;
+      if (tileRelic && !inventory.activeRelics.includes(tileRelic)) {
+        const guardianBoss = CombatEngine.spawnRelicGuardian(tileRelic, troops);
+        setActiveEncounter(guardianBoss);
+        setPendingRelicReward(tileRelic);
+        setAllowSurpriseRetreat(false); // Relic Boss fights cannot be bypassed!
+        setLogs((prev) => [t.logRelicFound, ...prev]);
+        return;
+      }
+
       if (targetTile.terrain === 'FOREST' || targetTile.terrain === 'MOUNTAIN') {
         if (CombatEngine.checkEncounterTrigger(targetTile.terrain)) {
           const encounter = CombatEngine.spawnEncounter(targetTile.terrain, troops);
@@ -484,6 +498,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const handleRetreatFromCombat = () => {
     setActiveEncounter(null);
+    setPendingRelicReward(null);
     setPlayerPosition(previousPosition);
     setLogs((prev) => [t.logRetreated, ...prev]);
   };
@@ -517,6 +532,29 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       victoryLog += ` (${t.droppedGoldWarn} ${guardrailResult.droppedGold} GP)`;
     }
 
+    // Award Relic if defeating a Relic Guardian Boss!
+    if (pendingRelicReward) {
+      setInventory((prev) => ({
+        ...prev,
+        activeRelics: Array.from(new Set([...prev.activeRelics, pendingRelicReward])),
+      }));
+      setRelicNotice(pendingRelicReward as string);
+
+      // Clear relic icon from current map tile
+      setGrid((prevGrid) =>
+        prevGrid.map((row) =>
+          row.map((tile) => {
+            if (tile.x === playerPosition.x && tile.y === playerPosition.y) {
+              return { ...tile, relic: undefined };
+            }
+            return tile;
+          })
+        )
+      );
+
+      setPendingRelicReward(null);
+    }
+
     if (isPoisoned) {
       setRemainingMF((prev) => Math.max(0, prev - 1));
       setLogs((prev) => [t.poisonedMsg, victoryLog, ...prev]);
@@ -527,6 +565,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
+    setPendingRelicReward(null);
     const safePos = findNearestSafeTile(playerPosition);
     setPlayerPosition(safePos);
     setTroops((prev) => ({ ...prev, warriors: 15 }));

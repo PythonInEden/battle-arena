@@ -215,7 +215,7 @@ export const FORTRESS_LANG = {
     logStarvation: "⚠️ STARVATION! Lost",
     logWarriorsLost: "Warriors due to lack of food!",
     logNewTurn: "☀️ New Turn Started! Movement refreshed to 10 MF.",
-    logRelicFound: "✨ ANCIENT RELIC FOUND:",
+    logRelicFound: "✨ ANCIENT GUARDIAN SPOTTED! A powerful boss defends the legendary artifact!",
     logEncounterTrigger: "⚔️ Wild Encounter Triggered! Battle initiated!",
     logCombatWon: "🏆 Defeated monster group! Victory secured.",
     logRetreated: "🏃 Safely retreated from wild encounter."
@@ -432,7 +432,7 @@ export const FORTRESS_LANG = {
     logStarvation: "⚠️ CHẠY ĂN TỪNG BỮA! Mất",
     logWarriorsLost: "Chiến Binh do chết đói!",
     logNewTurn: "☀️ Bắt đầu lượt mới! Thể lực hồi phục 10 MF.",
-    logRelicFound: "✨ BẢO VẬT CỔ ĐẠI:",
+    logRelicFound: "✨ QUÁI VẬT HỘ VỆ XUẤT HIỆN! Trùm thần thoại đang canh giữ Bảo Vật Cổ Đại!",
     logEncounterTrigger: "⚔️ Đụng độ quái vật hoang dã! Bắt đầu giao tranh!",
     logCombatWon: "🏆 Tiêu diệt sạch quái vật! Giành chiến thắng.",
     logRetreated: "🏃 Rút lui an toàn khỏi quái vật hoang dã."

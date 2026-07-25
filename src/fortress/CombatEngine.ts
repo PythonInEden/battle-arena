@@ -116,6 +116,33 @@ export class CombatEngine {
     return loss;
   }
 
+  public static spawnRelicGuardian(relic: QuestRelic, troops: TroopRoster): EncounterGroup {
+    const playerCS = this.calculatePlayerCombatStrength(troops);
+    const relKey = String(relic).toLowerCase();
+    
+    let bossId = 'shadow_lich';
+    if (relKey === 'boots') bossId = 'gargoyle';
+    if (relKey === 'sword') bossId = 'ancient_red_dragon';
+    if (relKey === 'armor') bossId = 'frost_giant';
+    if (relKey === 'horn') bossId = 'shadow_lich';
+
+    const monster = MONSTER_DATABASE.find(m => m.id === bossId) || MONSTER_DATABASE[MONSTER_DATABASE.length - 1];
+    
+    // Guardian Boss strength scales to 1.1x player strength for an epic boss fight
+    const targetStrength = Math.max(monster.strength, playerCS * 1.1);
+    const quantity = Math.max(1, Math.floor(targetStrength / monster.strength));
+    const groupStrength = quantity * monster.strength;
+    const totalHp = Math.max(30, Math.round(groupStrength * 7));
+
+    return {
+      monster,
+      quantity,
+      totalHp,
+      maxHp: totalHp,
+      groupStrength,
+    };
+  }
+
   public static harvestMonsterMeat(
     monster: MonsterProfile,
     quantity: number,
