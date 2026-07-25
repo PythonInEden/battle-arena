@@ -12,12 +12,10 @@ import { MarketplaceModal } from './MarketplaceModal';
 import { CombatModal } from './CombatModal';
 import { FORTRESS_LANG, LanguageType } from '../languages';
 
-// Initialize Supabase Client for Realtime 2-Player Sync
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 🛠️ Dynamic Monster Asset Link Generator (Matching BattleArena Pattern)
 const getMonsterAssetUrl = (imageKey: string) => {
   const cleanKey = imageKey.toLowerCase().trim().replace(/[\s-]+/g, '_');
   return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
@@ -38,20 +36,34 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
     return id;
   });
+
   const [playerName, setPlayerName] = useState<string>(() => {
-    return sessionStorage.getItem('fortress_player_name') || `Player_${Math.floor(Math.random() * 899 + 100)}`;
+    return sessionStorage.getItem('fortress_player_name') || `Hero_${Math.floor(Math.random() * 899 + 100)}`;
   });
+
   const [roomSeed, setRoomSeed] = useState<number>(54931);
   const [difficulty, setDifficulty] = useState<number>(2);
-  const [otherPlayers, setOtherPlayers] = useState<Record<string, { id: string; name: string; pos: Position; gold: number; mules: number }>>({});
+  const [isReady, setIsReady] = useState<boolean>(false);
+  const [isGameStarted, setIsGameStarted] = useState<boolean>(false);
+
+  const [otherPlayers, setOtherPlayers] = useState<Record<string, { 
+    id: string; 
+    name: string; 
+    pos: Position; 
+    gold: number; 
+    mules: number; 
+    isReady: boolean;
+  }>>({});
+
   const [isTeleportTargeting, setIsTeleportTargeting] = useState<boolean>(false);
   const [spottedOpponentNotice, setSpottedOpponentNotice] = useState<{ name: string; pos: Position } | null>(null);
   const channelRef = useRef<any>(null);
+  
   const [grid, setGrid] = useState<TileState[][]>([]);
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
   const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
   const [remainingMF, setRemainingMF] = useState<number>(10);
-  
+
   const [troops, setTroops] = useState<TroopRoster>({
     warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2
   });
@@ -69,41 +81,43 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [activeEncounter, setActiveEncounter] = useState<EncounterGroup | null>(null);
   const [allowSurpriseRetreat, setAllowSurpriseRetreat] = useState<boolean>(false);
 
-  // Dropped Gold Modal State
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
-
-  // Collected Gold Modal State
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
-
-  // Drown Event Modal State
   const [drownNotice, setDrownNotice] = useState<{ pos: Position } | null>(null);
-
-  // Raided Warning Modal State
   const [raidedNotice, setRaidedNotice] = useState<{ attackerName: string; stolenGold: number; stolenMules: number } | null>(null);
-
-  // Relic Claimed Modal State
   const [relicNotice, setRelicNotice] = useState<string | null>(null);
-
-  // Pending Relic Reward State
   const [pendingRelicReward, setPendingRelicReward] = useState<QuestRelic | null>(null);
 
-  // Pending Town Rumor Intel Queue
   const [pendingRumors, setPendingRumors] = useState<string[]>([]);
   const [townRumorNotice, setTownRumorNotice] = useState<string[] | null>(null);
 
-  // Citadel & 16-Room Memory Crawler States
   const [isCitadelSealedNotice, setIsCitadelSealedNotice] = useState<boolean>(false);
   const [isInsideCitadel, setIsInsideCitadel] = useState<boolean>(false);
   const [isTeleportTrapModal, setIsTeleportTrapModal] = useState<boolean>(false);
   const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
-
-  // Active Dungeon Chamber Battle Tracker
-  const [pendingDungeonRoomIndex, setPendingDungeonRoomIndex] = useState<number | null>(null);
-
-  // Duel Defeat Modal State
   const [isDuelDefeatNotice, setIsDuelDefeatNotice] = useState<boolean>(false);
 
-  // 🏛️ Persistent 16-Room Fortress Layout
+  // Admin Dev Tweaker Lock & Password States
+  const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
+  const [showDebugPasswordModal, setShowDebugPasswordModal] = useState<boolean>(false);
+  const [debugPasswordInput, setDebugPasswordInput] = useState<string>('');
+
+  // Default Passcode (Change '1234' to whatever PIN you prefer!)
+  const DEV_PASSCODE = '6378';
+
+  const handleUnlockDebug = () => {
+    if (debugPasswordInput === DEV_PASSCODE) {
+      setIsDebugUnlocked(true);
+      setShowDebugPasswordModal(false);
+      setDebugPasswordInput('');
+    } else {
+      alert('❌ Incorrect Admin Passcode!');
+      setDebugPasswordInput('');
+    }
+  };
+
+  const [pendingDungeonRoomIndex, setPendingDungeonRoomIndex] = useState<number | null>(null);
+
   const [fortressRooms, setFortressRooms] = useState<Array<{
     id: number;
     type: 'WITCH_KING' | 'TELEPORT_TRAP' | 'MONSTER';
@@ -111,22 +125,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     isRevealed: boolean;
     isCleared: boolean;
   }>>(() => {
-    // Generate randomized 16 rooms (1 Witch King, 4 Traps, 11 Guards)
     const types: Array<'WITCH_KING' | 'TELEPORT_TRAP' | 'MONSTER'> = [
       'WITCH_KING',
       'TELEPORT_TRAP', 'TELEPORT_TRAP', 'TELEPORT_TRAP', 'TELEPORT_TRAP',
       'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER',
       'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER'
     ];
-    
-    // Shuffle array
     for (let i = types.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [types[i], types[j]] = [types[j], types[i]];
     }
-
     const guardPool = ['iron_golem', 'gargoyle', 'shadow_lich', 'chimera', 'frost_giant', 'skeleton_warrior'];
-
     return types.map((type, idx) => ({
       id: idx,
       type,
@@ -136,7 +145,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }));
   });
 
-  // 👑 1v1 Final Boss Rock-Paper-Scissors Duel State
   const [activeDuel, setActiveDuel] = useState<{
     round: number;
     playerWins: number;
@@ -146,57 +154,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
-  useEffect(() => {
-    const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
-
-    // 🏛️ Seed each of the 4 Quest Relics exactly ONCE on distinct Mountain tiles
-    const questRelics = ['boots', 'sword', 'armor', 'horn'];
-    let relicIdx = 0;
-    for (let x = 0; x < generatedGrid.length && relicIdx < questRelics.length; x++) {
-      for (let y = 0; y < generatedGrid[x].length && relicIdx < questRelics.length; y++) {
-        if (generatedGrid[x][y].terrain === 'MOUNTAIN' && !generatedGrid[x][y].hasRelic) {
-          generatedGrid[x][y].hasRelic = questRelics[relicIdx] as any;
-          (generatedGrid[x][y] as any).relic = questRelics[relicIdx];
-          relicIdx++;
-        }
-      }
-    }
-
-    let spawnPos: Position = { x: 0, y: 0 };
-    for (let x = 0; x < generatedGrid.length; x++) {
-      for (let y = 0; y < generatedGrid[x].length; y++) {
-        if (generatedGrid[x][y].terrain === 'TOWN' || generatedGrid[x][y].terrain === 'SANCTUARY') {
-          spawnPos = { x, y };
-          break;
-        }
-      }
-    }
-
-    // Calculate unique player spawn position offset based on playerId
-    const playerHash = playerId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const spawnOffsets = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
-    const myOffset = spawnOffsets[playerHash % spawnOffsets.length];
-
-    const finalSpawnPos: Position = {
-      x: Math.max(0, Math.min(generatedGrid.length - 1, spawnPos.x + myOffset.x)),
-      y: Math.max(0, Math.min(generatedGrid[0].length - 1, spawnPos.y + myOffset.y)),
-    };
-
-    const updatedGrid = generatedGrid.map((row) =>
-      row.map((tile) => {
-        const dx = Math.abs(finalSpawnPos.x - tile.x);
-        const dy = Math.abs(finalSpawnPos.y - tile.y);
-        return dx <= sightRadius && dy <= sightRadius ? { ...tile, isExplored: true } : tile;
-      })
-    );
-
-    setGrid(updatedGrid);
-    setPlayerPosition(finalSpawnPos);
-    setPreviousPosition(finalSpawnPos);
-    setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
-  }, [roomSeed, difficulty, playerId]);
-
-  // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad[cite: 2]
+  // 📡 Realtime Supabase Channel for Lobby Synchronization
   useEffect(() => {
     sessionStorage.setItem('fortress_player_name', playerName);
 
@@ -209,28 +167,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       .on('broadcast', { event: 'player_update' }, (payload) => {
         const data = payload.payload;
         if (data.id !== playerId) {
-          // Key by unique playerId to fix input typing duplication bug![cite: 2]
           setOtherPlayers((prev) => ({
             ...prev,
-            [data.id]: { id: data.id, name: data.name, pos: data.pos, gold: data.gold, mules: data.mules },
+            [data.id]: { 
+              id: data.id, 
+              name: data.name, 
+              pos: data.pos, 
+              gold: data.gold, 
+              mules: data.mules,
+              isReady: data.isReady ?? false,
+            },
           }));
-
-          // Scout Enemy Player Detection Check[cite: 1]
-          const dx = Math.abs(playerPosition.x - data.pos.x);
-          const dy = Math.abs(playerPosition.y - data.pos.y);
-          if (dx <= sightRadius && dy <= sightRadius) {
-            setSpottedOpponentNotice({ name: data.name, pos: data.pos });
-          }
         }
+      })
+      .on('broadcast', { event: 'start_game_trigger' }, () => {
+        setIsGameStarted(true);
       })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
         if (data.targetId === playerId) {
-          // Scout Sentry Defense Check (20% per Scout, max 80%)
           const evasionChance = Math.min(0.8, troops.scouts * 0.2);
-          const isThwarted = Math.random() < evasionChance;
-
-          if (isThwarted) {
+          if (Math.random() < evasionChance) {
             setLogs((prev) => [t.raidThwartedLog, ...prev]);
             channel.send({
               type: 'broadcast',
@@ -240,10 +197,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             return;
           }
 
-          // Defender calculates actual lost inventory & check for storable relic theft!
           const stolenGold = Math.min(inventory.gold, 150);
           const stolenMules = Math.min(troops.mules, 1);
-          
           let stolenRelic: string | null = null;
           if (inventory.activeRelics.length > 0) {
             stolenRelic = String(inventory.activeRelics[0]);
@@ -260,7 +215,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           setRaidedNotice({ attackerName: data.attackerName, stolenGold, stolenMules });
           setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP, -${stolenMules} Mule${stolenRelic ? `, and ${stolenRelic}` : ''}!`, ...prev]);
 
-          // Broadcast global event rumor to other players
           if (stolenRelic) {
             channel.send({
               type: 'broadcast',
@@ -271,7 +225,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             });
           }
 
-          // Send confirmation response back to attacker
           channel.send({
             type: 'broadcast',
             event: 'raid_response',
@@ -286,15 +239,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         }
       })
       .on('broadcast', { event: 'raid_thwarted' }, (payload) => {
-        const data = payload.payload;
-        if (data.attackerId === playerId) {
+        if (payload.payload.attackerId === playerId) {
           setLogs((prev) => [t.raidThwartedAttackerLog, ...prev]);
         }
       })
       .on('broadcast', { event: 'raid_response' }, (payload) => {
         const data = payload.payload;
         if (data.attackerId === playerId) {
-          // Attacker receives exact confirmed stolen inventory & stolen relic
           addGoldSafely(data.stolenGold);
           if (data.stolenMules > 0) {
             setTroops((prev) => ({ ...prev, mules: prev.mules + data.stolenMules }));
@@ -309,25 +260,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         }
       })
       .on('broadcast', { event: 'global_rumor' }, (payload) => {
-        const rumorText = payload.payload.text;
-        // Queue rumors until player enters a Town or Sanctuary
-        setPendingRumors((prev) => [...prev, rumorText]);
+        setPendingRumors((prev) => [...prev, payload.payload.text]);
       })
-
       .on('broadcast', { event: 'game_victory' }, (payload) => {
-        const data = payload.payload;
-        if (data.winnerId !== playerId) {
-          setGameWinnerNotice({ winnerName: data.winnerName, isMe: false });
+        if (payload.payload.winnerId !== playerId) {
+          setGameWinnerNotice({ winnerName: payload.payload.winnerName, isMe: false });
         }
       })
-
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          // Broadcast my presence to other devices with playerId included
           channel.send({
             type: 'broadcast',
             event: 'player_update',
-            payload: { id: playerId, name: playerName, pos: playerPosition, gold: inventory.gold, mules: troops.mules },
+            payload: { 
+              id: playerId, 
+              name: playerName, 
+              pos: playerPosition, 
+              gold: inventory.gold, 
+              mules: troops.mules,
+              isReady,
+            },
           });
         }
       });
@@ -337,9 +289,81 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules]);
+  }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules, isReady]);
 
-  // Helper to broadcast position or state changes to opponent device
+  // Broadcast readiness state changes
+  const toggleReadyState = () => {
+    const nextReady = !isReady;
+    setIsReady(nextReady);
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'player_update',
+        payload: {
+          id: playerId,
+          name: playerName,
+          pos: playerPosition,
+          gold: inventory.gold,
+          mules: troops.mules,
+          isReady: nextReady,
+        },
+      });
+    }
+  };
+
+  // 🗺️ Map Generation & Distinct Safe-Hub Player Spawning Logic
+  useEffect(() => {
+    if (!isGameStarted) return;
+
+    const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
+
+    // 🏛️ Seed 4 Quest Relics on Mountain tiles
+    const questRelics = ['boots', 'sword', 'armor', 'horn'];
+    let relicIdx = 0;
+    for (let x = 0; x < generatedGrid.length && relicIdx < questRelics.length; x++) {
+      for (let y = 0; y < generatedGrid[x].length && relicIdx < questRelics.length; y++) {
+        if (generatedGrid[x][y].terrain === 'MOUNTAIN' && !generatedGrid[x][y].hasRelic) {
+          generatedGrid[x][y].hasRelic = questRelics[relicIdx] as any;
+          (generatedGrid[x][y] as any).relic = questRelics[relicIdx];
+          relicIdx++;
+        }
+      }
+    }
+
+    // Collect ALL safe starting hubs (Towns and Sanctuaries) on the map
+    const safeHubs: Position[] = [];
+    for (let x = 0; x < generatedGrid.length; x++) {
+      for (let y = 0; y < generatedGrid[x].length; y++) {
+        if (generatedGrid[x][y].terrain === 'TOWN' || generatedGrid[x][y].terrain === 'SANCTUARY') {
+          safeHubs.push({ x, y });
+        }
+      }
+    }
+
+    // Sort player IDs deterministically to give every player a distinct starting hub
+    const allPlayerIds = [playerId, ...Object.keys(otherPlayers)].sort();
+    const myIndex = Math.max(0, allPlayerIds.indexOf(playerId));
+
+    const finalSpawnPos: Position = safeHubs.length > 0
+      ? safeHubs[myIndex % safeHubs.length]
+      : { x: 0, y: 0 };
+
+    const updatedGrid = generatedGrid.map((row) =>
+      row.map((tile) => {
+        const dx = Math.abs(finalSpawnPos.x - tile.x);
+        const dy = Math.abs(finalSpawnPos.y - tile.y);
+        return dx <= sightRadius && dy <= sightRadius ? { ...tile, isExplored: true } : tile;
+      })
+    );
+
+    setGrid(updatedGrid);
+    setPlayerPosition(finalSpawnPos);
+    setPreviousPosition(finalSpawnPos);
+    setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
+
+    broadcastMyState(finalSpawnPos);
+  }, [isGameStarted, roomSeed, difficulty, playerId]);
+
   const broadcastMyState = (newPos?: Position) => {
     if (channelRef.current) {
       channelRef.current.send({
@@ -351,7 +375,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           pos: newPos || playerPosition,
           gold: inventory.gold,
           mules: troops.mules,
+          isReady,
         },
+      });
+    }
+  };
+
+  const handleLaunchGame = () => {
+    setIsGameStarted(true);
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'start_game_trigger',
+        payload: {},
       });
     }
   };
@@ -368,10 +404,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     );
   };
 
-  // Deposit excess gold onto current tile ground stack & trigger modal
   const depositExcessGoldToTile = (pos: Position, excessAmount: number) => {
     if (excessAmount <= 0) return;
-
     setGrid((prevGrid) =>
       prevGrid.map((row) =>
         row.map((tile) => {
@@ -383,41 +417,29 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         })
       )
     );
-
     setDroppedGoldNotice({ amount: excessAmount, pos });
   };
 
-  // Helper to add gold with capacity guardrails + ground drop
   const addGoldSafely = (goldAmount: number) => {
     const result = StructuralGuardrails.protectInventoryState(inventory, troops, goldAmount, 0);
     setInventory(result.updatedInventory);
-
     if (result.droppedGold > 0) {
       depositExcessGoldToTile(playerPosition, result.droppedGold);
     }
   };
 
-  // 📜 Spell of Seeing Handler
   const handleCastSeeingScroll = () => {
-    if (inventory.scrollsSeeing <= 0) {
-      alert(t.logNoScrolls);
-      return;
-    }
+    if (inventory.scrollsSeeing <= 0) return alert(t.logNoScrolls);
     setInventory((prev) => ({ ...prev, scrollsSeeing: prev.scrollsSeeing - 1 }));
-    revealSightArea(playerPosition, 8); // Reveals 8-tile radius!
+    revealSightArea(playerPosition, 8);
     setLogs((prev) => [t.logSeeingCast, ...prev]);
   };
 
-  // 🌀 Teleport Scroll Targeting Handler
   const handleCastTeleportScroll = () => {
-    if (inventory.scrollsTeleport <= 0) {
-      alert(t.logNoScrolls);
-      return;
-    }
+    if (inventory.scrollsTeleport <= 0) return alert(t.logNoScrolls);
     setIsTeleportTargeting((prev) => !prev);
   };
 
-  // Helper to check for nearby opponent players using Scout sight radius
   const checkForNearbyOpponents = (myPos: Position) => {
     Object.values(otherPlayers).forEach((opp) => {
       const dx = Math.abs(myPos.x - opp.pos.x);
@@ -428,7 +450,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     });
   };
 
-  // Helper to find connected target within 3 tiles range
   const getValidRaidTarget = () => {
     const opponents = Object.values(otherPlayers);
     return opponents.find((opp) => {
@@ -438,7 +459,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     });
   };
   
-  // Helper to find the nearest non-lake, non-mountain land tile for local respawns
   const findNearestSafeTile = (currentPos: Position): Position => {
     for (let radius = 1; radius < grid.length; radius++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -458,45 +478,30 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return currentPos;
   };
 
-  // 🗡️ Raider Stealth Raid Handler (With Dynamic Range Guardrail)
   const handleExecuteCampRaid = () => {
-    if (troops.raiders <= 0) {
-      alert("You need at least 1 Raider Specialist to conduct stealth raids!");
-      return;
-    }
-
+    if (troops.raiders <= 0) return alert("You need at least 1 Raider Specialist to conduct stealth raids!");
     const validTarget = getValidRaidTarget();
-
     if (validTarget && channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
         event: 'raid_request',
-        payload: {
-          attackerId: playerId,
-          attackerName: playerName,
-          targetId: validTarget.id,
-        },
+        payload: { attackerId: playerId, attackerName: playerName, targetId: validTarget.id },
       });
     } else {
-      // Offline / Wild Bandit Camp Raid Fallback
       addGoldSafely(150);
       setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
       setLogs((prev) => [t.logRaidSuccess, ...prev]);
     }
   };
 
-  // Check and auto-pickup ground gold when stepping on a tile
   const checkGroundLootPickup = (pos: Position, currentGold: number, currentCap: number) => {
     const targetTile = grid[pos.x]?.[pos.y];
     const tileGold = targetTile?.droppedGold ?? 0;
-
     if (tileGold > 0 && currentGold < currentCap) {
       const freeCap = currentCap - currentGold;
       const pickupAmount = Math.min(tileGold, freeCap);
       const remainingTileGold = tileGold - pickupAmount;
-
       setInventory((prev) => ({ ...prev, gold: prev.gold + pickupAmount }));
-
       setGrid((prevGrid) =>
         prevGrid.map((row) =>
           row.map((tile) => {
@@ -507,25 +512,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           })
         )
       );
-
       setLogs((prev) => [`${t.pickupGoldLog} +${pickupAmount} GP [${pos.x}, ${pos.y}]!`, ...prev]);
       setCollectedGoldNotice({ amount: pickupAmount, pos });
     }
   };
 
   const handleTileClick = (targetTile: TileState) => {
-    // Execute Targeted Teleportation (With Lake Drowning Rescue Rule!)
     if (isTeleportTargeting) {
       setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
       setIsTeleportTargeting(false);
 
       if (targetTile.terrain === 'LAKE' && !inventory.hasRaft) {
         const safePos = findNearestSafeTile({ x: targetTile.x, y: targetTile.y });
-
-        // Drowning Penalties: 50% Warriors drowned, all Mules drowned, Gold lost, 50% Rations lost
         const drownedWarriors = Math.floor(troops.warriors / 2);
         const survivingWarriors = Math.max(1, troops.warriors - drownedWarriors);
-
         setPlayerPosition(safePos);
         setInventory((prev) => ({ ...prev, gold: 0, rations: Math.floor(prev.rations / 2) }));
         setTroops((prev) => ({ ...prev, warriors: survivingWarriors, mules: 0 }));
@@ -563,20 +563,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           return;
         }
 
-        // 👑 Allow re-entering Citadel on same-tile click!
         if (targetTile.terrain === 'CITADEL') {
           const hasHorn = inventory.activeRelics.some((r) => String(r).toLowerCase() === 'horn');
           const successChance = hasHorn ? 0.75 : Math.min(0.80, troops.scouts * 0.05);
-          const isBreached = Math.random() <= successChance;
-
-          if (!isBreached) {
+          if (Math.random() <= successChance) {
+            setIsInsideCitadel(true);
+            setLogs((prev) => [t.logCitadelReentered, ...prev]);
+          } else {
             setIsCitadelSealedNotice(true);
             setLogs((prev) => [t.logCitadelSealed, ...prev]);
-            return;
           }
-
-          setIsInsideCitadel(true);
-          setLogs((prev) => [t.logCitadelReentered, ...prev]);
           return;
         }
 
@@ -587,25 +583,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPreviousPosition(playerPosition);
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
-
       broadcastMyState({ x: targetTile.x, y: targetTile.y });
-
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
-
-      // Check if stepping closer to any existing opponent triggers Scout detection
       checkForNearbyOpponents({ x: targetTile.x, y: targetTile.y });
-
-      // Check auto-pickup ground gold on tile arrival
       checkGroundLootPickup({ x: targetTile.x, y: targetTile.y }, inventory.gold, maxGoldCapacity);
 
       const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
       setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
-      // 🏰 / ⛩️ Trigger Town & Sanctuary Rumor Network update if entering hubs!
       if (targetTile.terrain === 'TOWN' || targetTile.terrain === 'SANCTUARY') {
         if (pendingRumors.length > 0) {
           setTownRumorNotice([...pendingRumors]);
-          setPendingRumors([]); // Clear queue after reading news!
+          setPendingRumors([]);
         }
       }
 
@@ -617,34 +606,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
-      // 👑 CITADEL STRONGHOLD GATE ENTRY CHECK
       if (targetTile.terrain === 'CITADEL') {
         const hasHorn = inventory.activeRelics.some((r) => String(r).toLowerCase() === 'horn');
-        
-        // Gate Success Roll: 75% with Horn, or 5% * Scout Count without Horn
         const successChance = hasHorn ? 0.75 : Math.min(0.80, troops.scouts * 0.05);
-        const isBreached = Math.random() <= successChance;
-
-        if (!isBreached) {
+        if (Math.random() <= successChance) {
+          setIsInsideCitadel(true);
+          setLogs((prev) => [`🏰 Gates breached! Entering the Witch King's Fortress...`, ...prev]);
+        } else {
           setIsCitadelSealedNotice(true);
           setRemainingMF((prev) => Math.max(0, prev - 1));
           setLogs((prev) => [t.logCitadelSealed, ...prev]);
-          return;
         }
-
-        // Breached! Enter 16-Room Memory Crawler
-        setIsInsideCitadel(true);
-        setLogs((prev) => [`🏰 Gates breached! Entering the Witch King's Fortress...`, ...prev]);
         return;
       }
 
-      // 🏛️ Check Relic Tile Guardian Encounter Trigger
       const tileRelic = (targetTile as any).relic || (targetTile as any).hasRelic;
       if (tileRelic && !inventory.activeRelics.includes(tileRelic as any)) {
         const guardianBoss = CombatEngine.spawnRelicGuardian(tileRelic as any, troops);
         setActiveEncounter(guardianBoss);
         setPendingRelicReward(tileRelic as any);
-        setAllowSurpriseRetreat(false); // Relic Boss fights cannot be bypassed!
+        setAllowSurpriseRetreat(false);
         setLogs((prev) => [t.logRelicFound, ...prev]);
         return;
       }
@@ -679,13 +660,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setActiveEncounter(null);
     setTroops(updatedTroops);
 
-    // Apply Gold Guardrails on combat loot
-    const guardrailResult = StructuralGuardrails.protectInventoryState(
-      updatedInventory,
-      updatedTroops,
-      0,
-      0
-    );
+    const guardrailResult = StructuralGuardrails.protectInventoryState(updatedInventory, updatedTroops, 0, 0);
     setInventory(guardrailResult.updatedInventory);
 
     if (guardrailResult.droppedGold > 0) {
@@ -697,7 +672,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       victoryLog += ` (${t.droppedGoldWarn} ${guardrailResult.droppedGold} GP)`;
     }
 
-    // Award Relic if defeating a Relic Guardian Boss!
     if (pendingRelicReward) {
       setInventory((prev) => ({
         ...prev,
@@ -705,18 +679,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }));
       setRelicNotice(pendingRelicReward as string);
 
-      // Broadcast rumor to town networks
       if (channelRef.current) {
         channelRef.current.send({
           type: 'broadcast',
           event: 'global_rumor',
-          payload: {
-            text: `👑 ${playerName} ${t.logRumorClaimed} [${String(pendingRelicReward).toUpperCase()}]!`,
-          },
+          payload: { text: `👑 ${playerName} ${t.logRumorClaimed} [${String(pendingRelicReward).toUpperCase()}]!` },
         });
       }
 
-      // Clear relic icon from current map tile
       setGrid((prevGrid) =>
         prevGrid.map((row) =>
           row.map((tile) => {
@@ -731,13 +701,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPendingRelicReward(null);
     }
 
-    // 🏰 Check if victory clears a Citadel Dungeon Chamber!
     if (pendingDungeonRoomIndex !== null) {
       setFortressRooms((prev) =>
         prev.map((r, i) => (i === pendingDungeonRoomIndex ? { ...r, isCleared: true } : r))
       );
       setPendingDungeonRoomIndex(null);
-      setIsInsideCitadel(true); // Re-open 16-chamber grid to continue crawling!
+      setIsInsideCitadel(true);
     }
 
     if (isPoisoned) {
@@ -748,49 +717,52 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  // 🧩 16-Room Memory Crawler Click Handler
   const handleRoomClick = (roomIndex: number) => {
     const room = fortressRooms[roomIndex];
     if (room.isCleared) return;
 
-    // Mark room revealed in persistent state
     setFortressRooms((prev) =>
       prev.map((r, i) => (i === roomIndex ? { ...r, isRevealed: true } : r))
     );
 
-    // 🌀 Teleporter Trap (Mark cleared & eject)
     if (room.type === 'TELEPORT_TRAP') {
+      const landTiles: Position[] = [];
+      for (let x = 0; x < grid.length; x++) {
+        for (let y = 0; y < grid[x].length; y++) {
+          if (grid[x][y].terrain !== 'LAKE' && grid[x][y].terrain !== 'MOUNTAIN') {
+            landTiles.push({ x, y });
+          }
+        }
+      }
+
+      const randomWarpPos = landTiles.length > 0 
+        ? landTiles[Math.floor(Math.random() * landTiles.length)]
+        : playerPosition;
+
+      setPreviousPosition(playerPosition);
+      setPlayerPosition(randomWarpPos);
+      revealSightArea(randomWarpPos, sightRadius);
+      broadcastMyState(randomWarpPos);
+
       setFortressRooms((prev) =>
         prev.map((r, i) => (i === roomIndex ? { ...r, isCleared: true, isRevealed: true } : r))
       );
       setIsInsideCitadel(false);
       setIsTeleportTrapModal(true);
-      setLogs((prev) => [`🌀 Triggered Teleporter Trap in Room #${roomIndex + 1}! Ejected to overworld!`, ...prev]);
+      setLogs((prev) => [`🌀 Triggered Teleporter Trap in Chamber #${roomIndex + 1}! Teleported to [${randomWarpPos.x}, ${randomWarpPos.y}]!`, ...prev]);
       return;
     }
 
-    // ⚔️ Castle Guard Encounter (With Section 7.3 Relic Buffs!)
     if (room.type === 'MONSTER') {
       const monsterProf = MONSTER_DATABASE.find((m) => m.id === room.monsterId) || MONSTER_DATABASE[0];
-
-      // 🏛️ Section 7.3 Fortress Relic Validations
       const hasBoots = inventory.activeRelics.some(r => String(r).toLowerCase() === 'boots');
       const hasArmor = inventory.activeRelics.some(r => String(r).toLowerCase() === 'armor');
       const hasSword = inventory.activeRelics.some(r => String(r).toLowerCase() === 'sword');
 
-      // Without Boots of Stealth, castle monsters fight at 2.0x Double Strength (Section 7.3)
       let monsterMult = hasBoots ? 1.0 : 2.0;
-
-      // Armor of Defense reduces opponent attack power inside castle by 33% (Section 7.3)
-      if (hasArmor) {
-        monsterMult *= 0.67;
-      }
-
-      // Sword of Strength boosts player strength by 1.5x (Section 7.3)
+      if (hasArmor) monsterMult *= 0.67;
       let effectiveStrength = monsterProf.strength * monsterMult;
-      if (hasSword) {
-        effectiveStrength /= 1.5;
-      }
+      if (hasSword) effectiveStrength /= 1.5;
 
       const guardEncounter: EncounterGroup = {
         monster: monsterProf,
@@ -801,14 +773,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       };
 
       setPendingDungeonRoomIndex(roomIndex);
-      setIsInsideCitadel(false); // Hide 16-chamber overlay so Combat Modal pops up!
+      setIsInsideCitadel(false);
       setActiveEncounter(guardEncounter);
       setAllowSurpriseRetreat(false);
       setLogs((prev) => [`⚔️ Engaged Castle Guard in Chamber #${roomIndex + 1}!`, ...prev]);
       return;
     }
 
-    // 👑 The Witch King Room Uncovered -> Start 1v1 RPS Duel!
     if (room.type === 'WITCH_KING') {
       setIsInsideCitadel(false);
       setActiveDuel({ round: 1, playerWins: 0, bossWins: 0, lastResult: null });
@@ -816,10 +787,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  // ⚔️ 1v1 Rock-Paper-Scissors Duel Stance Resolver
   const handleExecuteDuelStance = (playerStance: 'BLADE' | 'SHIELD' | 'SPELL') => {
     if (!activeDuel) return;
-
     const stances: Array<'BLADE' | 'SHIELD' | 'SPELL'> = ['BLADE', 'SHIELD', 'SPELL'];
     const bossStance = stances[Math.floor(Math.random() * stances.length)];
 
@@ -841,7 +810,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       resultMsg = `💀 ${t.roundLoss} (${bossStance} beats ${playerStance})!`;
     }
 
-    // Check Victory (First to 2 wins)
     if (pWins >= 2) {
       setActiveDuel(null);
       setGameWinnerNotice({ winnerName: playerName, isMe: true });
@@ -868,7 +836,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       lastResult: `[Round #${activeDuel.round}] ${resultMsg}`,
     });
   };
-  
+
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
@@ -882,7 +850,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setRemainingMF(10);
     revealSightArea(safePos, sightRadius);
     broadcastMyState(safePos);
-    setLogs((prev) => [`💀 Frontline routed! Retreating to nearby safe grid [${safePos.x}, ${safePos.y}].`, ...prev]);
+    setLogs((prev) => [`💀 Frontline routed! Retreating to safe grid [${safePos.x}, ${safePos.y}].`, ...prev]);
   };
 
   const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
@@ -905,12 +873,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
 
     setTroops(updatedTroops);
+    if (item.id === 'scouts') revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(updatedTroops.scouts));
 
-    if (item.id === 'scouts') {
-      revealSightArea(playerPosition, LogisticalEngine.calculateSightRadius(updatedTroops.scouts));
-    }
-
-    // Auto-pickup ground gold if capacity increased from bought Mules/Warriors!
     const newCap = StructuralGuardrails.calculateMaxGoldCapacity(updatedTroops);
     checkGroundLootPickup(playerPosition, inventory.gold - pricePaid, newCap);
 
@@ -938,7 +902,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       logMsg += ` ${t.logStarvation} ${casualties} ${t.logWarriorsLost}`;
     }
 
-    // Passive Cleric Healing on Rest/Pass Turn (+1 Warrior per Cleric up to max recruited capacity)
     let clericHealedMsg = '';
     if (troops.clerics > 0 && newWarriors < maxWarriors) {
       const healedWarriors = Math.min(maxWarriors, newWarriors + troops.clerics);
@@ -957,6 +920,106 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
 
+  // Compute dynamic map size based on connected players
+  const totalPlayersCount = 1 + Object.keys(otherPlayers).length;
+  const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
+  const allPlayersReady = isReady && (Object.values(otherPlayers).length === 0 || Object.values(otherPlayers).every((p) => p.isReady));
+
+  // --------------------------------------------------------------------------
+  // 🏰 PRE-GAME LOBBY WAITING ROOM OVERLAY
+  // --------------------------------------------------------------------------
+  if (!isGameStarted) {
+    return (
+      <div style={{ padding: '32px', maxWidth: '700px', margin: '40px auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
+        <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
+        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
+
+        {/* Hero Identity Setup */}
+        <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
+          <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '8px' }}>
+            {t.enterNamePrompt}
+            <input
+              type="text"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value)}
+              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '10px', padding: '6px 10px', width: '200px', fontFamily: 'monospace', fontWeight: 'bold' }}
+            />
+          </label>
+
+          <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
+            <label style={{ color: '#fff' }}>
+              {t.seedLabel}
+              <input
+                type="number"
+                value={roomSeed}
+                onChange={(e) => setRoomSeed(parseInt(e.target.value) || 10000)}
+                style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '90px', fontFamily: 'monospace' }}
+              />
+            </label>
+            <label style={{ color: '#fff' }}>
+              {t.diffLabel}
+              <input
+                type="number"
+                min="1"
+                max="4"
+                value={difficulty}
+                onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
+                style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* Dynamic Map Info Card */}
+        <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '24px', fontSize: '13px', color: '#fff' }}>
+          <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Players)</div>
+        </div>
+
+        {/* Connected Players Roster */}
+        <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
+          <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#fff' }}>
+            <span>👑 <strong>{playerName}</strong> (You)</span>
+            <span style={{ color: isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
+              {isReady ? `[ ${t.readyBtnText} ]` : `[ ${t.waitingForPlayers} ]`}
+            </span>
+          </div>
+
+          {Object.values(otherPlayers).map((opp) => (
+            <div key={opp.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#aaa' }}>
+              <span>⚔️ {opp.name}</span>
+              <span style={{ color: opp.isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
+                {opp.isReady ? '[ READY ]' : '[ WAITING ]'}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Action Controls */}
+        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+          <button
+            onClick={toggleReadyState}
+            style={{ backgroundColor: isReady ? '#330000' : '#003300', color: isReady ? '#ff3333' : '#00ff00', border: `2px solid ${isReady ? '#ff3333' : '#00ff00'}`, padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
+          >
+            {isReady ? t.unreadyBtnText : t.readyBtnText}
+          </button>
+
+          <button
+            onClick={handleLaunchGame}
+            disabled={!allPlayersReady}
+            style={{ backgroundColor: allPlayersReady ? '#00ff00' : '#222', color: allPlayersReady ? '#000' : '#666', border: 'none', padding: '12px 28px', fontWeight: 'bold', fontSize: '14px', cursor: allPlayersReady ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px' }}
+          >
+            {t.startGameBtnText}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 🎮 MAIN OVERWORLD GAME BOARD UI
+  // --------------------------------------------------------------------------
   return (
     <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
       <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px' }}>
@@ -1000,25 +1063,41 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       </div>
 
-      {/* Dev Sandbox Army Tweaker */}
-      <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #333', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
-        <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
-        <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>
-    {t.addGold}
-  </button>
-        <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
-        <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
-        <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
-        <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
-        <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
-        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'boots' as QuestRelic])) })); setRelicNotice('boots'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🥾 Boots</button>
-        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
-        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
-        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
-      </div>
+      {/* Dev Sandbox Army Tweaker (Locked behind Admin Passcode!) */}
+      {isDebugUnlocked ? (
+        <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #ff0', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
+          <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
+          <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
+          <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
+          <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
+          <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
+          <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
+          <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
+          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'boots' as QuestRelic])) })); setRelicNotice('boots'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🥾 Boots</button>
+          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
+          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
+          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
 
-      {/* Logistical HUD Bar with Wizards, Clerics, & Raiders Displayed! */}
+          <button
+            onClick={() => setIsDebugUnlocked(false)}
+            style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', marginLeft: 'auto', fontWeight: 'bold', borderRadius: '3px' }}
+          >
+            🔒 LOCK TWEAKER
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+          <button
+            onClick={() => setShowDebugPasswordModal(true)}
+            style={{ backgroundColor: '#111', color: '#555', border: '1px solid #222', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}
+          >
+            🔒 Admin Dev Tools
+          </button>
+        </div>
+      )}
+
+      {/* Logistical HUD Bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px' }}>
         <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
         <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / 10</strong></div>
@@ -1084,7 +1163,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </button>
       </div>
 
-      {/* Teleport Targeting Banner */}
       {isTeleportTargeting && (
         <div style={{ backgroundColor: '#ab47bc', color: '#fff', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{t.teleportTargetPrompt}</span>
@@ -1094,7 +1172,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
-      {/* Map Viewport Area */}
       {grid.length > 0 && (
         <MapView
           grid={grid}
@@ -1109,7 +1186,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         />
       )}
 
-      {/* Marketplace Modal */}
       {isShopOpen && (
         <MarketplaceModal
           availableItems={shopCatalog}
@@ -1122,7 +1198,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         />
       )}
 
-      {/* PvE Combat Modal */}
       {activeEncounter && (
         <CombatModal
           encounter={activeEncounter}
@@ -1136,102 +1211,75 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         />
       )}
 
-{/* Dropped Gold Modal Dialog (Requires explicit OK click) */}
       {droppedGoldNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.droppedGoldModalTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.droppedGoldModalMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff0', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
               <div>💰 {t.droppedAmountLabel} <strong style={{ color: '#ff0' }}>+{droppedGoldNotice.amount} GP</strong></div>
               <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{droppedGoldNotice.pos.x}, {droppedGoldNotice.pos.y}]</strong></div>
             </div>
-
-            <button
-              onClick={() => setDroppedGoldNotice(null)}
-              style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setDroppedGoldNotice(null)} style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
       
-      {/* Gold Collected Modal Dialog */}
       {collectedGoldNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #00ff00', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#00ff00', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.goldCollectedModalTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.goldCollectedModalMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #00ff00', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
               <div>💰 {t.goldCollectedAmountLabel} <strong style={{ color: '#00ff00' }}>+{collectedGoldNotice.amount} GP</strong></div>
               <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{collectedGoldNotice.pos.x}, {collectedGoldNotice.pos.y}]</strong></div>
             </div>
-
-            <button
-              onClick={() => setCollectedGoldNotice(null)}
-              style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setCollectedGoldNotice(null)} style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ EXCELLENT
             </button>
           </div>
         </div>
       )}
 
-{/* Lake Drown Warning Modal */}
       {drownNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #0288d1', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#0288d1', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.drownModalTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.drownModalMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #0288d1', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
               <div>📍 Rescued Coordinates: <strong style={{ color: '#0288d1' }}>[{drownNotice.pos.x}, {drownNotice.pos.y}]</strong></div>
             </div>
-
-            <button
-              onClick={() => setDrownNotice(null)}
-              style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setDrownNotice(null)} style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
       
-      {/* Camp Raided MsgBox Modal */}
       {raidedNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.raidModalTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.raidModalMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
               <div>🗡️ {t.raidedByLabel} <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
               <div style={{ marginTop: '4px' }}>💰 {t.goldStolenLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
               <div style={{ marginTop: '4px' }}>🫏 {t.mulesLootedLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
             </div>
-
-            <button
-              onClick={() => setRaidedNotice(null)}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setRaidedNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
 
-{/* 🏰 16-Room Memory Crawler Modal */}
       {isInsideCitadel && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '20px', maxWidth: '520px', width: '95%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 4px 0', fontSize: '18px' }}>{t.citadelTitle}</h3>
             <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>{t.citadelSubtitle}</p>
-
-            {/* 4x4 Grid of 16 Covered Chambers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '20px' }}>
               {fortressRooms.map((room, idx) => (
                 <button
@@ -1274,62 +1322,30 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 </button>
               ))}
             </div>
-
-            <button
-              onClick={() => setIsInsideCitadel(false)}
-              style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #666', padding: '8px 20px', cursor: 'pointer', fontFamily: 'monospace' }}
-            >
+            <button onClick={() => setIsInsideCitadel(false)} style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #666', padding: '8px 20px', cursor: 'pointer', fontFamily: 'monospace' }}>
               🚪 Exit Citadel
             </button>
           </div>
         </div>
       )}
 
-{/* 💀 Witch King Duel Defeat Modal */}
-      {isDuelDefeatNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.duelDefeatTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.duelDefeatMsg}</p>
-
-            <button
-              onClick={() => {
-                setIsDuelDefeatNotice(false);
-                handleCombatDefeat(); // Routes player to safe sanctuary tile
-              }}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
-              ✅ RETREAT TO SANCTUARY
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {/* 🌀 Teleporter Trap Ejection Modal */}
       {isTeleportTrapModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.teleportTrapTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.teleportTrapMsg}</p>
-
-            <button
-              onClick={() => setIsTeleportTrapModal(false)}
-              style={{ backgroundColor: '#ab47bc', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setIsTeleportTrapModal(false)} style={{ backgroundColor: '#ab47bc', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
 
-      {/* 👑 1v1 Final Boss Rock-Paper-Scissors Duel Modal */}
       {activeDuel && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
           <div style={{ backgroundColor: '#111', border: '3px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
             <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>{t.duelTitle}</h2>
             <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>{t.duelSubtitle}</p>
-
-            {/* Boss Avatar Display */}
             <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
                 src={getMonsterAssetUrl('witch_king')}
@@ -1352,14 +1368,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 }}
               />
             </div>
-
-            {/* Scoreboard */}
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '10px', marginBottom: '16px', fontSize: '13px', color: '#fff' }}>
               <div>{t.duelRound} #{activeDuel.round} | You: <strong style={{ color: '#00ff00' }}>{activeDuel.playerWins}</strong> - Witch King: <strong style={{ color: '#ff3333' }}>{activeDuel.bossWins}</strong></div>
               {activeDuel.lastResult && <div style={{ marginTop: '6px', color: '#ff0' }}>{activeDuel.lastResult}</div>}
             </div>
-
-            {/* RPS Stance Buttons */}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button onClick={() => handleExecuteDuelStance('BLADE')} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #00ff00', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
                 {t.stanceBlade}
@@ -1375,24 +1387,36 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
-{/* Citadel Sealed Warning Modal */}
+      {isDuelDefeatNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.duelDefeatTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.duelDefeatMsg}</p>
+            <button
+              onClick={() => {
+                setIsDuelDefeatNotice(false);
+                handleCombatDefeat();
+              }}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ RETREAT TO SANCTUARY
+            </button>
+          </div>
+        </div>
+      )}
+
       {isCitadelSealedNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #b71c1c', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#b71c1c', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.citadelSealedTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.citadelSealedMsg}</p>
-
-            <button
-              onClick={() => setIsCitadelSealedNotice(false)}
-              style={{ backgroundColor: '#b71c1c', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setIsCitadelSealedNotice(false)} style={{ backgroundColor: '#b71c1c', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
 
-      {/* Grand Game Victory / Game Over Modal */}
       {gameWinnerNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
           <div style={{ backgroundColor: '#111', border: `3px solid ${gameWinnerNotice.isMe ? '#00ff00' : '#ff3333'}`, borderRadius: '8px', padding: '32px', maxWidth: '520px', width: '90%', color: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
@@ -1402,24 +1426,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
               {gameWinnerNotice.isMe ? t.victoryMsg : `${t.opponentWonMsg} (${gameWinnerNotice.winnerName})`}
             </p>
-
-            <button
-              onClick={() => window.location.reload()}
-              style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => window.location.reload()} style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               🔄 RESTART ADVENTURE
             </button>
           </div>
         </div>
       )}
-      
-{/* Town & Sanctuary Rumor Network Modal */}
+
       {townRumorNotice && townRumorNotice.length > 0 && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#00ffff', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.townRumorTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.townRumorMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #00ffff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff', maxHeight: '180px', overflowY: 'auto' }}>
               {townRumorNotice.map((rumor, idx) => (
                 <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
@@ -1427,63 +1445,82 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 </div>
               ))}
             </div>
-
-            <button
-              onClick={() => setTownRumorNotice(null)}
-              style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setTownRumorNotice(null)} style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ NOTED WITH THANKS
             </button>
           </div>
         </div>
       )}
-      
-      {/* Relic Acquired MsgBox Modal */}
+
       {relicNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.relicTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.relicAcquiredMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff' }}>
               <div>✨ Item Unlocked:</div>
               <strong style={{ color: '#ff00ff', display: 'block', marginTop: '6px' }}>
                 {relicNotice === 'boots' ? t.relicBootsName : relicNotice === 'sword' ? t.relicSwordName : relicNotice === 'armor' ? t.relicArmorName : t.relicHornName}
               </strong>
             </div>
-
-            <button
-              onClick={() => setRelicNotice(null)}
-              style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setRelicNotice(null)} style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ EXCELLENT
             </button>
           </div>
         </div>
       )}
 
-      {/* Scout Opponent Spotted Modal */}
       {spottedOpponentNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
           <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.opponentSpottedTitle}</h3>
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.opponentSpottedMsg}</p>
-            
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
               <div>🧙‍♀️ Player: <strong style={{ color: '#fff' }}>{spottedOpponentNotice.name}</strong></div>
               <div style={{ marginTop: '4px' }}>📍 Coordinates: <strong style={{ color: '#ff3333' }}>[{spottedOpponentNotice.pos.x}, {spottedOpponentNotice.pos.y}]</strong></div>
             </div>
-
-            <button
-              onClick={() => setSpottedOpponentNotice(null)}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-            >
+            <button onClick={() => setSpottedOpponentNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
               ✅ UNDERSTOOD
             </button>
           </div>
         </div>
       )}
-      
+
+{/* 🔑 Admin Dev Tools Password Modal */}
+      {showDebugPasswordModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '380px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>🔑 DEV TOOLS PASSCODE</h3>
+            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>Enter admin passcode to unlock dev sandbox tools:</p>
+
+            <input
+              type="password"
+              value={debugPasswordInput}
+              onChange={(e) => setDebugPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleUnlockDebug()}
+              placeholder="Enter PIN..."
+              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', padding: '8px', width: '80%', fontFamily: 'monospace', textAlign: 'center', fontSize: '18px', marginBottom: '20px', letterSpacing: '4px' }}
+              autoFocus
+            />
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={handleUnlockDebug}
+                style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                🔓 UNLOCK
+              </button>
+              <button
+                onClick={() => { setShowDebugPasswordModal(false); setDebugPasswordInput(''); }}
+                style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ❌ CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Action Ticker Log */}
       <div style={{ backgroundColor: '#050505', border: '1px solid #00ff00', padding: '12px', maxHeight: '150px', overflowY: 'auto' }}>
         <h4 style={{ margin: '0 0 6px 0', color: '#fff', borderBottom: '1px solid #222' }}>{t.logHeader}</h4>

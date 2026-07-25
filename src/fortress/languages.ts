@@ -11,8 +11,17 @@ export const FORTRESS_LANG = {
     addRations: "+20 Rations",
     addWizard: "+1 Wizard",
 
-    // Lobby & Setup
-    lobbyTitle: "🏰 FORTRESS MULTIPLAYER LOBBY",
+    // Lobby & Setup (en)
+    lobbyTitle: "🏰 FORTRESS OF THE WITCH KING - LOBBY",
+    lobbySubtitle: "Register your hero name, set difficulty, and ready up to launch the demo!",
+    enterNamePrompt: "Enter Hero Name:",
+    readyBtnText: "🟢 MARK AS READY",
+    unreadyBtnText: "🔴 CANCEL READY",
+    startGameBtnText: "⚔️ LAUNCH GAME DEMO",
+    waitingForPlayers: "Waiting for all players to click READY...",
+    gameStartingNotice: "🚀 ALL PLAYERS READY! Initializing Map & Distributing Spawns...",
+    mapSizeNotice: "Dynamic Map Grid Size:",
+    playerCountLabel: "Connected Commanders:",
     enterName: "Enter player name...",
     enterCode: "Enter 4-letter Room Code...",
     chooseDifficulty: "Choose Starting Difficulty Class:",
@@ -264,8 +273,17 @@ export const FORTRESS_LANG = {
     addRations: "+20 Lương",
     addWizard: "+1 Pháp Sư",
 
-    // Lobby & Setup
+    // Lobby & Setup (vi)
     lobbyTitle: "🏰 PHÒNG CHỜ ĐẤU TRƯỜNG PHÁO ĐÀI",
+    lobbySubtitle: "Nhập tên Anh Hùng, chọn độ khó và bấm Sẵn Sàng để bắt đầu chơi thử!",
+    enterNamePrompt: "Tên Tướng Lĩnh:",
+    readyBtnText: "🟢 CHỌN SẴN SÀNG",
+    unreadyBtnText: "🔴 HỦY SẴN SÀNG",
+    startGameBtnText: "⚔️ KHỞI CHẠY TRẬN ĐẤU",
+    waitingForPlayers: "Đang chờ tất cả người chơi nhấn SẴN SÀNG...",
+    gameStartingNotice: "🚀 TẤT CẢ ĐÃ SẴN SÀNG! Đang tạo bản đồ & phân bổ vị trí...",
+    mapSizeNotice: "Kích Thước Bản Đồ:",
+    playerCountLabel: "Tướng Lĩnh Đang Trong Phòng:",
     enterName: "Nhập tên người chơi...",
     enterCode: "Nhập mã phòng 4 chữ cái...",
     chooseDifficulty: "Chọn Cấp Độ Khởi Đầu:",
