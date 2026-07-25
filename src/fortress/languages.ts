@@ -201,6 +201,7 @@ export const FORTRESS_LANG = {
     inedibleMsg: "🦴 Inedible carcass. No meat can be harvested.",
     goldLootGained: "Gold looted from monsters:",
     droppedGoldWarn: "⚠️ Excess Gold dropped due to carrying capacity limit! Dropped",
+    logWeaponDropped: "🗡️ RARE WEAPON DROP! Claimed a Sword of Strength from the monster carcass!",
     droppedGoldModalTitle: "📦 EXCESS GOLD DROPPED ON GROUND!",
     droppedGoldModalMsg: "Your army reached maximum carrying capacity! Excess gold was placed on the ground tile. Return here with Mules or Warriors to reclaim it.",
     droppedAmountLabel: "Gold Dropped on Ground:",
@@ -212,6 +213,10 @@ export const FORTRESS_LANG = {
 
     // Scrolls & Raiding
     castSeeingBtn: "📜 Cast Spell of Seeing",
+    castSeekingBtn: "🔮 Cast Spell of Seeking",
+    seekingModalTitle: "🔮 SPELL OF SEEKING DIVINATION",
+    seekingModalMsg: "The arcane compass glows brightly, revealing the coordinates of your nearest objective on the map!",
+    logSeekingCast: "🔮 Spell of Seeking cast! Arcane compass revealed target location!",
     playerNameLabel: "Player Name:",
     opponentsOnline: "Players in Room:",
     raidedByLog: "🚨 WARNING! Your camp was raided by",
@@ -317,7 +322,9 @@ export const FORTRESS_LANG = {
     murderPeaceBtn: "🗡️ Murder Envoy (+150 Gold)",
     peaceAcceptedLog: "🕊️ Alliance accepted! Map visions merged with rival commander!",
     peaceMurderedLog: "🩸 Envoy murdered! Stole 150 GP, but rival gained +20% Holy Vengeance combat power against you!",
-    holyVengeanceActiveLog: "⚡ Holy Vengeance Active! +20% combat power against treacherous rival!"
+    holyVengeanceActiveLog: "⚡ Holy Vengeance Active! +20% combat power against treacherous rival!",
+    logElfTheft: "⚠️ ELVEN DESERTION! Your volatile Elves stole your Sword of Strength and deserted under cover of night!",
+    logDwarfTheft: "⚠️ DWARVEN BETRAYAL! Your Dwarves raided your treasury (-200 GP) and fled back into the mountains!"
   },
   vi: {
     // Sandbox Tweaker
@@ -517,6 +524,7 @@ export const FORTRESS_LANG = {
     inedibleMsg: "🦴 Xác quái vật rỗng/không thể ăn được.",
     goldLootGained: "Vàng cướp được từ quái vật:",
     droppedGoldWarn: "⚠️ Rơi bớt Vàng do vượt quá sức chứa túi đồ! Đã rơi",
+    logWeaponDropped: "🗡️ RƠI VŨ KHÍ HIẾM! Thu được Thánh Kiếm Sức Mạnh từ xác quái vật cổ đại!",
     droppedGoldModalTitle: "📦 VÀNG VƯỢT DUNG TÍCH ĐÃ RƠI XUỐNG ĐẤT!",
     droppedGoldModalMsg: "Quân đội của bạn đã hết sức chứa vàng! Số vàng dư thừa đã được để lại trên ô đất này. Hãy quay lại đây cùng Lừa Thồ hoặc Binh Lính để nhặt lại.",
     droppedAmountLabel: "Số Vàng Rơi Trên Đất:",
@@ -528,6 +536,10 @@ export const FORTRESS_LANG = {
 
     // Scrolls & Raiding
     castSeeingBtn: "📜 Phép Thuật Mở Tầm Nhìn",
+    castSeekingBtn: "🔮 Phép Thuật Tầm Bảo",
+    seekingModalTitle: "🔮 BÍ KÍP TẦM BẢO SOI SÁNG",
+    seekingModalMsg: "Kim chỉ nam ma thuật xoay tròn và định vị chính xác tọa độ mục tiêu trên bản đồ!",
+    logSeekingCast: "🔮 Đã thi triển Phép Tầm Bảo! Vị trí mục tiêu huyền thoại đã được chỉ rõ trên bản đồ!",
     playerNameLabel: "Tên Người Chơi:",
     opponentsOnline: "Người Chơi Trong Phòng:",
     raidedByLog: "🚨 CẢNH BÁO! Doanh trại của bạn bị tập kích bởi",
@@ -633,6 +645,8 @@ export const FORTRESS_LANG = {
     murderPeaceBtn: "🗡️ Sát Hại Sứ Giả (+150 Vàng)",
     peaceAcceptedLog: "🕊️ Đã ký hòa ước! Mở rộng tầm nhìn bản đồ chung với đối thủ!",
     peaceMurderedLog: "🩸 Đã giết sứ giả! Cướp 150 Vàng nhưng đối thủ nhận điểm nộ +20% Sức Mạnh Thánh Phẫn!",
-    holyVengeanceActiveLog: "⚡ Phẫn Nộ Trả Thù! Tăng +20% sức mạnh chiến đấu chống lại kẻ phản Bội!"
+    holyVengeanceActiveLog: "⚡ Phẫn Nộ Trả Thù! Tăng +20% sức mạnh chiến đấu chống lại kẻ phản Bội!",
+    logElfTheft: "⚠️ TINH LINH ĐÀO TẨU! Băng nhóm Tinh Linh đã cướp mất Thánh Kiếm và biến mất trong đêm!",
+    logDwarfTheft: "⚠️ NGƯỜI LÙN PHẢN BỘI! Tộc Người Lùn đã hốt 200 Vàng và tẩu thoát về vùng núi cao!"
   }
 };

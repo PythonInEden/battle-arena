@@ -187,6 +187,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [incomingPeaceRequest, setIncomingPeaceRequest] = useState<{ attackerId: string; attackerName: string } | null>(null);
   const [holyVengeanceTargets, setHolyVengeanceTargets] = useState<string[]>([]);
 
+  // 🔮 Seeking Scroll Modal State
+  const [seekingNotice, setSeekingNotice] = useState<{ title: string; targetName: string; pos: Position } | null>(null);
+
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
   const [drownNotice, setDrownNotice] = useState<{ pos: Position } | null>(null);
@@ -760,6 +763,45 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setIsTeleportTargeting((prev) => !prev);
   };
 
+  // 🔮 Spell of Seeking Handler
+  const handleCastSeekingScroll = () => {
+    if (inventory.scrollsSeeking <= 0) return alert(t.logNoScrolls);
+
+    let nearestTarget: { name: string; pos: Position; dist: number } | null = null;
+
+    for (let x = 0; x < grid.length; x++) {
+      for (let y = 0; y < grid[x].length; y++) {
+        const tile = grid[x][y];
+        const tileRelic = (tile as any).relic || tile.hasRelic;
+        const dist = Math.hypot(x - playerPosition.x, y - playerPosition.y);
+
+        if (tileRelic && !inventory.activeRelics.includes(tileRelic as any)) {
+          const relicKey = String(tileRelic).toLowerCase();
+          const relicLabel = relicKey === 'boots' ? '🥾 Boots of Stealth' : relicKey === 'sword' ? '🗡️ Sword of Strength' : relicKey === 'armor' ? '🛡️ Armor of Defense' : '🎺 Horn of Opening';
+          if (!nearestTarget || dist < nearestTarget.dist) {
+            nearestTarget = { name: relicLabel, pos: { x, y }, dist };
+          }
+        } else if (tile.terrain === 'CITADEL' && !nearestTarget) {
+          nearestTarget = { name: '🏰 The Dark Citadel', pos: { x, y }, dist };
+        }
+      }
+    }
+
+    setInventory((prev) => ({ ...prev, scrollsSeeking: Math.max(0, prev.scrollsSeeking - 1) }));
+
+    if (nearestTarget) {
+      revealSightArea(nearestTarget.pos, 1);
+      setSeekingNotice({
+        title: (t as any).seekingModalTitle || "🔮 SPELL OF SEEKING",
+        targetName: nearestTarget.name,
+        pos: nearestTarget.pos,
+      });
+      setLogs((prev) => [`${(t as any).logSeekingCast || "🔮 Cast Spell of Seeking!"} Found ${nearestTarget.name} at [${nearestTarget.pos.x}, ${nearestTarget.pos.y}]!`, ...prev]);
+    } else {
+      alert("No hidden objectives remaining on the map!");
+    }
+  };
+
   const checkForNearbyOpponents = (myPos: Position) => {
     Object.values(otherPlayers).forEach((opp) => {
       const dx = Math.abs(myPos.x - opp.pos.x);
@@ -1006,6 +1048,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     let victoryLog = `🏆 Defeated ${activeEncounter?.quantity}x ${monsterName}! Looted +${goldLooted} GP, Harvested +${rationsGained} Rations.`;
     if (guardrailResult.droppedGold > 0) {
       victoryLog += ` (${t.droppedGoldWarn} ${guardrailResult.droppedGold} GP)`;
+    }
+
+    // 🗡️ High-Tier Monster Weapon Drop Check (Chimera or Dragon drops Sword of Strength)
+    const isEliteMonster = activeEncounter?.monster.id === 'chimera' || activeEncounter?.monster.id === 'ancient_red_dragon';
+    const hasSwordAlready = updatedInventory.activeRelics.some(r => String(r).toLowerCase() === 'sword');
+
+    if (isEliteMonster && !hasSwordAlready && Math.random() <= 0.25) {
+      updatedInventory.activeRelics = Array.from(new Set([...updatedInventory.activeRelics, 'sword' as QuestRelic]));
+      setRelicNotice('sword');
+      victoryLog += ` ${(t as any).logWeaponDropped || "🗡️ RARE WEAPON DROPPED: Sword of Strength!"}`;
     }
 
     if (pendingRelicReward) {
@@ -1261,12 +1313,34 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    setInventory((prev) => ({ ...prev, rations: newRations }));
-    const updatedTroops = { ...troops, warriors: newWarriors };
-    setTroops(updatedTroops);
+    let currentInventory = { ...inventory, rations: newRations };
+    let currentTroops = { ...troops, warriors: newWarriors };
+    let theftLogMsg = '';
+
+    // 🧝‍♂️ 15% Volatile Elven Theft Check (Steals Sword & Deserts)
+    if (currentTroops.elves > 0 && Math.random() <= 0.15) {
+      if (currentInventory.activeRelics.includes('sword' as QuestRelic)) {
+        currentInventory.activeRelics = currentInventory.activeRelics.filter(r => String(r).toLowerCase() !== 'sword');
+        theftLogMsg += ` ${(t as any).logElfTheft || "⚠️ Elves stole your Sword and deserted!"}`;
+      }
+      currentTroops.elves = 0; // Elves desert party
+    }
+
+    // 🪓 15% Volatile Dwarven Theft Check (Steals 200 GP & Deserts)
+    if (currentTroops.dwarves > 0 && Math.random() <= 0.15) {
+      if (currentInventory.gold > 0) {
+        const stolenGold = Math.min(200, currentInventory.gold);
+        currentInventory.gold = Math.max(0, currentInventory.gold - stolenGold);
+        theftLogMsg += ` ${(t as any).logDwarfTheft || "⚠️ Dwarves stole 200 GP and fled!"}`;
+      }
+      currentTroops.dwarves = 0; // Dwarves desert party
+    }
+
+    setInventory(currentInventory);
+    setTroops(currentTroops);
 
     // 🛶 Raft Mule Requirement Check
-    verifyRaftMuleLock(updatedTroops, inventory);
+    verifyRaftMuleLock(currentTroops, currentInventory);
 
     // 🗡️ Check & Apply Pending Raid Debuff (-1 MF)
     let nextMF = BASE_TURN_MF;
@@ -1278,7 +1352,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     setRemainingMF(nextMF);
     setIsTurnLocked(false);
-    setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg, ...prev]);
+    setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg + theftLogMsg, ...prev]);
 
     savePlayerToCloud(playerPosition, isReady, false);
     broadcastMyState(playerPosition, isReady, false);
@@ -1724,12 +1798,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             </button>
 
             <button
-              onClick={handleCastTeleportScroll}
-              disabled={inventory.scrollsTeleport <= 0 || isTurnLocked}
-              style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
-            >
-              {t.castTeleportBtn} ({inventory.scrollsTeleport})
-            </button>
+            onClick={handleCastTeleportScroll}
+            disabled={inventory.scrollsTeleport <= 0 || isTurnLocked}
+            style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
+          >
+            {t.castTeleportBtn} ({inventory.scrollsTeleport})
+          </button>
+
+          {/* 🔮 Spell of Seeking Button */}
+          <button
+            onClick={handleCastSeekingScroll}
+            disabled={inventory.scrollsSeeking <= 0 || isTurnLocked}
+            style={{ backgroundColor: '#111', color: inventory.scrollsSeeking > 0 && !isTurnLocked ? '#ff00ff' : '#555', border: `1px solid ${inventory.scrollsSeeking > 0 && !isTurnLocked ? '#ff00ff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeking > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
+          >
+            {(t as any).castSeekingBtn || "🔮 Spell of Seeking"} ({inventory.scrollsSeeking})
+          </button>
 
             <button
               onClick={handleExecuteCampRaid}
@@ -2216,6 +2299,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   {t.ignoreParleyBtn}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🔮 SPELL OF SEEKING RESULT MODAL */}
+        {seekingNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{seekingNotice.title}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{(t as any).seekingModalMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff' }}>
+                <div>🎯 Objective: <strong style={{ color: '#ff00ff' }}>{seekingNotice.targetName}</strong></div>
+                <div style={{ marginTop: '4px' }}>📍 Coordinates: <strong style={{ color: '#00ff00' }}>[{seekingNotice.pos.x}, {seekingNotice.pos.y}]</strong></div>
+              </div>
+              <button onClick={() => setSeekingNotice(null)} style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
             </div>
           </div>
         )}
