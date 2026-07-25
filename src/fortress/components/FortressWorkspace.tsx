@@ -24,12 +24,22 @@ interface FortressWorkspaceProps {
 export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = 'vi' }) => {
   const t = FORTRESS_LANG[locale];
 
+  const [playerId] = useState<string>(() => {
+    let id = sessionStorage.getItem('fortress_player_id');
+    if (!id) {
+      id = `pid_${Math.random().toString(36).substring(2, 9)}`;
+      sessionStorage.setItem('fortress_player_id', id);
+    }
+    return id;
+  });
   const [playerName, setPlayerName] = useState<string>(() => {
     return sessionStorage.getItem('fortress_player_name') || `Player_${Math.floor(Math.random() * 899 + 100)}`;
   });
   const [roomSeed, setRoomSeed] = useState<number>(54931);
   const [difficulty, setDifficulty] = useState<number>(2);
-  const [otherPlayers, setOtherPlayers] = useState<Record<string, { name: string; pos: Position; gold: number; mules: number }>>({});
+  const [otherPlayers, setOtherPlayers] = useState<Record<string, { id: string; name: string; pos: Position; gold: number; mules: number }>>({});
+  const [isTeleportTargeting, setIsTeleportTargeting] = useState<boolean>(false);
+  const [spottedOpponentNotice, setSpottedOpponentNotice] = useState<{ name: string; pos: Position } | null>(null);
   const channelRef = useRef<any>(null);
   const [grid, setGrid] = useState<TileState[][]>([]);
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
@@ -88,7 +98,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLogs([`${t.logSpawn} [${spawnPos.x}, ${spawnPos.y}]`]);
   }, [roomSeed, difficulty, locale]);
 
-  // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad
+  // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad[cite: 2]
   useEffect(() => {
     sessionStorage.setItem('fortress_player_name', playerName);
 
@@ -100,11 +110,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     channel
       .on('broadcast', { event: 'player_update' }, (payload) => {
         const data = payload.payload;
-        if (data.name !== playerName) {
+        if (data.id !== playerId) {
+          // Key by unique playerId to fix input typing duplication bug![cite: 2]
           setOtherPlayers((prev) => ({
             ...prev,
-            [data.name]: { name: data.name, pos: data.pos, gold: data.gold, mules: data.mules },
+            [data.id]: { id: data.id, name: data.name, pos: data.pos, gold: data.gold, mules: data.mules },
           }));
+
+          // Scout Enemy Player Detection Check[cite: 1]
+          const dx = Math.abs(playerPosition.x - data.pos.x);
+          const dy = Math.abs(playerPosition.y - data.pos.y);
+          if (dx <= sightRadius && dy <= sightRadius) {
+            setSpottedOpponentNotice({ name: data.name, pos: data.pos });
+          }
         }
       })
       .on('broadcast', { event: 'raid_attack' }, (payload) => {
@@ -141,6 +159,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         type: 'broadcast',
         event: 'player_update',
         payload: {
+          id: playerId,
           name: playerName,
           pos: newPos || playerPosition,
           gold: inventory.gold,
@@ -202,30 +221,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLogs((prev) => [t.logSeeingCast, ...prev]);
   };
 
-  // 🌀 Teleport Scroll Handler
+  // 🌀 Teleport Scroll Targeting Handler
   const handleCastTeleportScroll = () => {
     if (inventory.scrollsTeleport <= 0) {
       alert(t.logNoScrolls);
       return;
     }
-
-    // Find nearest Town or Sanctuary on map
-    let targetPos: Position | null = null;
-    for (let x = 0; x < grid.length; x++) {
-      for (let y = 0; y < grid[x].length; y++) {
-        if (grid[x][y].terrain === 'TOWN' || grid[x][y].terrain === 'SANCTUARY') {
-          targetPos = { x, y };
-          break;
-        }
-      }
-    }
-
-    if (targetPos) {
-      setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
-      setPlayerPosition(targetPos);
-      revealSightArea(targetPos, sightRadius);
-      setLogs((prev) => [`${t.logTeleportCast} [${targetPos?.x}, ${targetPos?.y}]`, ...prev]);
-    }
+    setIsTeleportTargeting((prev) => !prev);
   };
 
   // 🗡️ Raider Stealth Raid Handler (Supports Live Opponent Raiding)
@@ -284,6 +286,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   const handleTileClick = (targetTile: TileState) => {
+    // Execute Targeted Teleportation
+    if (isTeleportTargeting) {
+      if (targetTile.isExplored && (targetTile.terrain === 'TOWN' || targetTile.terrain === 'SANCTUARY')) {
+        setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
+        setPreviousPosition(playerPosition);
+        setPlayerPosition({ x: targetTile.x, y: targetTile.y });
+        setIsTeleportTargeting(false);
+        revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+        broadcastMyState({ x: targetTile.x, y: targetTile.y });
+        setLogs((prev) => [`${t.logTeleportCast} [${targetTile.x}, ${targetTile.y}]`, ...prev]);
+        return;
+      }
+    }
+
     const isSameTile = playerPosition.x === targetTile.x && playerPosition.y === targetTile.y;
     const moveCheck = LogisticalEngine.getMovementCost(playerPosition, targetTile, inventory);
     if (!moveCheck.isValid) return;
@@ -501,7 +517,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           />
         </label>
         <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
-          {t.opponentsOnline} <strong style={{ color: Object.keys(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.keys(otherPlayers).join(', ') || 'None'}</strong>
+          {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => p.name).join(', ') || 'None'}</strong>
         </div>
       </div>
 
@@ -569,6 +585,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </button>
       </div>
 
+      {/* Teleport Targeting Banner */}
+      {isTeleportTargeting && (
+        <div style={{ backgroundColor: '#ab47bc', color: '#fff', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{t.teleportTargetPrompt}</span>
+          <button onClick={() => setIsTeleportTargeting(false)} style={{ backgroundColor: '#000', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace' }}>
+            {t.teleportCancelBtn}
+          </button>
+        </div>
+      )}
+
       {/* Map Viewport Area */}
       {grid.length > 0 && (
         <MapView
@@ -578,6 +604,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           sightRadius={sightRadius}
           remainingMF={remainingMF}
           hasRaft={inventory.hasRaft}
+          isTeleportTargeting={isTeleportTargeting}
           locale={locale}
           onTileClick={handleTileClick}
         />
@@ -649,6 +676,28 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
             >
               ✅ EXCELLENT
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Scout Opponent Spotted Modal */}
+      {spottedOpponentNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.opponentSpottedTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.opponentSpottedMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+              <div>🧙‍♀️ Player: <strong style={{ color: '#fff' }}>{spottedOpponentNotice.name}</strong></div>
+              <div style={{ marginTop: '4px' }}>📍 Coordinates: <strong style={{ color: '#ff3333' }}>[{spottedOpponentNotice.pos.x}, {spottedOpponentNotice.pos.y}]</strong></div>
+            </div>
+
+            <button
+              onClick={() => setSpottedOpponentNotice(null)}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
             </button>
           </div>
         </div>

@@ -7,10 +7,11 @@ import { FORTRESS_LANG, LanguageType } from '../languages';
 interface MapViewProps {
   grid: TileState[][];
   playerPosition: Position;
-  otherPlayers?: Record<string, { name: string; pos: Position }>;
+  otherPlayers?: Record<string, { id: string; name: string; pos: Position }>;
   sightRadius: number;
   remainingMF: number;
   hasRaft: boolean;
+  isTeleportTargeting?: boolean;
   locale: LanguageType;
   onTileClick: (targetTile: TileState) => void;
 }
@@ -22,6 +23,7 @@ export const MapView: React.FC<MapViewProps> = ({
   sightRadius,
   remainingMF,
   hasRaft,
+  isTeleportTargeting = false,
   locale,
   onTileClick,
 }) => {
@@ -148,9 +150,10 @@ export const MapView: React.FC<MapViewProps> = ({
               { gold: 0, rations: 0, hasRaft, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 }
             );
 
+            const isTeleportValid = isTeleportTargeting && isExplored && (tile.terrain === 'TOWN' || tile.terrain === 'SANCTUARY');
             const isAdjacent = moveCheck.isValid;
             const canAfford = LogisticalEngine.canExecuteStep(remainingMF, moveCheck.cost);
-            const isSelectable = isAdjacent && canAfford;
+            const isSelectable = isTeleportValid || (isAdjacent && canAfford);
 
             const visuals = getTerrainVisuals(tile);
             const terrainName = getTerrainName(tile.terrain);
@@ -170,6 +173,8 @@ export const MapView: React.FC<MapViewProps> = ({
                   backgroundColor: isExplored ? visuals.color : '#000000',
                   border: isPlayerHere
                     ? '2px solid #ffffff'
+                    : isTeleportValid
+                    ? '2px solid #ab47bc'
                     : isSelectable
                     ? '2px dashed #00ff00'
                     : '1px solid #222222',
