@@ -61,7 +61,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return localStorage.getItem('fortress_player_icon') || '🧙‍♂️';
   });
 
-  // 💾 PERSISTENT LOBBY & ROOM SESSION RE-ENTRY
   const [activeRoomCode, setActiveRoomCode] = useState<string>(() => {
     return localStorage.getItem('fortress_active_room') || '';
   });
@@ -82,30 +81,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return localStorage.getItem('fortress_turn_locked') === 'true';
   });
 
-  // 📱 PERSISTENT PLAYER POSITION, INVENTORY, & TROOPS FOR MOBILE RESTORES
-  const [playerPosition, setPlayerPosition] = useState<Position>(() => {
-    const saved = localStorage.getItem('fortress_player_pos');
-    return saved ? JSON.parse(saved) : { x: 0, y: 0 };
-  });
-
+  const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
   const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
 
-  const [troops, setTroops] = useState<TroopRoster>(() => {
-    const saved = localStorage.getItem('fortress_troops');
-    return saved ? JSON.parse(saved) : { warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2 };
+  const [troops, setTroops] = useState<TroopRoster>({
+    warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2
   });
 
-  const [maxWarriors, setMaxWarriors] = useState<number>(() => {
-    return troops.warriors;
-  });
+  const [maxWarriors, setMaxWarriors] = useState<number>(30);
 
-  const [inventory, setInventory] = useState<PlayerInventory>(() => {
-    const saved = localStorage.getItem('fortress_inventory');
-    return saved ? JSON.parse(saved) : { gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 };
+  const [inventory, setInventory] = useState<PlayerInventory>({
+    gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0
   });
 
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
-  const [roomSeed, setRoomSeed] = useState<number>(() => Math.floor(10000 + Math.random() * 90000));
+  const [roomSeed, setRoomSeed] = useState<number>(54931);
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isReady, setIsReady] = useState<boolean>(false);
 
@@ -202,24 +192,105 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const guestPlayers = Object.values(otherPlayers);
   const allGuestsReady = guestPlayers.length === 0 || guestPlayers.every((p) => p.isReady);
 
-  // 💾 Sync character state to localStorage
+  // 💾 Sync local state variables to localStorage
   useEffect(() => {
     if (activeRoomCode) localStorage.setItem('fortress_active_room', activeRoomCode);
     localStorage.setItem('fortress_is_host', String(isHost));
     localStorage.setItem('fortress_lobby_step', lobbyStep);
     localStorage.setItem('fortress_turn_locked', String(isTurnLocked));
-    if (playerPosition.x !== 0 || playerPosition.y !== 0) {
-      localStorage.setItem('fortress_player_pos', JSON.stringify(playerPosition));
-    }
-    localStorage.setItem('fortress_troops', JSON.stringify(troops));
-    localStorage.setItem('fortress_inventory', JSON.stringify(inventory));
-  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked, playerPosition, troops, inventory]);
+  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked]);
 
-  // 📡 Realtime Supabase Channel
+  // ☁️ Database Helper: Upsert current player data into Supabase
+  const savePlayerToCloud = async (pos?: Position, readyState?: boolean, lockedState?: boolean) => {
+    if (!activeRoomCode) return;
+    const currentPos = pos || playerPosition;
+
+    try {
+      await supabase.from('players').upsert({
+        room_code: activeRoomCode,
+        player_id: playerId,
+        name: playerName,
+        icon: playerIcon,
+        pos_x: currentPos.x,
+        pos_y: currentPos.y,
+        gold: inventory.gold,
+        rations: inventory.rations,
+        troops: troops,
+        inventory: inventory,
+        is_ready: readyState ?? isReady,
+        is_turn_locked: lockedState ?? isTurnLocked,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'room_code,player_id' });
+    } catch (err) {
+      console.error('Error saving player to Supabase Postgres:', err);
+    }
+  };
+
+  // ☁️ Database Helper: Fetch existing players from Supabase Postgres
+  const fetchCloudRoomState = async () => {
+    if (!activeRoomCode) return;
+
+    try {
+      // 1. Fetch Room Session Config
+      const { data: sessionData } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('room_code', activeRoomCode)
+        .single();
+
+      if (sessionData) {
+        setRoomSeed(sessionData.seed);
+        setDifficulty(sessionData.difficulty);
+        if (sessionData.status === 'GAME_STARTED' && lobbyStep !== 'GAME_STARTED') {
+          setLobbyStep('GAME_STARTED');
+        }
+      }
+
+      // 2. Fetch Players in Room
+      const { data: playersData } = await supabase
+        .from('players')
+        .select('*')
+        .eq('room_code', activeRoomCode);
+
+      if (playersData) {
+        const otherMap: Record<string, any> = {};
+        playersData.forEach((p) => {
+          if (p.player_id === playerId) {
+            // Restore my own cloud data if saved!
+            if (p.pos_x !== 0 || p.pos_y !== 0) {
+              setPlayerPosition({ x: p.pos_x, y: p.pos_y });
+            }
+            if (p.troops && Object.keys(p.troops).length > 0) setTroops(p.troops);
+            if (p.inventory && Object.keys(p.inventory).length > 0) setInventory(p.inventory);
+            setIsReady(p.is_ready);
+            setIsTurnLocked(p.is_turn_locked);
+          } else {
+            otherMap[p.player_id] = {
+              id: p.player_id,
+              name: p.name,
+              icon: p.icon || '🧙‍♀️',
+              pos: { x: p.pos_x, y: p.pos_y },
+              gold: p.gold,
+              mules: p.troops?.mules || 0,
+              isReady: p.is_ready,
+              isTurnLocked: p.is_turn_locked,
+            };
+          }
+        });
+        setOtherPlayers(otherMap);
+      }
+    } catch (err) {
+      console.error('Error fetching cloud room state:', err);
+    }
+  };
+
+  // 📡 Realtime Supabase Channel + Database Sync
   useEffect(() => {
     if (!activeRoomCode) return;
     localStorage.setItem('fortress_player_name', playerName);
     localStorage.setItem('fortress_player_icon', playerIcon);
+
+    fetchCloudRoomState();
 
     const channelName = `fortress_room_${activeRoomCode}`;
     const channel = supabase.channel(channelName, {
@@ -260,9 +331,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       .on('broadcast', { event: 'global_new_round' }, () => {
         executeEndTurnUpkeep();
       })
-      .on('broadcast', { event: 'request_sync' }, () => {
-        broadcastMyState(playerPosition, isReady, isTurnLocked);
-      })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
         if (data.targetId === playerId) {
@@ -295,16 +363,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           setRaidedNotice({ attackerName: data.attackerName, stolenGold, stolenMules });
           setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP, -${stolenMules} Mule${stolenRelic ? `, and ${stolenRelic}` : ''}!`, ...prev]);
 
-          if (stolenRelic) {
-            channel.send({
-              type: 'broadcast',
-              event: 'global_rumor',
-              payload: {
-                text: `🗡️ ${data.attackerName} ${t.logRumorStolen} [${stolenRelic.toUpperCase()}] ${t.logRumorFrom} ${playerName}!`,
-              },
-            });
-          }
-
           channel.send({
             type: 'broadcast',
             event: 'raid_response',
@@ -316,11 +374,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               stolenRelic,
             },
           });
-        }
-      })
-      .on('broadcast', { event: 'raid_thwarted' }, (payload) => {
-        if (payload.payload.attackerId === playerId) {
-          setLogs((prev) => [t.raidThwartedAttackerLog, ...prev]);
         }
       })
       .on('broadcast', { event: 'raid_response' }, (payload) => {
@@ -339,16 +392,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           setLogs((prev) => [`${t.raidedYouLog} ${data.defenderName}! Stole +${data.stolenGold} GP, +${data.stolenMules} Mule${data.stolenRelic ? `, & ${data.stolenRelic}` : ''}!`, ...prev]);
         }
       })
-      .on('broadcast', { event: 'global_rumor' }, (payload) => {
-        setPendingRumors((prev) => [...prev, payload.payload.text]);
-      })
-      .on('broadcast', { event: 'game_victory' }, (payload) => {
-        if (payload.payload.winnerId !== playerId) {
-          setGameWinnerNotice({ winnerName: payload.payload.winnerName, isMe: false });
-        }
-      })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
+          savePlayerToCloud(playerPosition, isReady, isTurnLocked);
           channel.send({
             type: 'broadcast',
             event: 'player_update',
@@ -365,8 +411,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               hostDifficulty: isHost ? difficulty : undefined,
             },
           });
-
-          channel.send({ type: 'broadcast', event: 'request_sync', payload: {} });
         }
       });
 
@@ -375,23 +419,37 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked, isHost]);
+  }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, isHost]);
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     const code = generateRoomCode();
     const newSeed = Math.floor(10000 + Math.random() * 90000);
     setIsHost(true);
     setRoomSeed(newSeed);
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
+
+    // Create session in Supabase DB
+    await supabase.from('game_sessions').upsert({
+      room_code: code,
+      seed: newSeed,
+      difficulty: difficulty,
+      grid_size: calculatedGridSize,
+      status: 'LOBBY',
+      host_id: playerId,
+    });
+
+    savePlayerToCloud({ x: 0, y: 0 }, false, false);
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
     if (trimmed.length < 4) return alert('Please enter a valid 4-character Room Code!');
     setIsHost(false);
     setActiveRoomCode(trimmed);
     setLobbyStep('IN_LOBBY');
+
+    savePlayerToCloud({ x: 0, y: 0 }, false, false);
   };
 
   const handleLeaveRoom = () => {
@@ -399,9 +457,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     localStorage.removeItem('fortress_is_host');
     localStorage.removeItem('fortress_lobby_step');
     localStorage.removeItem('fortress_turn_locked');
-    localStorage.removeItem('fortress_player_pos');
-    localStorage.removeItem('fortress_troops');
-    localStorage.removeItem('fortress_inventory');
     setActiveRoomCode('');
     setIsHost(false);
     setIsTurnLocked(false);
@@ -427,7 +482,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   }, [isTurnLocked, otherPlayers, lobbyStep]);
 
-  // ⚡ Force Next Round Button Handler (Breaks stalled or AFK games)
   const handleForceAdvanceTurn = () => {
     if (channelRef.current) {
       channelRef.current.send({
@@ -442,6 +496,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const toggleReadyState = () => {
     const nextReady = !isReady;
     setIsReady(nextReady);
+    savePlayerToCloud(playerPosition, nextReady, isTurnLocked);
     broadcastMyState(playerPosition, nextReady, isTurnLocked);
   };
 
@@ -474,12 +529,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    // 📱 Check if restoring existing player position from localStorage
-    const savedPos = localStorage.getItem('fortress_player_pos');
     let finalSpawnPos: Position;
 
-    if (savedPos) {
-      finalSpawnPos = JSON.parse(savedPos);
+    if (playerPosition.x !== 0 || playerPosition.y !== 0) {
+      finalSpawnPos = playerPosition;
     } else {
       const roster = syncedPlayerList.length > 0 ? syncedPlayerList : [playerId, ...Object.keys(otherPlayers)].sort();
       const mySlotIndex = Math.max(0, roster.indexOf(playerId));
@@ -526,6 +579,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setPreviousPosition(finalSpawnPos);
     setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
 
+    savePlayerToCloud(finalSpawnPos, isReady, isTurnLocked);
     broadcastMyState(finalSpawnPos, isReady, isTurnLocked);
   }, [lobbyStep, roomSeed, difficulty, playerId, calculatedGridSize, syncedPlayerList]);
 
@@ -550,11 +604,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  const handleLaunchGame = () => {
+  const handleLaunchGame = async () => {
     if (!isHost) return;
     const fullRoster = [playerId, ...Object.keys(otherPlayers)].sort();
     setSyncedPlayerList(fullRoster);
     setLobbyStep('GAME_STARTED');
+
+    await supabase.from('game_sessions').update({ status: 'GAME_STARTED' }).eq('room_code', activeRoomCode);
 
     if (channelRef.current) {
       channelRef.current.send({
@@ -711,6 +767,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         setMaxWarriors(survivingWarriors);
         setRemainingMF(BASE_TURN_MF);
         revealSightArea(safePos, sightRadius);
+        savePlayerToCloud(safePos, isReady, isTurnLocked);
         broadcastMyState(safePos);
         setDrownNotice({ pos: safePos });
         setLogs((prev) => [`${t.drownLog} [${safePos.x}, ${safePos.y}]! Drowned -${drownedWarriors} Warriors and all Mules!`, ...prev]);
@@ -720,6 +777,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPreviousPosition(playerPosition);
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+      savePlayerToCloud({ x: targetTile.x, y: targetTile.y }, isReady, isTurnLocked);
       broadcastMyState({ x: targetTile.x, y: targetTile.y });
       setLogs((prev) => [`${t.logTeleportCast} [${targetTile.x}, ${targetTile.y}]`, ...prev]);
       return;
@@ -762,6 +820,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPreviousPosition(playerPosition);
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
+      savePlayerToCloud({ x: targetTile.x, y: targetTile.y }, isReady, isTurnLocked);
       broadcastMyState({ x: targetTile.x, y: targetTile.y });
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
       checkForNearbyOpponents({ x: targetTile.x, y: targetTile.y });
@@ -894,6 +953,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     } else {
       setLogs((prev) => [victoryLog, ...prev]);
     }
+
+    savePlayerToCloud(playerPosition, isReady, isTurnLocked);
   };
 
   const handleRoomClick = (roomIndex: number) => {
@@ -921,6 +982,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPreviousPosition(playerPosition);
       setPlayerPosition(randomWarpPos);
       revealSightArea(randomWarpPos, sightRadius);
+      savePlayerToCloud(randomWarpPos, isReady, isTurnLocked);
       broadcastMyState(randomWarpPos);
 
       setFortressRooms((prev) =>
@@ -1028,6 +1090,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
     setRemainingMF(BASE_TURN_MF);
     revealSightArea(safePos, sightRadius);
+    savePlayerToCloud(safePos, isReady, isTurnLocked);
     broadcastMyState(safePos);
     setLogs((prev) => [`💀 Frontline routed! Retreating to safe grid [${safePos.x}, ${safePos.y}].`, ...prev]);
   };
@@ -1060,6 +1123,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const itemName = (t as any)[item.nameKey] || item.id;
     setIsShopOpen(false);
     setLogs((prev) => [`${t.logPurchased} [${itemName}] ${t.forText} ${pricePaid} GP!`, ...prev]);
+
+    savePlayerToCloud(playerPosition, isReady, isTurnLocked);
   };
 
   const handleEjected = () => {
@@ -1071,6 +1136,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleLockTurnClick = () => {
     const nextLocked = true;
     setIsTurnLocked(nextLocked);
+    savePlayerToCloud(playerPosition, isReady, nextLocked);
     broadcastMyState(playerPosition, isReady, nextLocked);
   };
 
@@ -1103,6 +1169,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setIsTurnLocked(false);
     setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg, ...prev]);
 
+    savePlayerToCloud(playerPosition, isReady, false);
     broadcastMyState(playerPosition, isReady, false);
   };
 
@@ -1244,6 +1311,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                     onClick={() => {
                       setPlayerIcon(icon);
                       localStorage.setItem('fortress_player_icon', icon);
+                      savePlayerToCloud(playerPosition, isReady, isTurnLocked);
                       broadcastMyState(playerPosition, isReady, isTurnLocked);
                     }}
                     style={{
