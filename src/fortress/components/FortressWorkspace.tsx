@@ -84,19 +84,29 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
+    // Calculate unique player spawn position offset based on playerId
+    const playerHash = playerId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const spawnOffsets = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+    const myOffset = spawnOffsets[playerHash % spawnOffsets.length];
+
+    const finalSpawnPos: Position = {
+      x: Math.max(0, Math.min(generatedGrid.length - 1, spawnPos.x + myOffset.x)),
+      y: Math.max(0, Math.min(generatedGrid[0].length - 1, spawnPos.y + myOffset.y)),
+    };
+
     const updatedGrid = generatedGrid.map((row) =>
       row.map((tile) => {
-        const dx = Math.abs(spawnPos.x - tile.x);
-        const dy = Math.abs(spawnPos.y - tile.y);
+        const dx = Math.abs(finalSpawnPos.x - tile.x);
+        const dy = Math.abs(finalSpawnPos.y - tile.y);
         return dx <= sightRadius && dy <= sightRadius ? { ...tile, isExplored: true } : tile;
       })
     );
 
     setGrid(updatedGrid);
-    setPlayerPosition(spawnPos);
-    setPreviousPosition(spawnPos);
-    setLogs([`${t.logSpawn} [${spawnPos.x}, ${spawnPos.y}]`]);
-  }, [roomSeed, difficulty, locale]);
+    setPlayerPosition(finalSpawnPos);
+    setPreviousPosition(finalSpawnPos);
+    setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
+  }, [roomSeed, difficulty, locale, playerId]);
 
   // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad[cite: 2]
   useEffect(() => {
@@ -125,13 +135,39 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           }
         }
       })
-      .on('broadcast', { event: 'raid_attack' }, (payload) => {
+      .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
-        if (data.target === playerName) {
+        if (data.targetId === playerId) {
+          // Defender calculates actual lost inventory
           const stolenGold = Math.min(inventory.gold, 150);
+          const stolenMules = Math.min(troops.mules, 1);
+
           setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
-          setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - 1) }));
-          setLogs((prev) => [`${t.raidedByLog} ${data.attacker}! Lost -${stolenGold} GP and -1 Mule!`, ...prev]);
+          setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - stolenMules) }));
+          setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP and -${stolenMules} Mule!`, ...prev]);
+
+          // Send confirmation response back to attacker
+          channel.send({
+            type: 'broadcast',
+            event: 'raid_response',
+            payload: {
+              attackerId: data.attackerId,
+              defenderName: playerName,
+              stolenGold,
+              stolenMules,
+            },
+          });
+        }
+      })
+      .on('broadcast', { event: 'raid_response' }, (payload) => {
+        const data = payload.payload;
+        if (data.attackerId === playerId) {
+          // Attacker receives exact confirmed stolen inventory
+          addGoldSafely(data.stolenGold);
+          if (data.stolenMules > 0) {
+            setTroops((prev) => ({ ...prev, mules: prev.mules + data.stolenMules }));
+          }
+          setLogs((prev) => [`${t.raidedYouLog} ${data.defenderName}! Stole +${data.stolenGold} GP and +${data.stolenMules} Mule!`, ...prev]);
         }
       })
       .subscribe((status) => {
@@ -237,18 +273,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       return;
     }
 
-    const opponentNames = Object.keys(otherPlayers);
+    const opponents = Object.values(otherPlayers);
 
-    if (opponentNames.length > 0 && channelRef.current) {
-      const targetOpponent = opponentNames[0]; // Raid connected opponent
+    if (opponents.length > 0 && channelRef.current) {
+      const targetOpponent = opponents[0]; // Target connected opponent
       channelRef.current.send({
         type: 'broadcast',
-        event: 'raid_attack',
-        payload: { attacker: playerName, target: targetOpponent },
+        event: 'raid_request',
+        payload: {
+          attackerId: playerId,
+          attackerName: playerName,
+          targetId: targetOpponent.id,
+        },
       });
-      addGoldSafely(150);
-      setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
-      setLogs((prev) => [`${t.raidedYouLog} ${targetOpponent}! Stole +150 GP and +1 Mule!`, ...prev]);
     } else {
       // Offline / Wild Bandit Camp Raid Fallback
       addGoldSafely(150);
@@ -286,18 +323,38 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   const handleTileClick = (targetTile: TileState) => {
-    // Execute Targeted Teleportation
+    // Execute Targeted Teleportation (With Lake Drowning Rescue Rule!)
     if (isTeleportTargeting) {
-      if (targetTile.isExplored && (targetTile.terrain === 'TOWN' || targetTile.terrain === 'SANCTUARY')) {
-        setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
-        setPreviousPosition(playerPosition);
-        setPlayerPosition({ x: targetTile.x, y: targetTile.y });
-        setIsTeleportTargeting(false);
-        revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
-        broadcastMyState({ x: targetTile.x, y: targetTile.y });
-        setLogs((prev) => [`${t.logTeleportCast} [${targetTile.x}, ${targetTile.y}]`, ...prev]);
+      setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
+      setIsTeleportTargeting(false);
+
+      if (targetTile.terrain === 'LAKE' && !inventory.hasRaft) {
+        // Find Sanctuary for drowned rescue
+        let sanctuaryPos = { x: 0, y: 0 };
+        for (let x = 0; x < grid.length; x++) {
+          for (let y = 0; y < grid[x].length; y++) {
+            if (grid[x][y].terrain === 'SANCTUARY') {
+              sanctuaryPos = { x, y };
+              break;
+            }
+          }
+        }
+        setPlayerPosition(sanctuaryPos);
+        setInventory((prev) => ({ ...prev, gold: 0, rations: 15 }));
+        setTroops((prev) => ({ ...prev, warriors: 15 }));
+        setMaxWarriors(15);
+        setRemainingMF(10);
+        broadcastMyState(sanctuaryPos);
+        setLogs((prev) => [`🌊 DROWNED IN LAKE! Teleported into deep water without a Raft! Washed ashore at Sanctuary [${sanctuaryPos.x}, ${sanctuaryPos.y}].`, ...prev]);
         return;
       }
+
+      setPreviousPosition(playerPosition);
+      setPlayerPosition({ x: targetTile.x, y: targetTile.y });
+      revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+      broadcastMyState({ x: targetTile.x, y: targetTile.y });
+      setLogs((prev) => [`${t.logTeleportCast} [${targetTile.x}, ${targetTile.y}]`, ...prev]);
+      return;
     }
 
     const isSameTile = playerPosition.x === targetTile.x && playerPosition.y === targetTile.y;
