@@ -81,19 +81,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // Pending Relic Reward State
   const [pendingRelicReward, setPendingRelicReward] = useState<QuestRelic | null>(null);
 
+  // Pending Town Rumor Intel Queue
+  const [pendingRumors, setPendingRumors] = useState<string[]>([]);
+  const [townRumorNotice, setTownRumorNotice] = useState<string[] | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
 
-    // 🏛️ Seed the 4 Quest Relics onto distinct Mountain tiles
-    const questRelics: any[] = ['boots', 'sword', 'armor', 'horn'];
+    // 🏛️ Seed each of the 4 Quest Relics exactly ONCE on distinct Mountain tiles
+    const questRelics = ['boots', 'sword', 'armor', 'horn'];
     let relicIdx = 0;
     for (let x = 0; x < generatedGrid.length && relicIdx < questRelics.length; x++) {
       for (let y = 0; y < generatedGrid[x].length && relicIdx < questRelics.length; y++) {
-        if (generatedGrid[x][y].terrain === 'MOUNTAIN' && (x + y) % 7 === 0) {
+        if (generatedGrid[x][y].terrain === 'MOUNTAIN' && !generatedGrid[x][y].hasRelic) {
+          generatedGrid[x][y].hasRelic = questRelics[relicIdx] as any;
           (generatedGrid[x][y] as any).relic = questRelics[relicIdx];
-          (generatedGrid[x][y] as any).hasRelic = questRelics[relicIdx];
           relicIdx++;
         }
       }
@@ -177,14 +181,36 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             return;
           }
 
-          // Defender calculates actual lost inventory
+          // Defender calculates actual lost inventory & check for storable relic theft!
           const stolenGold = Math.min(inventory.gold, 150);
           const stolenMules = Math.min(troops.mules, 1);
+          
+          let stolenRelic: string | null = null;
+          if (inventory.activeRelics.length > 0) {
+            stolenRelic = String(inventory.activeRelics[0]);
+            setInventory((prev) => ({
+              ...prev,
+              gold: Math.max(0, prev.gold - stolenGold),
+              activeRelics: prev.activeRelics.slice(1),
+            }));
+          } else {
+            setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
+          }
 
-          setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
           setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - stolenMules) }));
           setRaidedNotice({ attackerName: data.attackerName, stolenGold, stolenMules });
-          setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP and -${stolenMules} Mule!`, ...prev]);
+          setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP, -${stolenMules} Mule${stolenRelic ? `, and ${stolenRelic}` : ''}!`, ...prev]);
+
+          // Broadcast global event rumor to other players
+          if (stolenRelic) {
+            channel.send({
+              type: 'broadcast',
+              event: 'global_rumor',
+              payload: {
+                text: `🗡️ ${data.attackerName} ${t.logRumorStolen} [${stolenRelic.toUpperCase()}] ${t.logRumorFrom} ${playerName}!`,
+              },
+            });
+          }
 
           // Send confirmation response back to attacker
           channel.send({
@@ -195,6 +221,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               defenderName: playerName,
               stolenGold,
               stolenMules,
+              stolenRelic,
             },
           });
         }
@@ -208,13 +235,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       .on('broadcast', { event: 'raid_response' }, (payload) => {
         const data = payload.payload;
         if (data.attackerId === playerId) {
-          // Attacker receives exact confirmed stolen inventory
+          // Attacker receives exact confirmed stolen inventory & stolen relic
           addGoldSafely(data.stolenGold);
           if (data.stolenMules > 0) {
             setTroops((prev) => ({ ...prev, mules: prev.mules + data.stolenMules }));
           }
-          setLogs((prev) => [`${t.raidedYouLog} ${data.defenderName}! Stole +${data.stolenGold} GP and +${data.stolenMules} Mule!`, ...prev]);
+          if (data.stolenRelic) {
+            setInventory((prev) => ({
+              ...prev,
+              activeRelics: Array.from(new Set([...prev.activeRelics, data.stolenRelic as any])),
+            }));
+          }
+          setLogs((prev) => [`${t.raidedYouLog} ${data.defenderName}! Stole +${data.stolenGold} GP, +${data.stolenMules} Mule${data.stolenRelic ? `, & ${data.stolenRelic}` : ''}!`, ...prev]);
         }
+      })
+      .on('broadcast', { event: 'global_rumor' }, (payload) => {
+        const rumorText = payload.payload.text;
+        // Queue rumors until player enters a Town or Sanctuary
+        setPendingRumors((prev) => [...prev, rumorText]);
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -478,6 +516,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       const terrainName = (t as any)[`terrain${targetTile.terrain.charAt(0) + targetTile.terrain.slice(1).toLowerCase()}`] || targetTile.terrain;
       setLogs((prev) => [`${t.logMoved} ${terrainName} [${targetTile.x}, ${targetTile.y}] (-${moveCheck.cost} MF). ${nextMF} MF left.`, ...prev]);
 
+      // 🏰 / ⛩️ Trigger Town & Sanctuary Rumor Network update if entering hubs!
+      if (targetTile.terrain === 'TOWN' || targetTile.terrain === 'SANCTUARY') {
+        if (pendingRumors.length > 0) {
+          setTownRumorNotice([...pendingRumors]);
+          setPendingRumors([]); // Clear queue after reading news!
+        }
+      }
+
       if (targetTile.terrain === 'TOWN') {
         const availableItems = MarketplaceEngine.generateAvailableInventory(troops, inventory);
         setShopCatalog(availableItems);
@@ -552,6 +598,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         activeRelics: Array.from(new Set([...prev.activeRelics, pendingRelicReward])),
       }));
       setRelicNotice(pendingRelicReward as string);
+
+      // Broadcast rumor to town networks
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'global_rumor',
+          payload: {
+            text: `👑 ${playerName} ${t.logRumorClaimed} [${String(pendingRelicReward).toUpperCase()}]!`,
+          },
+        });
+      }
 
       // Clear relic icon from current map tile
       setGrid((prevGrid) =>
@@ -738,7 +795,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
         <div style={{ gridColumn: 'span 4', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
           🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
-            inventory.activeRelics.map(r => (r as string) === 'boots' ? '🥾 Boots' : (r as string) === 'sword' ? '🗡️ Sword' : (r as string) === 'armor' ? '🛡️ Armor' : '🎺 Horn').join(' | ')
+            Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
+              .map(r => {
+                if (r === 'boots') return '🥾 Boots';
+                if (r === 'sword') return '🗡️ Sword';
+                if (r === 'armor') return '🛡️ Armor';
+                if (r === 'horn') return '🎺 Horn';
+                return null;
+              })
+              .filter(Boolean)
+              .join(' | ') || 'None'
           ) : 'None'}
         </div>
       </div>
@@ -920,6 +986,31 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
+{/* Town & Sanctuary Rumor Network Modal */}
+      {townRumorNotice && townRumorNotice.length > 0 && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#00ffff', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.townRumorTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.townRumorMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #00ffff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff', maxHeight: '180px', overflowY: 'auto' }}>
+              {townRumorNotice.map((rumor, idx) => (
+                <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
+                  {rumor}
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setTownRumorNotice(null)}
+              style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ NOTED WITH THANKS
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Relic Acquired MsgBox Modal */}
       {relicNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
