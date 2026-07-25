@@ -17,6 +17,12 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 🛠️ Dynamic Monster Asset Link Generator (Matching BattleArena Pattern)
+const getMonsterAssetUrl = (imageKey: string) => {
+  const cleanKey = imageKey.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
+};
+
 interface FortressWorkspaceProps {
   locale?: LanguageType;
 }
@@ -90,6 +96,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isInsideCitadel, setIsInsideCitadel] = useState<boolean>(false);
   const [isTeleportTrapModal, setIsTeleportTrapModal] = useState<boolean>(false);
   const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
+
+  // Active Dungeon Chamber Battle Tracker
+  const [pendingDungeonRoomIndex, setPendingDungeonRoomIndex] = useState<number | null>(null);
 
   // Duel Defeat Modal State
   const [isDuelDefeatNotice, setIsDuelDefeatNotice] = useState<boolean>(false);
@@ -722,6 +731,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPendingRelicReward(null);
     }
 
+    // 🏰 Check if victory clears a Citadel Dungeon Chamber!
+    if (pendingDungeonRoomIndex !== null) {
+      setFortressRooms((prev) =>
+        prev.map((r, i) => (i === pendingDungeonRoomIndex ? { ...r, isCleared: true } : r))
+      );
+      setPendingDungeonRoomIndex(null);
+      setIsInsideCitadel(true); // Re-open 16-chamber grid to continue crawling!
+    }
+
     if (isPoisoned) {
       setRemainingMF((prev) => Math.max(0, prev - 1));
       setLogs((prev) => [t.poisonedMsg, victoryLog, ...prev]);
@@ -751,24 +769,42 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       return;
     }
 
-    // ⚔️ Castle Guard Encounter
+    // ⚔️ Castle Guard Encounter (With Section 7.3 Relic Buffs!)
     if (room.type === 'MONSTER') {
       const monsterProf = MONSTER_DATABASE.find((m) => m.id === room.monsterId) || MONSTER_DATABASE[0];
+
+      // 🏛️ Section 7.3 Fortress Relic Validations
+      const hasBoots = inventory.activeRelics.some(r => String(r).toLowerCase() === 'boots');
+      const hasArmor = inventory.activeRelics.some(r => String(r).toLowerCase() === 'armor');
+      const hasSword = inventory.activeRelics.some(r => String(r).toLowerCase() === 'sword');
+
+      // Without Boots of Stealth, castle monsters fight at 2.0x Double Strength (Section 7.3)
+      let monsterMult = hasBoots ? 1.0 : 2.0;
+
+      // Armor of Defense reduces opponent attack power inside castle by 33% (Section 7.3)
+      if (hasArmor) {
+        monsterMult *= 0.67;
+      }
+
+      // Sword of Strength boosts player strength by 1.5x (Section 7.3)
+      let effectiveStrength = monsterProf.strength * monsterMult;
+      if (hasSword) {
+        effectiveStrength /= 1.5;
+      }
+
       const guardEncounter: EncounterGroup = {
         monster: monsterProf,
         quantity: Math.max(1, Math.floor(troops.warriors / 10)),
-        totalHp: Math.round(monsterProf.strength * 12),
-        maxHp: Math.round(monsterProf.strength * 12),
-        groupStrength: monsterProf.strength * 2,
+        totalHp: Math.max(30, Math.round(effectiveStrength * 10)),
+        maxHp: Math.max(30, Math.round(effectiveStrength * 10)),
+        groupStrength: Math.round(effectiveStrength * 2),
       };
 
+      setPendingDungeonRoomIndex(roomIndex);
+      setIsInsideCitadel(false); // Hide 16-chamber overlay so Combat Modal pops up!
       setActiveEncounter(guardEncounter);
       setAllowSurpriseRetreat(false);
-      
-      // Mark room cleared upon victory callback!
-      setFortressRooms((prev) =>
-        prev.map((r, i) => (i === roomIndex ? { ...r, isCleared: true } : r))
-      );
+      setLogs((prev) => [`⚔️ Engaged Castle Guard in Chamber #${roomIndex + 1}!`, ...prev]);
       return;
     }
 
@@ -829,13 +865,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       round: activeDuel.round + 1,
       playerWins: pWins,
       bossWins: bWins,
-      lastResult: resultMsg,
+      lastResult: `[Round #${activeDuel.round}] ${resultMsg}`,
     });
   };
   
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
+    setPendingDungeonRoomIndex(null);
+    setIsInsideCitadel(false);
     const safePos = findNearestSafeTile(playerPosition);
     setPlayerPosition(safePos);
     setTroops((prev) => ({ ...prev, warriors: 15 }));
@@ -1294,16 +1332,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             {/* Boss Avatar Display */}
             <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
-                src={supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/monsters/witch_king.webp` : '/witch_king.webp'}
+                src={getMonsterAssetUrl('witch_king')}
                 alt="The Witch King"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
                   if (!img.dataset.fallbackStep) {
                     img.dataset.fallbackStep = '1';
-                    img.src = '/witch_king.webp';
+                    img.src = `${supabaseUrl}/storage/v1/object/public/monsters/witch_king.jpeg`;
                   } else if (img.dataset.fallbackStep === '1') {
                     img.dataset.fallbackStep = '2';
+                    img.src = '/witch_king.webp';
+                  } else if (img.dataset.fallbackStep === '2') {
+                    img.dataset.fallbackStep = '3';
                     img.src = '/monsters/witch_king.webp';
                   } else {
                     img.style.display = 'none';
