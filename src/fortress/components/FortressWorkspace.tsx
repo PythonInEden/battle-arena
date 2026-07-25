@@ -85,6 +85,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [pendingRumors, setPendingRumors] = useState<string[]>([]);
   const [townRumorNotice, setTownRumorNotice] = useState<string[] | null>(null);
 
+  // Citadel & Witch King Boss States
+  const [isCitadelSealedNotice, setIsCitadelSealedNotice] = useState<boolean>(false);
+  const [isWitchKingBattle, setIsWitchKingBattle] = useState<boolean>(false);
+  const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -254,6 +259,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         // Queue rumors until player enters a Town or Sanctuary
         setPendingRumors((prev) => [...prev, rumorText]);
       })
+
+      .on('broadcast', { event: 'game_victory' }, (payload) => {
+        const data = payload.payload;
+        if (data.winnerId !== playerId) {
+          setGameWinnerNotice({ winnerName: data.winnerName, isMe: false });
+        }
+      })
+
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           // Broadcast my presence to other devices with playerId included
@@ -532,6 +545,25 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
+      // 👑 CITADEL GATE SIEGE & WITCH KING BOSS TRIGGER
+      if (targetTile.terrain === 'CITADEL') {
+        const hasHorn = inventory.activeRelics.some((r) => String(r).toLowerCase() === 'horn');
+
+        if (!hasHorn) {
+          setIsCitadelSealedNotice(true);
+          setLogs((prev) => [t.logCitadelSealed, ...prev]);
+          return;
+        }
+
+        // Horn Unlocks Gate: Trigger Witch King Boss Encounter!
+        const witchKingBoss = CombatEngine.spawnWitchKingBoss(troops);
+        setActiveEncounter(witchKingBoss);
+        setIsWitchKingBattle(true);
+        setAllowSurpriseRetreat(false); // Final boss battle cannot be bypassed!
+        setLogs((prev) => [t.witchKingTitle, ...prev]);
+        return;
+      }
+
       // 🏛️ Check Relic Tile Guardian Encounter Trigger
       const tileRelic = (targetTile as any).relic || (targetTile as any).hasRelic;
       if (tileRelic && !inventory.activeRelics.includes(tileRelic as any)) {
@@ -558,6 +590,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleRetreatFromCombat = () => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
+    setIsWitchKingBattle(false);
     setPlayerPosition(previousPosition);
     setLogs((prev) => [t.logRetreated, ...prev]);
   };
@@ -623,6 +656,22 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       );
 
       setPendingRelicReward(null);
+    }
+
+    // 👑 Check for Witch King Defeat Victory Condition!
+    if (isWitchKingBattle) {
+      setIsWitchKingBattle(false);
+      setGameWinnerNotice({ winnerName: playerName, isMe: true });
+      setLogs((prev) => [t.logWitchKingDefeated, victoryLog, ...prev]);
+
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'game_victory',
+          payload: { winnerId: playerId, winnerName: playerName },
+        });
+      }
+      return;
     }
 
     if (isPoisoned) {
@@ -986,6 +1035,44 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
+{/* Citadel Sealed Warning Modal */}
+      {isCitadelSealedNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #b71c1c', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#b71c1c', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.citadelSealedTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.citadelSealedMsg}</p>
+
+            <button
+              onClick={() => setIsCitadelSealedNotice(false)}
+              style={{ backgroundColor: '#b71c1c', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Grand Game Victory / Game Over Modal */}
+      {gameWinnerNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
+          <div style={{ backgroundColor: '#111', border: `3px solid ${gameWinnerNotice.isMe ? '#00ff00' : '#ff3333'}`, borderRadius: '8px', padding: '32px', maxWidth: '520px', width: '90%', color: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: '22px' }}>
+              {gameWinnerNotice.isMe ? t.gameVictoryTitle : t.opponentWonTitle}
+            </h2>
+            <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
+              {gameWinnerNotice.isMe ? t.victoryMsg : `${t.opponentWonMsg} (${gameWinnerNotice.winnerName})`}
+            </p>
+
+            <button
+              onClick={() => window.location.reload()}
+              style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              🔄 RESTART ADVENTURE
+            </button>
+          </div>
+        </div>
+      )}
+      
 {/* Town & Sanctuary Rumor Network Modal */}
       {townRumorNotice && townRumorNotice.length > 0 && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>

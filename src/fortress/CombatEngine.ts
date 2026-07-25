@@ -143,6 +143,33 @@ export class CombatEngine {
     };
   }
 
+  public static spawnWitchKingBoss(troops: TroopRoster): EncounterGroup {
+    const playerCS = this.calculatePlayerCombatStrength(troops);
+    
+    // The Witch King profile (Shadow Lich base)
+    const witchKingMonster: MonsterProfile = {
+      id: 'witch_king',
+      nameKey: 'monsterLich',
+      strength: 60.0,
+      imageKey: 'shadow_lich',
+      edibility: 'INEDIBLE'
+    };
+
+    // Scaled to 1.35x Player Combat Strength for an intense climax
+    const targetStrength = Math.max(witchKingMonster.strength, playerCS * 1.35);
+    const quantity = 1;
+    const groupStrength = targetStrength;
+    const totalHp = Math.max(60, Math.round(groupStrength * 8));
+
+    return {
+      monster: witchKingMonster,
+      quantity,
+      totalHp,
+      maxHp: totalHp,
+      groupStrength,
+    };
+  }
+
   public static harvestMonsterMeat(
     monster: MonsterProfile,
     quantity: number,
