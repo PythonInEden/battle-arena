@@ -86,6 +86,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   useEffect(() => {
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
 
+    // 🏛️ Seed the 4 Quest Relics onto distinct Mountain tiles
+    const questRelics: any[] = ['boots', 'sword', 'armor', 'horn'];
+    let relicIdx = 0;
+    for (let x = 0; x < generatedGrid.length && relicIdx < questRelics.length; x++) {
+      for (let y = 0; y < generatedGrid[x].length && relicIdx < questRelics.length; y++) {
+        if (generatedGrid[x][y].terrain === 'MOUNTAIN' && (x + y) % 7 === 0) {
+          (generatedGrid[x][y] as any).relic = questRelics[relicIdx];
+          (generatedGrid[x][y] as any).hasRelic = questRelics[relicIdx];
+          relicIdx++;
+        }
+      }
+    }
+
     let spawnPos: Position = { x: 0, y: 0 };
     for (let x = 0; x < generatedGrid.length; x++) {
       for (let y = 0; y < generatedGrid[x].length; y++) {
@@ -474,11 +487,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
 
       // 🏛️ Check Relic Tile Guardian Encounter Trigger
-      const tileRelic = (targetTile as any).relic;
-      if (tileRelic && !inventory.activeRelics.includes(tileRelic)) {
-        const guardianBoss = CombatEngine.spawnRelicGuardian(tileRelic, troops);
+      const tileRelic = (targetTile as any).relic || (targetTile as any).hasRelic;
+      if (tileRelic && !inventory.activeRelics.includes(tileRelic as any)) {
+        const guardianBoss = CombatEngine.spawnRelicGuardian(tileRelic as any, troops);
         setActiveEncounter(guardianBoss);
-        setPendingRelicReward(tileRelic);
+        setPendingRelicReward(tileRelic as any);
         setAllowSurpriseRetreat(false); // Relic Boss fights cannot be bypassed!
         setLogs((prev) => [t.logRelicFound, ...prev]);
         return;
@@ -545,7 +558,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         prevGrid.map((row) =>
           row.map((tile) => {
             if (tile.x === playerPosition.x && tile.y === playerPosition.y) {
-              return { ...tile, relic: undefined } as TileState;
+              return { ...tile, relic: undefined, hasRelic: null } as any;
             }
             return tile;
           })

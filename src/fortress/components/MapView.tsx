@@ -202,7 +202,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         💰
                       </span>
                     )}
-                    {tile.hasRelic && <span style={{ position: 'absolute', top: 0, right: 0, fontSize: `${Math.max(8, fontSize - 4)}px` }}>✨</span>}
+                    {(tile.hasRelic || (tile as any).relic) && <span style={{ position: 'absolute', top: 0, right: 0, fontSize: `${Math.max(8, fontSize - 4)}px` }}>✨</span>}
                   </>
                 ) : (
                   <span style={{ color: '#333' }}>🌫️</span>
