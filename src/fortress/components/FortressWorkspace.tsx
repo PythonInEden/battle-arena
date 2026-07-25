@@ -61,6 +61,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return localStorage.getItem('fortress_player_icon') || '🧙‍♂️';
   });
 
+  // 💾 PERSISTENT LOBBY & ROOM SESSION RE-ENTRY
   const [activeRoomCode, setActiveRoomCode] = useState<string>(() => {
     return localStorage.getItem('fortress_active_room') || '';
   });
@@ -231,7 +232,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     if (!activeRoomCode) return;
 
     try {
-      // 1. Fetch Room Session Config
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('*')
@@ -246,7 +246,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         }
       }
 
-      // 2. Fetch Players in Room
       const { data: playersData } = await supabase
         .from('players')
         .select('*')
@@ -256,7 +255,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         const otherMap: Record<string, any> = {};
         playersData.forEach((p) => {
           if (p.player_id === playerId) {
-            // Restore my own cloud data if saved!
             if (p.pos_x !== 0 || p.pos_y !== 0) {
               setPlayerPosition({ x: p.pos_x, y: p.pos_y });
             }
@@ -429,7 +427,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
 
-    // Create session in Supabase DB
     await supabase.from('game_sessions').upsert({
       room_code: code,
       seed: newSeed,
@@ -463,7 +460,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLobbyStep('SELECT_MODE');
   };
 
-  // Auto-advance round when all connected players lock turn
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
 
@@ -497,7 +493,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const nextReady = !isReady;
     setIsReady(nextReady);
     savePlayerToCloud(playerPosition, nextReady, isTurnLocked);
-    broadcastMyState(playerPosition, nextReady, isTurnLocked);
   };
 
   const handleUnlockDebug = () => {
@@ -511,7 +506,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  // Map Generation & Position Restoration
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED') return;
 
@@ -1190,6 +1184,63 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     overflowX: 'hidden',
   };
 
+  // Reusable Game Manual Component Modal
+  const renderGameManualModal = () => (
+    showManualModal && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+        <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '12px', padding: '24px', maxWidth: '640px', width: '92%', color: '#fff', fontFamily: 'monospace', textAlign: 'left', maxHeight: '82vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+          <h2 style={{ margin: '0 0 16px 0', color: '#00ffff', fontSize: '20px', textAlign: 'center', borderBottom: '2px solid #00ffff', paddingBottom: '10px' }}>
+            {t.manualTitle}
+          </h2>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#ff0', margin: '0 0 6px 0', fontSize: '15px' }}>{(t as any).manualSecObjectiveTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{(t as any).manualSecObjectiveText}</p>
+          </div>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#00ff00', margin: '0 0 6px 0', fontSize: '15px' }}>{t.manualSecMovementTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{t.manualSecMovementText}</p>
+          </div>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#fbc02d', margin: '0 0 6px 0', fontSize: '15px' }}>{(t as any).manualSecShopTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{(t as any).manualSecShopText}</p>
+          </div>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#ff9800', margin: '0 0 6px 0', fontSize: '15px' }}>{(t as any).manualSecMonstersTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{(t as any).manualSecMonstersText}</p>
+          </div>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#ff00ff', margin: '0 0 6px 0', fontSize: '15px' }}>{t.manualSecRelicsTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{t.manualSecRelicsText}</p>
+          </div>
+
+          <div style={{ marginBottom: '18px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#ff3333', margin: '0 0 6px 0', fontSize: '15px' }}>{t.manualSecRaidingTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{t.manualSecRaidingText}</p>
+          </div>
+
+          <div style={{ marginBottom: '20px', backgroundColor: '#050505', border: '1px solid #333', padding: '12px', borderRadius: '6px' }}>
+            <h4 style={{ color: '#ab47bc', margin: '0 0 6px 0', fontSize: '15px' }}>{t.manualSecCitadelTitle}</h4>
+            <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-line' }}>{t.manualSecCitadelText}</p>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <button
+              onClick={() => setShowManualModal(false)}
+              style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
+            >
+              ✅ UNDERSTOOD, CLOSE MANUAL
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  );
+
   // --------------------------------------------------------------------------
   // 🏰 STEP 1: ROOM SELECTION & CREATION SCREEN
   // --------------------------------------------------------------------------
@@ -1197,6 +1248,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return (
       <div style={fullScreenContainerStyle}>
         <div style={{ width: '100%', maxWidth: '550px', margin: 'auto', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', padding: '24px', textAlign: 'center', boxSizing: 'border-box' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '12px', color: '#888' }}>v0.0.3-ALPHA</span>
+            <button
+              onClick={() => setShowManualModal(true)}
+              style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              📖 {t.openManualBtn}
+            </button>
+          </div>
+
           <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
           <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
 
@@ -1270,6 +1332,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             </div>
           </div>
         </div>
+
+        {renderGameManualModal()}
       </div>
     );
   }
@@ -1285,6 +1349,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <button onClick={handleLeaveRoom} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
               {t.backToMenuBtn}
             </button>
+            
+            <button
+              onClick={() => setShowManualModal(true)}
+              style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              📖 {t.openManualBtn}
+            </button>
+
             <span style={{ backgroundColor: isHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
               {isHost ? t.hostBadge : t.guestBadge}
             </span>
@@ -1312,7 +1384,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                       setPlayerIcon(icon);
                       localStorage.setItem('fortress_player_icon', icon);
                       savePlayerToCloud(playerPosition, isReady, isTurnLocked);
-                      broadcastMyState(playerPosition, isReady, isTurnLocked);
                     }}
                     style={{
                       backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
@@ -1406,6 +1477,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             )}
           </div>
         </div>
+
+        {renderGameManualModal()}
       </div>
     );
   }
@@ -1426,7 +1499,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               onClick={() => setShowManualModal(true)}
               style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
             >
-              {t.openManualBtn}
+              📖 {t.openManualBtn}
             </button>
             <button
               onClick={handleLeaveRoom}
@@ -1595,45 +1668,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           />
         )}
 
-        {/* Game Manual Modal */}
-        {showManualModal && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140 }}>
-            <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '10px', padding: '24px', maxWidth: '560px', width: '90%', color: '#fff', fontFamily: 'monospace', textAlign: 'left', maxHeight: '80vh', overflowY: 'auto' }}>
-              <h2 style={{ margin: '0 0 16px 0', color: '#00ffff', fontSize: '18px', textAlign: 'center', borderBottom: '1px solid #00ffff', paddingBottom: '8px' }}>
-                {t.manualTitle}
-              </h2>
-
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ color: '#ff0', margin: '0 0 4px 0' }}>{t.manualSecMovementTitle}</h4>
-                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecMovementText}</p>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ color: '#ff3333', margin: '0 0 4px 0' }}>{t.manualSecRaidingTitle}</h4>
-                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRaidingText}</p>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <h4 style={{ color: '#ff00ff', margin: '0 0 4px 0' }}>{t.manualSecRelicsTitle}</h4>
-                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRelicsText}</p>
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ color: '#ab47bc', margin: '0 0 4px 0' }}>{t.manualSecCitadelTitle}</h4>
-                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecCitadelText}</p>
-              </div>
-
-              <div style={{ textAlign: 'center' }}>
-                <button
-                  onClick={() => setShowManualModal(false)}
-                  style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-                >
-                  ✅ BACK TO ADVENTURE
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {renderGameManualModal()}
 
         {/* Admin Passcode Modal */}
         {showDebugPasswordModal && (
