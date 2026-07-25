@@ -26,6 +26,11 @@ const getMonsterAssetUrl = (imageKey: string) => {
   return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
 };
 
+// 🖼️ Helper for Hero / Parley Images from Supabase Storage
+const getHeroAssetUrl = (filename: string) => {
+  return `${supabaseUrl}/storage/v1/object/public/hero-images/${filename}`;
+};
+
 const BASE_TURN_MF = 3;
 
 const generateRoomCode = () => {
@@ -176,6 +181,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const [activeEncounter, setActiveEncounter] = useState<EncounterGroup | null>(null);
   const [allowSurpriseRetreat, setAllowSurpriseRetreat] = useState<boolean>(false);
+
+  // 🤝 Parley & Diplomacy States
+  const [activeParley, setActiveParley] = useState<'ELVES' | 'DWARVES' | null>(null);
+  const [incomingPeaceRequest, setIncomingPeaceRequest] = useState<{ attackerId: string; attackerName: string } | null>(null);
+  const [holyVengeanceTargets, setHolyVengeanceTargets] = useState<string[]>([]);
 
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
@@ -373,6 +383,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .on('broadcast', { event: 'global_new_round' }, () => {
         executeEndTurnUpkeep();
+      })
+      .on('broadcast', { event: 'peace_request' }, (payload) => {
+        if (payload.payload.targetId === playerId) {
+          setIncomingPeaceRequest({
+            attackerId: payload.payload.attackerId,
+            attackerName: payload.payload.attackerName,
+          });
+        }
+      })
+      .on('broadcast', { event: 'peace_response' }, (payload) => {
+        const data = payload.payload;
+        if (data.attackerId === playerId) {
+          if (data.accepted) {
+            // Share sight across map
+            revealSightArea({ x: data.responderPos.x, y: data.responderPos.y }, 6);
+            setLogs((prev) => [t.peaceAcceptedLog, ...prev]);
+          } else if (data.murdered) {
+            setHolyVengeanceTargets((prev) => [...prev, data.responderId]);
+            setLogs((prev) => [`🩸 ${data.responderName} murdered your Peace Envoy! ${t.holyVengeanceActiveLog}`, ...prev]);
+          }
+        }
       })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
@@ -925,6 +956,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
 
       if (targetTile.terrain === 'FOREST' || targetTile.terrain === 'MOUNTAIN') {
+        // 20% Chance for Neutral Parley Encounter (Elves in Forest, Dwarves in Mountains)
+        if (Math.random() <= 0.20) {
+          if (targetTile.terrain === 'FOREST') {
+            setActiveParley('ELVES');
+            return;
+          } else if (targetTile.terrain === 'MOUNTAIN') {
+            setActiveParley('DWARVES');
+            return;
+          }
+        }
+
         if (CombatEngine.checkEncounterTrigger(targetTile.terrain)) {
           const encounter = CombatEngine.spawnEncounter(targetTile.terrain, troops);
           const allowRetreat = CombatEngine.checkSurpriseRetreatOption();
@@ -1595,6 +1637,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         {/* Control Bar */}
         <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName} {playerIcon} {isHost && '👑'}</span>
+          {holyVengeanceTargets.length > 0 && (
+            <span style={{ color: '#ff3333', fontSize: '11px', fontWeight: 'bold' }} title="You have +20% combat power against treacherous rivals who murdered your envoy!">
+              ⚡ HOLY VENGEANCE ACTIVE ({holyVengeanceTargets.length})
+            </span>
+          )}
           <span style={{ color: '#888', fontSize: '12px' }}>Room Code: <strong style={{ color: '#00ffff' }}>{activeRoomCode}</strong></span>
           <span style={{ color: '#888', fontSize: '12px' }}>{t.diffLabel} <strong>Level {difficulty}</strong></span>
           
@@ -1693,6 +1740,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 ? `🗡️ Raid [${getValidRaidTarget()?.name}]'s Camp` 
                 : t.raidCampBtn} ({troops.raiders})
             </button>
+
+            {/* 🕊️ Send Peace Messenger Button */}
+            {getValidRaidTarget() && (
+              <button
+                onClick={() => {
+                  const target = getValidRaidTarget();
+                  if (target && channelRef.current) {
+                    channelRef.current.send({
+                      type: 'broadcast',
+                      event: 'peace_request',
+                      payload: { attackerId: playerId, attackerName: playerName, targetId: target.id },
+                    });
+                    alert(`🕊️ Peace Messenger sent to ${target.name}! Waiting for their response...`);
+                  }
+                }}
+                disabled={isTurnLocked}
+                style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', fontFamily: 'monospace' }}
+              >
+                {t.sendPeaceBtn}
+              </button>
+            )}
           </div>
 
           <button
@@ -2089,6 +2157,126 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               <button onClick={() => setSpottedOpponentNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
                 ✅ UNDERSTOOD
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🤝 NEUTRAL PARLEY MODAL DIALOG (ELVES & DWARVES) */}
+        {activeParley && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 150 }}>
+            <div style={{ backgroundColor: '#111', border: `3px solid ${activeParley === 'ELVES' ? '#00ff00' : '#ff9800'}`, borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '90%', color: '#fff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', color: activeParley === 'ELVES' ? '#00ff00' : '#ff9800' }}>{t.parleyTitle}</h3>
+              <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>
+                {activeParley === 'ELVES' ? t.parleyElfMsg : t.parleyDwarfMsg}
+              </p>
+
+              {/* Parley Reference Image from Supabase hero-images bucket */}
+              <div style={{ margin: '0 auto 16px auto', width: '180px', height: '120px', border: '2px solid #555', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000' }}>
+                <img
+                  src={getHeroAssetUrl(activeParley === 'ELVES' ? 'group_elves.webp' : 'group_dwarfs.webp')}
+                  alt={activeParley}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    if (activeParley === 'ELVES') {
+                      setTroops((prev) => ({ ...prev, elves: prev.elves + 5 }));
+                      setLogs((prev) => [`🧝‍♂️ Recruited +5 Elven Rangers into your party!`, ...prev]);
+                    } else {
+                      setTroops((prev) => ({ ...prev, dwarves: prev.dwarves + 5 }));
+                      setLogs((prev) => [`🪓 Recruited +5 Dwarven Berserkers into your party!`, ...prev]);
+                    }
+                    setActiveParley(null);
+                  }}
+                  style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {activeParley === 'ELVES' ? t.recruitElvesBtn : t.recruitDwarvesBtn}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveParley(null);
+                    const mockTerrain = activeParley === 'ELVES' ? 'FOREST' : 'MOUNTAIN';
+                    const encounter = CombatEngine.spawnEncounter(mockTerrain, troops);
+                    setActiveEncounter(encounter);
+                  }}
+                  style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {t.attackParleyBtn}
+                </button>
+
+                <button
+                  onClick={() => setActiveParley(null)}
+                  style={{ backgroundColor: '#333', color: '#ccc', border: 'none', padding: '8px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {t.ignoreParleyBtn}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🕊️ INCOMING PEACE MESSENGER REQUEST MODAL */}
+        {incomingPeaceRequest && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 160 }}>
+            <div style={{ backgroundColor: '#111', border: '3px solid #00ffff', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '90%', color: '#00ffff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.peaceModalTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>
+                <strong>{incomingPeaceRequest.attackerName}</strong> {t.peaceModalMsg}
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button
+                  onClick={() => {
+                    if (channelRef.current) {
+                      channelRef.current.send({
+                        type: 'broadcast',
+                        event: 'peace_response',
+                        payload: {
+                          attackerId: incomingPeaceRequest.attackerId,
+                          responderId: playerId,
+                          responderName: playerName,
+                          responderPos: playerPosition,
+                          accepted: true,
+                        },
+                      });
+                    }
+                    setIncomingPeaceRequest(null);
+                    setLogs((prev) => [t.peaceAcceptedLog, ...prev]);
+                  }}
+                  style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {t.acceptPeaceBtn}
+                </button>
+
+                <button
+                  onClick={() => {
+                    addGoldSafely(150);
+                    if (channelRef.current) {
+                      channelRef.current.send({
+                        type: 'broadcast',
+                        event: 'peace_response',
+                        payload: {
+                          attackerId: incomingPeaceRequest.attackerId,
+                          responderId: playerId,
+                          responderName: playerName,
+                          responderPos: playerPosition,
+                          murdered: true,
+                        },
+                      });
+                    }
+                    setIncomingPeaceRequest(null);
+                    setLogs((prev) => [t.peaceMurderedLog, ...prev]);
+                  }}
+                  style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {t.murderPeaceBtn}
+                </button>
+              </div>
             </div>
           </div>
         )}

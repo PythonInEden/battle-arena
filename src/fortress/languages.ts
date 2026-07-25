@@ -300,7 +300,24 @@ export const FORTRESS_LANG = {
     logRelicFound: "✨ ANCIENT GUARDIAN SPOTTED! A powerful boss defends the legendary artifact!",
     logEncounterTrigger: "⚔️ Wild Encounter Triggered! Battle initiated!",
     logCombatWon: "🏆 Defeated monster group! Victory secured.",
-    logRetreated: "🏃 Safely retreated from wild encounter."
+    logRetreated: "🏃 Safely retreated from wild encounter.",
+
+    // Diplomacy & Parley Strings
+    parleyTitle: "🤝 NEUTRAL ENCOUNTER PARLEY",
+    parleyElfMsg: "An ancient warband of Elven Rangers emerges from the forest canopy!",
+    parleyDwarfMsg: "A clan of Dwarven Berserkers marches down from the mountain peaks!",
+    recruitElvesBtn: "🧝‍♂️ Recruit Elves (+5 Troops)",
+    recruitDwarvesBtn: "🪓 Recruit Dwarves (+5 Troops)",
+    attackParleyBtn: "⚔️ Attack Warband",
+    ignoreParleyBtn: "🚶 Walk Away Safely",
+    sendPeaceBtn: "🕊️ Send Peace Messenger",
+    peaceModalTitle: "🕊️ PEACE MESSENGER ARRIVED!",
+    peaceModalMsg: "A rival commander has sent an envoy offering an alliance and shared map vision!",
+    acceptPeaceBtn: "🤝 Accept Peace Alliance",
+    murderPeaceBtn: "🗡️ Murder Envoy (+150 Gold)",
+    peaceAcceptedLog: "🕊️ Alliance accepted! Map visions merged with rival commander!",
+    peaceMurderedLog: "🩸 Envoy murdered! Stole 150 GP, but rival gained +20% Holy Vengeance combat power against you!",
+    holyVengeanceActiveLog: "⚡ Holy Vengeance Active! +20% combat power against treacherous rival!"
   },
   vi: {
     // Sandbox Tweaker
@@ -599,6 +616,23 @@ export const FORTRESS_LANG = {
     logRelicFound: "✨ QUÁI VẬT HỘ VỆ XUẤT HIỆN! Trùm thần thoại đang canh giữ Bảo Vật Cổ Đại!",
     logEncounterTrigger: "⚔️ Đụng độ quái vật hoang dã! Bắt đầu giao tranh!",
     logCombatWon: "🏆 Tiêu diệt sạch quái vật! Giành chiến thắng.",
-    logRetreated: "🏃 Rút lui an toàn khỏi quái vật hoang dã."
+    logRetreated: "🏃 Rút lui an toàn khỏi quái vật hoang dã.",
+
+    // Diplomacy & Parley Strings
+    parleyTitle: "🤝 ĐỘI QUÂN TRUNG LẬP XUẤT HIỆN",
+    parleyElfMsg: "Tàn quân Tộc Tinh Linh (Elves) bước ra từ tán rừng rậm cổ thụ!",
+    parleyDwarfMsg: "Tộc Người Lùn (Dwarves) vung búa tiến xuống từ đỉnh núi cao!",
+    recruitElvesBtn: "🧝‍♂️ Chiêu Mộ Tinh Linh (+5 Quân)",
+    recruitDwarvesBtn: "🪓 Chiêu Mộ Người Lùn (+5 Quân)",
+    attackParleyBtn: "⚔️ Tấn Công Giao Tranh",
+    ignoreParleyBtn: "🚶 Rời Đi Hòa Bình",
+    sendPeaceBtn: "🕊️ Sứ Giả Hòa Bình",
+    peaceModalTitle: "🕊️ SỨ GIẢ HÒA BÌNH ĐẾN DOANH TRẠI!",
+    peaceModalMsg: "Tướng lĩnh đối phương gửi sứ giả tới đề nghị liên minh và chia sẻ tầm nhìn bản đồ!",
+    acceptPeaceBtn: "🤝 Chấp Nhận Liên Minh",
+    murderPeaceBtn: "🗡️ Sát Hại Sứ Giả (+150 Vàng)",
+    peaceAcceptedLog: "🕊️ Đã ký hòa ước! Mở rộng tầm nhìn bản đồ chung với đối thủ!",
+    peaceMurderedLog: "🩸 Đã giết sứ giả! Cướp 150 Vàng nhưng đối thủ nhận điểm nộ +20% Sức Mạnh Thánh Phẫn!",
+    holyVengeanceActiveLog: "⚡ Phẫn Nộ Trả Thù! Tăng +20% sức mạnh chiến đấu chống lại kẻ phản Bội!"
   }
 };
