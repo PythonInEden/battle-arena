@@ -545,7 +545,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         prevGrid.map((row) =>
           row.map((tile) => {
             if (tile.x === playerPosition.x && tile.y === playerPosition.y) {
-              return { ...tile, relic: undefined };
+              return { ...tile, relic: undefined } as TileState;
             }
             return tile;
           })
