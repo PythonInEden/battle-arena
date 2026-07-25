@@ -67,122 +67,134 @@ export default function App() {
     setCurrentMode(targetMode);
   };
 
-  if (currentMode === 'battle') {
-    return (
-      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#121212', padding: '15px', boxSizing: 'border-box' }}>
-        <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>{t.backBtn}</button>
-        <BattleArena />
-      </div>
-    );
-  }
-
-  if (currentMode === 'math') {
-    return (
-      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000', padding: '15px', boxSizing: 'border-box' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-          <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, marginBottom: 0 }}>{t.backBtn}</button>
-          
-          <select 
-            value={locale} 
-            onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
-            style={selectStyle}
-          >
-            <option value="vi">Tiếng Việt (VN)</option>
-            <option value="en">English (EN)</option>
-          </select>
-        </div>
-        <MathArena locale={locale} supabase={supabase} />
-      </div>
-    );
-  }
-
-  if (currentMode === 'fortress') {
-    return (
-      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#050505', padding: '12px', boxSizing: 'border-box' }}>
-        {/* Top Navigation Bar with Language Switcher */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1400px', margin: '0 auto 16px auto' }}>
-          <button 
-            onClick={() => navigateToMode('menu')} 
-            style={{ ...backButtonStyle, marginBottom: 0, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}
-          >
-            {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
-          </button>
-
-          {/* Retro Fortress Language Selector */}
-          <select 
-            value={locale} 
-            onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#000',
-              color: '#00ff00',
-              border: '1px solid #00ff00',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              outline: 'none',
-            }}
-          >
-            <option value="vi">🇻🇳 Tiếng Việt</option>
-            <option value="en">🇬🇧 English</option>
-          </select>
-        </div>
-
-        <FortressWorkspace locale={locale} />
-      </div>
-    );
-  }
-
   return (
-    <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
-      
-      <div style={{ width: '100%', maxWidth: '600px', display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
-        <select 
-          value={locale} 
-          onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
-          style={selectStyle}
-        >
-          <option value="vi">Tiếng Việt (VN)</option>
-          <option value="en">English (EN)</option>
-        </select>
-      </div>
+    <>
+      {/* 🚀 GLOBAL CSS OVERRIDE: Destroys Vite default white margins & fixed constraints */}
+      <style>{`
+        html, body, #root {
+          width: 100% !important;
+          max-width: 100% !important;
+          min-height: 100vh !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-sizing: border-box !important;
+          overflow-x: hidden !important;
+          background-color: ${currentMode === 'menu' ? '#0f172a' : '#000000'} !important;
+        }
+      `}</style>
 
-      <div style={{ textAlign: 'center', marginBottom: '35px', width: '100%', maxWidth: '600px' }}>
-        <h1 style={{ fontSize: 'clamp(24px, 5vw, 36px)', margin: '0 0 10px 0', fontWeight: '800', color: '#38bdf8' }}>{t.title}</h1>
-        <p style={{ fontSize: '15px', margin: 0, color: '#94a3b8' }}>{t.sub}</p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', width: '100%', maxWidth: '500px', boxSizing: 'border-box' }}>
-        <div onClick={() => navigateToMode('battle')} style={menuCardStyle('#ef4444')}>
-          <div style={{ fontSize: '32px' }}>⚔️</div>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.battleTitle}</h3>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.battleSub}</p>
-          </div>
+      {currentMode === 'battle' && (
+        <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#121212', padding: '15px', boxSizing: 'border-box' }}>
+          <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>{t.backBtn}</button>
+          <BattleArena />
         </div>
+      )}
 
-        <div onClick={() => navigateToMode('math')} style={menuCardStyle('#3b82f6')}>
-          <div style={{ fontSize: '32px' }}>🧮</div>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.mathTitle}</h3>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.mathSub}</p>
+      {currentMode === 'math' && (
+        <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000', padding: '15px', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+            <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, marginBottom: 0 }}>{t.backBtn}</button>
+            
+            <select 
+              value={locale} 
+              onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+              style={selectStyle}
+            >
+              <option value="vi">Tiếng Việt (VN)</option>
+              <option value="en">English (EN)</option>
+            </select>
           </div>
+          <MathArena locale={locale} supabase={supabase} />
         </div>
+      )}
 
-        <div onClick={() => navigateToMode('fortress')} style={menuCardStyle('#10b981')}>
-          <div style={{ fontSize: '32px' }}>🏰</div>
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.fortressTitle}</h3>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.fortressSub}</p>
+      {currentMode === 'fortress' && (
+        <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000000', padding: '12px', boxSizing: 'border-box' }}>
+          {/* Top Navigation Bar with Language Switcher */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1200px', margin: '0 auto 16px auto', flexWrap: 'wrap', gap: '8px' }}>
+            <button 
+              onClick={() => navigateToMode('menu')} 
+              style={{ ...backButtonStyle, marginBottom: 0, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}
+            >
+              {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
+            </button>
+
+            {/* Retro Fortress Language Selector */}
+            <select 
+              value={locale} 
+              onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: '#000',
+                color: '#00ff00',
+                border: '1px solid #00ff00',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                outline: 'none',
+              }}
+            >
+              <option value="vi">🇻🇳 Tiếng Việt</option>
+              <option value="en">🇬🇧 English</option>
+            </select>
           </div>
-        </div>
-      </div>
 
-      <footer style={{ marginTop: '40px', fontSize: '11px', color: '#475569', textAlign: 'center', maxWidth: '500px' }}>
-        {t.footer}
-      </footer>
-    </div>
+          <FortressWorkspace locale={locale} />
+        </div>
+      )}
+
+      {currentMode === 'menu' && (
+        <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
+          
+          <div style={{ width: '100%', maxWidth: '600px', display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+            <select 
+              value={locale} 
+              onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}
+              style={selectStyle}
+            >
+              <option value="vi">Tiếng Việt (VN)</option>
+              <option value="en">English (EN)</option>
+            </select>
+          </div>
+
+          <div style={{ textAlign: 'center', marginBottom: '35px', width: '100%', maxWidth: '600px' }}>
+            <h1 style={{ fontSize: 'clamp(24px, 5vw, 36px)', margin: '0 0 10px 0', fontWeight: '800', color: '#38bdf8' }}>{t.title}</h1>
+            <p style={{ fontSize: '15px', margin: 0, color: '#94a3b8' }}>{t.sub}</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', width: '100%', maxWidth: '500px', boxSizing: 'border-box' }}>
+            <div onClick={() => navigateToMode('battle')} style={menuCardStyle('#ef4444')}>
+              <div style={{ fontSize: '32px' }}>⚔️</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.battleTitle}</h3>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.battleSub}</p>
+              </div>
+            </div>
+
+            <div onClick={() => navigateToMode('math')} style={menuCardStyle('#3b82f6')}>
+              <div style={{ fontSize: '32px' }}>🧮</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.mathTitle}</h3>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.mathSub}</p>
+              </div>
+            </div>
+
+            <div onClick={() => navigateToMode('fortress')} style={menuCardStyle('#10b981')}>
+              <div style={{ fontSize: '32px' }}>🏰</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.fortressTitle}</h3>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.fortressSub}</p>
+              </div>
+            </div>
+          </div>
+
+          <footer style={{ marginTop: '40px', fontSize: '11px', color: '#475569', textAlign: 'center', maxWidth: '500px' }}>
+            {t.footer}
+          </footer>
+        </div>
+      )}
+    </>
   );
 }
 

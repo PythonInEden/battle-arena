@@ -196,7 +196,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="You">
                     {playerIcon}
                   </span>
-                ) : opponentHere ? (
+                ) : (opponentHere && inSight) ? (
                   <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title={opponentHere.name}>
                     {opponentHere.icon || '🧙‍♀️'}
                   </span>
