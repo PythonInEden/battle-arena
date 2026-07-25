@@ -346,7 +346,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     localStorage.setItem('fortress_player_name', playerName);
     localStorage.setItem('fortress_player_icon', playerIcon);
 
+    // Initial fetch on mount
     fetchCloudRoomState();
+
+    // 🔄 Auto-Sync Fallback: Polls Supabase Postgres every 2.5s to guarantee 100% Ready sync
+    const pollInterval = setInterval(() => {
+      fetchCloudRoomState();
+    }, 2500);
 
     const channelName = `fortress_room_${activeRoomCode}`;
     const channel = supabase.channel(channelName, {
@@ -503,6 +509,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     channelRef.current = channel;
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, isHost]);
