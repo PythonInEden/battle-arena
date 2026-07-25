@@ -91,6 +91,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isTeleportTrapModal, setIsTeleportTrapModal] = useState<boolean>(false);
   const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
 
+  // Duel Defeat Modal State
+  const [isDuelDefeatNotice, setIsDuelDefeatNotice] = useState<boolean>(false);
+
   // 🏛️ Persistent 16-Room Fortress Layout
   const [fortressRooms, setFortressRooms] = useState<Array<{
     id: number;
@@ -548,9 +551,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           setShopCatalog(availableItems);
           setIsShopOpen(true);
           setLogs((prev) => [t.logReentered, ...prev]);
-        } else {
-          setLogs((prev) => [`${t.logRested} [${targetTile.x}, ${targetTile.y}] (-1 MF).`, ...prev]);
+          return;
         }
+
+        // 👑 Allow re-entering Citadel on same-tile click!
+        if (targetTile.terrain === 'CITADEL') {
+          const hasHorn = inventory.activeRelics.some((r) => String(r).toLowerCase() === 'horn');
+          const successChance = hasHorn ? 0.75 : Math.min(0.80, troops.scouts * 0.05);
+          const isBreached = Math.random() <= successChance;
+
+          if (!isBreached) {
+            setIsCitadelSealedNotice(true);
+            setLogs((prev) => [t.logCitadelSealed, ...prev]);
+            return;
+          }
+
+          setIsInsideCitadel(true);
+          setLogs((prev) => [t.logCitadelReentered, ...prev]);
+          return;
+        }
+
+        setLogs((prev) => [`${t.logRested} [${targetTile.x}, ${targetTile.y}] (-1 MF).`, ...prev]);
         return;
       }
 
@@ -719,8 +740,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       prev.map((r, i) => (i === roomIndex ? { ...r, isRevealed: true } : r))
     );
 
-    // 🌀 Teleporter Trap
+    // 🌀 Teleporter Trap (Mark cleared & eject)
     if (room.type === 'TELEPORT_TRAP') {
+      setFortressRooms((prev) =>
+        prev.map((r, i) => (i === roomIndex ? { ...r, isCleared: true, isRevealed: true } : r))
+      );
       setIsInsideCitadel(false);
       setIsTeleportTrapModal(true);
       setLogs((prev) => [`🌀 Triggered Teleporter Trap in Room #${roomIndex + 1}! Ejected to overworld!`, ...prev]);
@@ -797,7 +821,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     if (bWins >= 2) {
       setActiveDuel(null);
-      handleCombatDefeat(); // Defeat routes player to sanctuary
+      setIsDuelDefeatNotice(true);
       return;
     }
 
@@ -1178,8 +1202,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   disabled={room.isCleared}
                   style={{
                     height: '75px',
-                    backgroundColor: room.isCleared ? '#052005' : room.isRevealed ? '#200505' : '#222',
-                    border: `2px solid ${room.isCleared ? '#00ff00' : room.isRevealed ? '#ff3333' : '#ab47bc'}`,
+                    backgroundColor: room.isCleared
+                      ? (room.type === 'TELEPORT_TRAP' ? '#200520' : '#052005')
+                      : room.isRevealed ? '#200505' : '#222',
+                    border: `2px solid ${
+                      room.isCleared
+                        ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00')
+                        : room.isRevealed ? '#ff3333' : '#ab47bc'
+                    }`,
                     borderRadius: '6px',
                     color: '#fff',
                     cursor: room.isCleared ? 'default' : 'pointer',
@@ -1192,10 +1222,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   }}
                 >
                   <span style={{ fontSize: '20px' }}>
-                    {room.isCleared ? '✅' : room.isRevealed ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '⚔️') : '❓'}
+                    {room.isCleared
+                      ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '💀')
+                      : room.isRevealed
+                        ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '⚔️')
+                        : '❓'}
                   </span>
-                  <span style={{ fontSize: '10px', marginTop: '4px', color: room.isCleared ? '#00ff00' : '#aaa' }}>
-                    {room.isCleared ? t.roomCleared : `#${idx + 1}`}
+                  <span style={{ fontSize: '10px', marginTop: '4px', color: room.isCleared ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00') : '#aaa' }}>
+                    {room.isCleared
+                      ? (room.type === 'TELEPORT_TRAP' ? t.roomTrap : t.roomSlain)
+                      : `#${idx + 1}`}
                   </span>
                 </button>
               ))}
@@ -1211,6 +1247,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
+{/* 💀 Witch King Duel Defeat Modal */}
+      {isDuelDefeatNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.duelDefeatTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.duelDefeatMsg}</p>
+
+            <button
+              onClick={() => {
+                setIsDuelDefeatNotice(false);
+                handleCombatDefeat(); // Routes player to safe sanctuary tile
+              }}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ RETREAT TO SANCTUARY
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* 🌀 Teleporter Trap Ejection Modal */}
       {isTeleportTrapModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
@@ -1236,8 +1292,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>{t.duelSubtitle}</p>
 
             {/* Boss Avatar Display */}
-            <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000' }}>
-              <img src="/witch_king.webp" alt="The Witch King" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+            <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img
+                src={supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/monsters/witch_king.webp` : '/witch_king.webp'}
+                alt="The Witch King"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  if (!img.dataset.fallbackStep) {
+                    img.dataset.fallbackStep = '1';
+                    img.src = '/witch_king.webp';
+                  } else if (img.dataset.fallbackStep === '1') {
+                    img.dataset.fallbackStep = '2';
+                    img.src = '/monsters/witch_king.webp';
+                  } else {
+                    img.style.display = 'none';
+                  }
+                }}
+              />
             </div>
 
             {/* Scoreboard */}
