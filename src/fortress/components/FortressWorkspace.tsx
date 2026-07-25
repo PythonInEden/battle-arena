@@ -144,6 +144,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
         if (data.targetId === playerId) {
+          // Scout Sentry Defense Check (20% per Scout, max 80%)
+          const evasionChance = Math.min(0.8, troops.scouts * 0.2);
+          const isThwarted = Math.random() < evasionChance;
+
+          if (isThwarted) {
+            setLogs((prev) => [t.raidThwartedLog, ...prev]);
+            channel.send({
+              type: 'broadcast',
+              event: 'raid_thwarted',
+              payload: { attackerId: data.attackerId, defenderName: playerName },
+            });
+            return;
+          }
+
           // Defender calculates actual lost inventory
           const stolenGold = Math.min(inventory.gold, 150);
           const stolenMules = Math.min(troops.mules, 1);
@@ -164,6 +178,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               stolenMules,
             },
           });
+        }
+      })
+      .on('broadcast', { event: 'raid_thwarted' }, (payload) => {
+        const data = payload.payload;
+        if (data.attackerId === playerId) {
+          setLogs((prev) => [t.raidThwartedAttackerLog, ...prev]);
         }
       })
       .on('broadcast', { event: 'raid_response' }, (payload) => {
@@ -284,6 +304,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     });
   };
 
+  // Helper to find connected target within 3 tiles range
+  const getValidRaidTarget = () => {
+    const opponents = Object.values(otherPlayers);
+    return opponents.find((opp) => {
+      const dx = Math.abs(playerPosition.x - opp.pos.x);
+      const dy = Math.abs(playerPosition.y - opp.pos.y);
+      return dx <= 3 && dy <= 3;
+    });
+  };
+  
   // Helper to find the nearest non-lake, non-mountain land tile for local respawns
   const findNearestSafeTile = (currentPos: Position): Position => {
     for (let radius = 1; radius < grid.length; radius++) {
@@ -304,35 +334,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return currentPos;
   };
 
-  // 🗡️ Raider Stealth Raid Handler (With 3-Tile Distance Guardrail)
+  // 🗡️ Raider Stealth Raid Handler (With Dynamic Range Guardrail)
   const handleExecuteCampRaid = () => {
     if (troops.raiders <= 0) {
       alert("You need at least 1 Raider Specialist to conduct stealth raids!");
       return;
     }
 
-    const opponents = Object.values(otherPlayers);
+    const validTarget = getValidRaidTarget();
 
-    if (opponents.length > 0 && channelRef.current) {
-      // Find opponent within 3 tiles stealth raid range
-      const targetOpponent = opponents.find((opp) => {
-        const dx = Math.abs(playerPosition.x - opp.pos.x);
-        const dy = Math.abs(playerPosition.y - opp.pos.y);
-        return dx <= 3 && dy <= 3;
-      });
-
-      if (!targetOpponent) {
-        alert(t.raidOutOfRange);
-        return;
-      }
-
+    if (validTarget && channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
         event: 'raid_request',
         payload: {
           attackerId: playerId,
           attackerName: playerName,
-          targetId: targetOpponent.id,
+          targetId: validTarget.id,
         },
       });
     } else {
@@ -684,8 +702,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             disabled={troops.raiders <= 0}
             style={{ backgroundColor: '#111', color: troops.raiders > 0 ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
           >
-            {Object.values(otherPlayers).length > 0 
-              ? `🗡️ Raid [${Object.values(otherPlayers)[0].name}]'s Camp` 
+            {getValidRaidTarget()
+              ? `🗡️ Raid [${getValidRaidTarget()?.name}]'s Camp` 
               : t.raidCampBtn} ({troops.raiders})
           </button>
         </div>
@@ -823,9 +841,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.raidModalMsg}</p>
             
             <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>🗡️ Raided by: <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
-              <div style={{ marginTop: '4px' }}>💰 Gold Stolen: <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
-              <div style={{ marginTop: '4px' }}>🫏 Pack Mules Looted: <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
+              <div>🗡️ {t.raidedByLabel} <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
+              <div style={{ marginTop: '4px' }}>💰 {t.goldStolenLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
+              <div style={{ marginTop: '4px' }}>🫏 {t.mulesLootedLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
             </div>
 
             <button
