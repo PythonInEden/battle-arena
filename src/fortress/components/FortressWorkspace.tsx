@@ -1770,6 +1770,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           <div>{t.wizardsLabel} <strong style={{ color: troops.wizards > 0 ? '#ab47bc' : '#888' }}>{troops.wizards > 0 ? t.yes : t.no}</strong></div>
           <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
           <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
+          <div>{(t as any).elvesLabel || "🧝‍♂️ Elves:"} <strong>{troops.elves}</strong></div>
+          <div>{(t as any).dwarvesLabel || "🪓 Dwarves:"} <strong>{troops.dwarves}</strong></div>
           <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
           <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
             🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
