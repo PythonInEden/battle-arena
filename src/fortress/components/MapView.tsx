@@ -7,6 +7,7 @@ import { FORTRESS_LANG, LanguageType } from '../languages';
 interface MapViewProps {
   grid: TileState[][];
   playerPosition: Position;
+  otherPlayers?: Record<string, { name: string; pos: Position }>;
   sightRadius: number;
   remainingMF: number;
   hasRaft: boolean;
@@ -17,6 +18,7 @@ interface MapViewProps {
 export const MapView: React.FC<MapViewProps> = ({
   grid,
   playerPosition,
+  otherPlayers = {},
   sightRadius,
   remainingMF,
   hasRaft,
@@ -184,7 +186,9 @@ export const MapView: React.FC<MapViewProps> = ({
                 title={tooltipText}
               >
                 {isPlayerHere ? (
-                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }}>🧙‍♂️</span>
+                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="You">🧙‍♂️</span>
+                ) : Object.values(otherPlayers).some((p) => p.pos.x === x && p.pos.y === y) ? (
+                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="Opponent Player">🧙‍♀️</span>
                 ) : isExplored ? (
                   <>
                     <span>{visuals.label}</span>

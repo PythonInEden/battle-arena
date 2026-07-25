@@ -146,6 +146,19 @@ export const FORTRESS_LANG = {
     goldCollectedModalMsg: "Your troops recovered lost gold resting on this tile!",
     goldCollectedAmountLabel: "Gold Recovered:",
 
+    // Scrolls & Raiding
+    castSeeingBtn: "📜 Cast Spell of Seeing",
+    playerNameLabel: "Player Name:",
+    opponentsOnline: "Players in Room:",
+    raidedByLog: "🚨 WARNING! Your camp was raided by",
+    raidedYouLog: "🗡️ Stealth Raid Successful! You raided",
+    castTeleportBtn: "🌀 Teleport to Safe Town",
+    raidCampBtn: "🗡️ Raid Bandit Camp",
+    logSeeingCast: "✨ Spell of Seeing cast! Unveiled fog of war across 8-tile radius!",
+    logTeleportCast: "🌀 Teleport Scroll activated! Warped army safely to nearest sanctuary!",
+    logRaidSuccess: "🗡️ Stealth Raid Successful! Raiders stole +150 GP and +1 Mule!",
+    logNoScrolls: "⚠️ You do not own any scrolls of this type!",
+
     // Monster Names
     monsterKobold: "Kobold Scout",
     monsterGoblin: "Goblin Frontliner",
@@ -328,6 +341,19 @@ export const FORTRESS_LANG = {
     goldCollectedModalTitle: "💰 ĐÃ NHẶT LẠI VÀNG TRÊN ĐẤT!",
     goldCollectedModalMsg: "Quân đội của bạn đã thu hồi lại số vàng thất lạc tại ô này!",
     goldCollectedAmountLabel: "Số Vàng Thu Hồi:",
+
+    // Scrolls & Raiding
+    castSeeingBtn: "📜 Phép Thuật Mở Tầm Nhìn",
+    playerNameLabel: "Tên Người Chơi:",
+    opponentsOnline: "Người Chơi Trong Phòng:",
+    raidedByLog: "🚨 CẢNH BÁO! Doanh trại của bạn bị tập kích bởi",
+    raidedYouLog: "🗡️ Tập Kích Thành Công! Bạn đã cướp doanh trại của",
+    castTeleportBtn: "🌀 Dịch Chuyển Về Thành Trị",
+    raidCampBtn: "🗡️ Đạo Tặc Tập Kích Doanh Trại",
+    logSeeingCast: "✨ Đã xé rách sương mù! Mở rộng tầm nhìn bán kính 8 ô xung quanh!",
+    logTeleportCast: "🌀 Dịch Chuyển Tức Thời! Đưa toàn quân trở về Thành Trị an toàn!",
+    logRaidSuccess: "🗡️ Đạo Tặc Tập Kích Thành Công! Cướp được +150 Vàng và +1 Lừa Thồ!",
+    logNoScrolls: "⚠️ Bạn không sở hữu cuộn bí kíp phép thuật này!",
 
     // Monster Names
     monsterKobold: "Trinh Sát Kobold",

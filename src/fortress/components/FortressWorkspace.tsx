@@ -1,5 +1,6 @@
 // src/fortress/components/FortressWorkspace.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { MapEngine } from '../MapEngine';
 import { LogisticalEngine } from '../LogisticalEngine';
 import { StructuralGuardrails } from '../utils/guardrails';
@@ -11,6 +12,11 @@ import { MarketplaceModal } from './MarketplaceModal';
 import { CombatModal } from './CombatModal';
 import { FORTRESS_LANG, LanguageType } from '../languages';
 
+// Initialize Supabase Client for Realtime 2-Player Sync
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 interface FortressWorkspaceProps {
   locale?: LanguageType;
 }
@@ -18,8 +24,13 @@ interface FortressWorkspaceProps {
 export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = 'vi' }) => {
   const t = FORTRESS_LANG[locale];
 
+  const [playerName, setPlayerName] = useState<string>(() => {
+    return sessionStorage.getItem('fortress_player_name') || `Player_${Math.floor(Math.random() * 899 + 100)}`;
+  });
   const [roomSeed, setRoomSeed] = useState<number>(54931);
   const [difficulty, setDifficulty] = useState<number>(2);
+  const [otherPlayers, setOtherPlayers] = useState<Record<string, { name: string; pos: Position; gold: number; mules: number }>>({});
+  const channelRef = useRef<any>(null);
   const [grid, setGrid] = useState<TileState[][]>([]);
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
   const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
@@ -77,6 +88,68 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLogs([`${t.logSpawn} [${spawnPos.x}, ${spawnPos.y}]`]);
   }, [roomSeed, difficulty, locale]);
 
+  // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad
+  useEffect(() => {
+    sessionStorage.setItem('fortress_player_name', playerName);
+
+    const channelName = `fortress_room_${roomSeed}`;
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'player_update' }, (payload) => {
+        const data = payload.payload;
+        if (data.name !== playerName) {
+          setOtherPlayers((prev) => ({
+            ...prev,
+            [data.name]: { name: data.name, pos: data.pos, gold: data.gold, mules: data.mules },
+          }));
+        }
+      })
+      .on('broadcast', { event: 'raid_attack' }, (payload) => {
+        const data = payload.payload;
+        if (data.target === playerName) {
+          const stolenGold = Math.min(inventory.gold, 150);
+          setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
+          setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - 1) }));
+          setLogs((prev) => [`${t.raidedByLog} ${data.attacker}! Lost -${stolenGold} GP and -1 Mule!`, ...prev]);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Broadcast my presence to other devices
+          channel.send({
+            type: 'broadcast',
+            event: 'player_update',
+            payload: { name: playerName, pos: playerPosition, gold: inventory.gold, mules: troops.mules },
+          });
+        }
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules]);
+
+  // Helper to broadcast position or state changes to opponent device
+  const broadcastMyState = (newPos?: Position) => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'player_update',
+        payload: {
+          name: playerName,
+          pos: newPos || playerPosition,
+          gold: inventory.gold,
+          mules: troops.mules,
+        },
+      });
+    }
+  };
+
   const revealSightArea = (pos: Position, radius: number) => {
     setGrid((prevGrid) =>
       prevGrid.map((row) =>
@@ -115,6 +188,70 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     if (result.droppedGold > 0) {
       depositExcessGoldToTile(playerPosition, result.droppedGold);
+    }
+  };
+
+  // 📜 Spell of Seeing Handler
+  const handleCastSeeingScroll = () => {
+    if (inventory.scrollsSeeing <= 0) {
+      alert(t.logNoScrolls);
+      return;
+    }
+    setInventory((prev) => ({ ...prev, scrollsSeeing: prev.scrollsSeeing - 1 }));
+    revealSightArea(playerPosition, 8); // Reveals 8-tile radius!
+    setLogs((prev) => [t.logSeeingCast, ...prev]);
+  };
+
+  // 🌀 Teleport Scroll Handler
+  const handleCastTeleportScroll = () => {
+    if (inventory.scrollsTeleport <= 0) {
+      alert(t.logNoScrolls);
+      return;
+    }
+
+    // Find nearest Town or Sanctuary on map
+    let targetPos: Position | null = null;
+    for (let x = 0; x < grid.length; x++) {
+      for (let y = 0; y < grid[x].length; y++) {
+        if (grid[x][y].terrain === 'TOWN' || grid[x][y].terrain === 'SANCTUARY') {
+          targetPos = { x, y };
+          break;
+        }
+      }
+    }
+
+    if (targetPos) {
+      setInventory((prev) => ({ ...prev, scrollsTeleport: prev.scrollsTeleport - 1 }));
+      setPlayerPosition(targetPos);
+      revealSightArea(targetPos, sightRadius);
+      setLogs((prev) => [`${t.logTeleportCast} [${targetPos?.x}, ${targetPos?.y}]`, ...prev]);
+    }
+  };
+
+  // 🗡️ Raider Stealth Raid Handler (Supports Live Opponent Raiding)
+  const handleExecuteCampRaid = () => {
+    if (troops.raiders <= 0) {
+      alert("You need at least 1 Raider Specialist to conduct stealth raids!");
+      return;
+    }
+
+    const opponentNames = Object.keys(otherPlayers);
+
+    if (opponentNames.length > 0 && channelRef.current) {
+      const targetOpponent = opponentNames[0]; // Raid connected opponent
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'raid_attack',
+        payload: { attacker: playerName, target: targetOpponent },
+      });
+      addGoldSafely(150);
+      setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
+      setLogs((prev) => [`${t.raidedYouLog} ${targetOpponent}! Stole +150 GP and +1 Mule!`, ...prev]);
+    } else {
+      // Offline / Wild Bandit Camp Raid Fallback
+      addGoldSafely(150);
+      setTroops((prev) => ({ ...prev, mules: prev.mules + 1 }));
+      setLogs((prev) => [t.logRaidSuccess, ...prev]);
     }
   };
 
@@ -170,6 +307,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPreviousPosition(playerPosition);
       setPlayerPosition({ x: targetTile.x, y: targetTile.y });
       setRemainingMF(nextMF);
+
+      broadcastMyState({ x: targetTile.x, y: targetTile.y });
 
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
 
@@ -330,8 +469,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <p style={{ margin: '4px 0 0 0', color: '#888' }}>{t.headerSub}</p>
       </header>
 
-      {/* Dev Control Toolbar */}
+      {/* Dev Control Toolbar & Player Identity */}
       <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ color: '#ff0', fontWeight: 'bold' }}>
+          {t.playerNameLabel} 
+          <input 
+            type="text" 
+            value={playerName} 
+            onChange={(e) => setPlayerName(e.target.value)}
+            style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '6px', padding: '4px', width: '130px', fontFamily: 'monospace', fontWeight: 'bold' }} 
+          />
+        </label>
         <label>
           {t.seedLabel} 
           <input 
@@ -352,6 +500,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             style={{ backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00', marginLeft: '6px', padding: '4px', width: '50px', fontFamily: 'monospace' }} 
           />
         </label>
+        <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
+          {t.opponentsOnline} <strong style={{ color: Object.keys(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.keys(otherPlayers).join(', ') || 'None'}</strong>
+        </div>
       </div>
 
       {/* Dev Sandbox Army Tweaker */}
@@ -363,6 +514,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   </button>
         <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
         <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
+        <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
+        <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
+        <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
       </div>
 
       {/* Logistical HUD Bar with Wizards, Clerics, & Raiders Displayed! */}
@@ -380,10 +534,33 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <div style={{ fontSize: '12px', color: '#888' }}>
-          {t.navTip}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCastSeeingScroll}
+            disabled={inventory.scrollsSeeing <= 0}
+            style={{ backgroundColor: '#111', color: inventory.scrollsSeeing > 0 ? '#00ffff' : '#555', border: `1px solid ${inventory.scrollsSeeing > 0 ? '#00ffff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeing > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+          >
+            {t.castSeeingBtn} ({inventory.scrollsSeeing})
+          </button>
+
+          <button
+            onClick={handleCastTeleportScroll}
+            disabled={inventory.scrollsTeleport <= 0}
+            style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+          >
+            {t.castTeleportBtn} ({inventory.scrollsTeleport})
+          </button>
+
+          <button
+            onClick={handleExecuteCampRaid}
+            disabled={troops.raiders <= 0}
+            style={{ backgroundColor: '#111', color: troops.raiders > 0 ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
+          >
+            {t.raidCampBtn} ({troops.raiders})
+          </button>
         </div>
+
         <button
           onClick={handleEndTurn}
           style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
@@ -397,6 +574,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <MapView
           grid={grid}
           playerPosition={playerPosition}
+          otherPlayers={otherPlayers}
           sightRadius={sightRadius}
           remainingMF={remainingMF}
           hasRaft={inventory.hasRaft}
