@@ -45,36 +45,49 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const t = FORTRESS_LANG[locale];
 
   const [playerId] = useState<string>(() => {
-    let id = sessionStorage.getItem('fortress_player_id');
+    let id = localStorage.getItem('fortress_player_id');
     if (!id) {
       id = `pid_${Math.random().toString(36).substring(2, 9)}`;
-      sessionStorage.setItem('fortress_player_id', id);
+      localStorage.setItem('fortress_player_id', id);
     }
     return id;
   });
 
   const [playerName, setPlayerName] = useState<string>(() => {
-    return sessionStorage.getItem('fortress_player_name') || `Hero_${Math.floor(Math.random() * 899 + 100)}`;
+    return localStorage.getItem('fortress_player_name') || `Hero_${Math.floor(Math.random() * 899 + 100)}`;
   });
 
   const [playerIcon, setPlayerIcon] = useState<string>(() => {
-    return sessionStorage.getItem('fortress_player_icon') || '🧙‍♂️';
+    return localStorage.getItem('fortress_player_icon') || '🧙‍♂️';
   });
 
-  const [lobbyStep, setLobbyStep] = useState<'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'>('SELECT_MODE');
-  
-  // 👑 Strict Explicit Host Role
-  const [isHost, setIsHost] = useState<boolean>(false);
+  // 💾 PERSISTENT LOBBY & ROOM SESSION RE-ENTRY
+  const [activeRoomCode, setActiveRoomCode] = useState<string>(() => {
+    return localStorage.getItem('fortress_active_room') || '';
+  });
+
+  const [isHost, setIsHost] = useState<boolean>(() => {
+    return localStorage.getItem('fortress_is_host') === 'true';
+  });
+
+  const [lobbyStep, setLobbyStep] = useState<'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'>(() => {
+    const savedStep = localStorage.getItem('fortress_lobby_step');
+    if (savedStep === 'GAME_STARTED' || savedStep === 'IN_LOBBY') {
+      return savedStep as any;
+    }
+    return 'SELECT_MODE';
+  });
+
+  const [isTurnLocked, setIsTurnLocked] = useState<boolean>(() => {
+    return localStorage.getItem('fortress_turn_locked') === 'true';
+  });
 
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
-  const [activeRoomCode, setActiveRoomCode] = useState<string>('');
-
   const [roomSeed, setRoomSeed] = useState<number>(() => Math.floor(10000 + Math.random() * 90000));
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isReady, setIsReady] = useState<boolean>(false);
 
   const [syncedPlayerList, setSyncedPlayerList] = useState<string[]>([]);
-  const [isTurnLocked, setIsTurnLocked] = useState<boolean>(false);
   const [showManualModal, setShowManualModal] = useState<boolean>(false);
 
   const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
@@ -179,11 +192,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const guestPlayers = Object.values(otherPlayers);
   const allGuestsReady = guestPlayers.length === 0 || guestPlayers.every((p) => p.isReady);
 
+  // 💾 Sync local variables to localStorage for Auto Re-entry
+  useEffect(() => {
+    if (activeRoomCode) localStorage.setItem('fortress_active_room', activeRoomCode);
+    localStorage.setItem('fortress_is_host', String(isHost));
+    localStorage.setItem('fortress_lobby_step', lobbyStep);
+    localStorage.setItem('fortress_turn_locked', String(isTurnLocked));
+  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked]);
+
   // 📡 Realtime Supabase Channel
   useEffect(() => {
     if (!activeRoomCode) return;
-    sessionStorage.setItem('fortress_player_name', playerName);
-    sessionStorage.setItem('fortress_player_icon', playerIcon);
+    localStorage.setItem('fortress_player_name', playerName);
+    localStorage.setItem('fortress_player_icon', playerIcon);
 
     const channelName = `fortress_room_${activeRoomCode}`;
     const channel = supabase.channel(channelName, {
@@ -208,7 +229,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             },
           }));
 
-          // Sync seed & difficulty from Host if I am a Guest
           if (data.hostSeed && !isHost) setRoomSeed(data.hostSeed);
           if (data.hostDifficulty && !isHost) setDifficulty(data.hostDifficulty);
         }
@@ -224,6 +244,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .on('broadcast', { event: 'global_new_round' }, () => {
         executeEndTurnUpkeep();
+      })
+      .on('broadcast', { event: 'request_sync' }, () => {
+        broadcastMyState(playerPosition, isReady, isTurnLocked);
       })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
@@ -311,6 +334,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
+          // Announce presence and ask for state sync from existing players
           channel.send({
             type: 'broadcast',
             event: 'player_update',
@@ -327,6 +351,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               hostDifficulty: isHost ? difficulty : undefined,
             },
           });
+
+          channel.send({ type: 'broadcast', event: 'request_sync', payload: {} });
         }
       });
 
@@ -354,6 +380,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLobbyStep('IN_LOBBY');
   };
 
+  const handleLeaveRoom = () => {
+    localStorage.removeItem('fortress_active_room');
+    localStorage.removeItem('fortress_is_host');
+    localStorage.removeItem('fortress_lobby_step');
+    localStorage.removeItem('fortress_turn_locked');
+    setActiveRoomCode('');
+    setIsHost(false);
+    setIsTurnLocked(false);
+    setLobbyStep('SELECT_MODE');
+  };
+
+  // Auto advance round when all connected players are locked
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
 
@@ -371,6 +409,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       executeEndTurnUpkeep();
     }
   }, [isTurnLocked, otherPlayers, lobbyStep]);
+
+  // ⚡ Force Next Round Button Handler (Breaks stalled or AFK games)
+  const handleForceAdvanceTurn = () => {
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'global_new_round',
+        payload: {},
+      });
+    }
+    executeEndTurnUpkeep();
+  };
 
   const toggleReadyState = () => {
     const nextReady = !isReady;
@@ -450,7 +500,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setPreviousPosition(finalSpawnPos);
     setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
 
-    broadcastMyState(finalSpawnPos, isReady, false);
+    broadcastMyState(finalSpawnPos, isReady, isTurnLocked);
   }, [lobbyStep, roomSeed, difficulty, playerId, calculatedGridSize, syncedPlayerList]);
 
   const broadcastMyState = (newPos?: Position, readyState?: boolean, lockedState?: boolean) => {
@@ -1032,7 +1082,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
 
-  // Full Viewport Screen Container Style (Fixes white borders on Vercel)
   const fullScreenContainerStyle: React.CSSProperties = {
     minHeight: '100vh',
     width: '100vw',
@@ -1070,7 +1119,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               />
             </label>
 
-            {/* Hero Icon Selection Picker */}
             <div style={{ color: '#00ffff', fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>
               {t.chooseIconLabel} <span style={{ fontSize: '18px' }}>{playerIcon}</span>
             </div>
@@ -1080,7 +1128,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   key={icon}
                   onClick={() => {
                     setPlayerIcon(icon);
-                    sessionStorage.setItem('fortress_player_icon', icon);
+                    localStorage.setItem('fortress_player_icon', icon);
                   }}
                   style={{
                     backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
@@ -1098,7 +1146,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             </div>
           </div>
 
-          {/* Mode Buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
             <button
               onClick={handleCreateRoom}
@@ -1143,7 +1190,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       <div style={fullScreenContainerStyle}>
         <div style={{ width: '100%', maxWidth: '650px', margin: 'auto', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', padding: '24px', textAlign: 'center', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <button onClick={() => setLobbyStep('SELECT_MODE')} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
+            <button onClick={handleLeaveRoom} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
               {t.backToMenuBtn}
             </button>
             <span style={{ backgroundColor: isHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
@@ -1156,13 +1203,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           </h1>
           <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>{t.lobbySubtitle}</p>
 
-          {/* Host Room Settings */}
           <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
             <div style={{ color: '#fff', fontSize: '13px', marginBottom: '8px' }}>
               👤 {t.enterNamePrompt} <strong style={{ color: '#ff0' }}>{playerName}</strong> {playerIcon}
             </div>
 
-            {/* Hero Icon Change Grid in Lobby */}
             <div style={{ margin: '10px 0' }}>
               <span style={{ color: '#00ffff', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
                 {t.chooseIconLabel}
@@ -1173,7 +1218,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                     key={icon}
                     onClick={() => {
                       setPlayerIcon(icon);
-                      sessionStorage.setItem('fortress_player_icon', icon);
+                      localStorage.setItem('fortress_player_icon', icon);
                       broadcastMyState(playerPosition, isReady, isTurnLocked);
                     }}
                     style={{
@@ -1219,12 +1264,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             </div>
           </div>
 
-          {/* Dynamic Map Info Card */}
           <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: '#fff' }}>
             <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Connected Commanders)</div>
           </div>
 
-          {/* Connected Players Roster */}
           <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
             
@@ -1245,7 +1288,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             ))}
           </div>
 
-          {/* Action Controls */}
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
             {!isHost && (
               <button
@@ -1286,12 +1328,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <h2 style={{ margin: 0, fontSize: 'clamp(16px, 3vw, 20px)' }}>{t.headerTitle}</h2>
             <p style={{ margin: '4px 0 0 0', color: '#888', fontSize: '12px' }}>{t.headerSub}</p>
           </div>
-          <button
-            onClick={() => setShowManualModal(true)}
-            style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-          >
-            {t.openManualBtn}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setShowManualModal(true)}
+              style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              {t.openManualBtn}
+            </button>
+            <button
+              onClick={handleLeaveRoom}
+              style={{ backgroundColor: '#330000', color: '#ff3333', border: '1px solid #ff3333', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              🚪 LEAVE GAME
+            </button>
+          </div>
         </header>
 
         {/* Control Bar */}
@@ -1414,9 +1464,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           </button>
         </div>
 
+        {/* ⏳ Turn Waiting Overlay with FORCE NEXT ROUND option */}
         {isTurnLocked && (
-          <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '10px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold' }}>
-            {t.waitingTurnLockMsg}
+          <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '12px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <span>{t.waitingTurnLockMsg}</span>
+            <button
+              onClick={handleForceAdvanceTurn}
+              style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '6px 14px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '11px' }}
+              title="Force next round if a player disconnects or is taking too long"
+            >
+              ⚡ FORCE NEXT ROUND
+            </button>
           </div>
         )}
 
@@ -1761,6 +1819,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               </p>
               <button 
                 onClick={() => {
+                  handleLeaveRoom();
                   window.location.reload();
                 }} 
                 style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
