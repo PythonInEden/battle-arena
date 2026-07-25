@@ -21,7 +21,6 @@ const getMonsterAssetUrl = (imageKey: string) => {
   return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
 };
 
-// 🎯 Base Tactical Movement Factor (MF) Budget per Round
 const BASE_TURN_MF = 3;
 
 interface FortressWorkspaceProps {
@@ -47,7 +46,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [roomSeed, setRoomSeed] = useState<number>(54931);
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isReady, setIsReady] = useState<boolean>(false);
-  const [isGameStarted, setIsGameStarted] = useState<boolean>(false);
+
+  // 🔄 Rejoinable Game Session Persistence State
+  const [isGameStarted, setIsGameStarted] = useState<boolean>(() => {
+    return sessionStorage.getItem(`fortress_active_game_${roomSeed}`) === 'true';
+  });
 
   // Synchronized Turn State
   const [isTurnLocked, setIsTurnLocked] = useState<boolean>(false);
@@ -148,6 +151,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
+  // Compute dynamic map size based on connected players count
+  const totalPlayersCount = Math.max(1, 1 + Object.keys(otherPlayers).length);
+  const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
+
   // 📡 Realtime Supabase Channel for Lobby & Turn Lock Sync
   useEffect(() => {
     sessionStorage.setItem('fortress_player_name', playerName);
@@ -177,9 +184,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .on('broadcast', { event: 'start_game_trigger' }, () => {
         setIsGameStarted(true);
+        sessionStorage.setItem(`fortress_active_game_${roomSeed}`, 'true');
       })
       .on('broadcast', { event: 'global_new_round' }, () => {
-        // Execute End-of-Turn logistics when all players unlock together!
         executeEndTurnUpkeep();
       })
       .on('broadcast', { event: 'raid_request' }, (payload) => {
@@ -291,6 +298,25 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     };
   }, [roomSeed, playerName, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked]);
 
+  // 🔄 Reactive Turn Lock Check: Advance round as soon as everyone locks!
+  useEffect(() => {
+    if (!isGameStarted || !isTurnLocked) return;
+
+    const rivals = Object.values(otherPlayers);
+    const areAllRivalsLocked = rivals.length > 0 && rivals.every((r) => r.isTurnLocked);
+
+    if (areAllRivalsLocked) {
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'global_new_round',
+          payload: {},
+        });
+      }
+      executeEndTurnUpkeep();
+    }
+  }, [isTurnLocked, otherPlayers, isGameStarted]);
+
   const toggleReadyState = () => {
     const nextReady = !isReady;
     setIsReady(nextReady);
@@ -308,11 +334,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  // 🗺️ Map Generation & Wild Land (Plains/Forest) Player Spawning
+  // 🗺️ Map Generation & 4-Quadrant Far-Apart Spawning
   useEffect(() => {
     if (!isGameStarted) return;
 
-    const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty);
+    // Pass calculatedGridSize so 4-player maps generate at 20x20!
+    const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty, calculatedGridSize);
 
     // 🏛️ Seed 4 Quest Relics on Mountain tiles
     const questRelics = ['boots', 'sword', 'armor', 'horn'];
@@ -327,24 +354,32 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    // Collect ALL valid land spawn tiles (Plains & Forest, excluding Lake, Mountain, Citadel)
-    const validLandSpawns: Position[] = [];
-    for (let x = 0; x < generatedGrid.length; x++) {
-      for (let y = 0; y < generatedGrid[x].length; y++) {
+    const N = generatedGrid.length;
+    const mid = Math.floor(N / 2);
+
+    // Filter valid land tiles for each of the 4 Map Quadrants
+    const quadrants: Position[][] = [[], [], [], []];
+
+    for (let x = 0; x < N; x++) {
+      for (let y = 0; y < N; y++) {
         const t = generatedGrid[x][y].terrain;
         if (t === 'PLAINS' || t === 'FOREST' || t === 'TOWN' || t === 'SANCTUARY') {
-          validLandSpawns.push({ x, y });
+          if (x < mid && y < mid) quadrants[0].push({ x, y });        // NW (Top-Left)
+          else if (x >= mid && y >= mid) quadrants[1].push({ x, y }); // SE (Bottom-Right)
+          else if (x >= mid && y < mid) quadrants[2].push({ x, y });  // NE (Top-Right)
+          else quadrants[3].push({ x, y });                           // SW (Bottom-Left)
         }
       }
     }
 
-    // Deterministically assign each player their own distinct starting tile
+    // Deterministically assign each player to a distinct Quadrant!
     const allPlayerIds = [playerId, ...Object.keys(otherPlayers)].sort();
-    const myIndex = Math.max(0, allPlayerIds.indexOf(playerId));
+    const mySlotIndex = Math.max(0, allPlayerIds.indexOf(playerId));
+    const targetQuad = quadrants[mySlotIndex % 4];
 
-    const finalSpawnPos: Position = validLandSpawns.length > 0
-      ? validLandSpawns[(myIndex * 7) % validLandSpawns.length]
-      : { x: 0, y: 0 };
+    const finalSpawnPos: Position = targetQuad.length > 0
+      ? targetQuad[Math.floor(targetQuad.length / 2)]
+      : { x: 1, y: 1 };
 
     const updatedGrid = generatedGrid.map((row) =>
       row.map((tile) => {
@@ -360,7 +395,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
 
     broadcastMyState(finalSpawnPos, isReady, false);
-  }, [isGameStarted, roomSeed, difficulty, playerId]);
+  }, [isGameStarted, roomSeed, difficulty, playerId, calculatedGridSize]);
 
   const broadcastMyState = (newPos?: Position, readyState?: boolean, lockedState?: boolean) => {
     if (channelRef.current) {
@@ -382,6 +417,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const handleLaunchGame = () => {
     setIsGameStarted(true);
+    sessionStorage.setItem(`fortress_active_game_${roomSeed}`, 'true');
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -895,22 +931,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const nextLocked = true;
     setIsTurnLocked(nextLocked);
     broadcastMyState(playerPosition, isReady, nextLocked);
-
-    // Check if ALL players are locked
-    const rivals = Object.values(otherPlayers);
-    const areAllRivalsLocked = rivals.length === 0 || rivals.every((r) => r.isTurnLocked);
-
-    if (areAllRivalsLocked) {
-      // Advance turn globally for everyone
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'global_new_round',
-          payload: {},
-        });
-      }
-      executeEndTurnUpkeep();
-    }
   };
 
   const executeEndTurnUpkeep = () => {
@@ -947,9 +967,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
 
-  const totalPlayersCount = 1 + Object.keys(otherPlayers).length;
-  const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
   const allPlayersReady = isReady && (Object.values(otherPlayers).length === 0 || Object.values(otherPlayers).every((p) => p.isReady));
+  const isSavedActiveSession = sessionStorage.getItem(`fortress_active_game_${roomSeed}`) === 'true';
 
   // --------------------------------------------------------------------------
   // 🏰 PRE-GAME LOBBY WAITING ROOM OVERLAY
@@ -959,6 +978,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       <div style={{ padding: '32px', maxWidth: '700px', margin: '40px auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
         <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
         <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
+
+        {/* 🔄 Rejoin Active Session Banner */}
+        {isSavedActiveSession && (
+          <div style={{ backgroundColor: '#1a1800', border: '2px solid #ff0', padding: '12px', borderRadius: '8px', marginBottom: '20px' }}>
+            <span style={{ color: '#ff0', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+              ⚡ ACTIVE MATCH DETECTED FOR THIS ROOM!
+            </span>
+            <button
+              onClick={() => setIsGameStarted(true)}
+              style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ⚡ REJOIN ACTIVE GAME NOW
+            </button>
+          </div>
+        )}
 
         <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
           <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '8px' }}>
@@ -996,7 +1030,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
 
         <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '24px', fontSize: '13px', color: '#fff' }}>
-          <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Players)</div>
+          <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Connected Players)</div>
         </div>
 
         <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
@@ -1057,7 +1091,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </button>
       </header>
 
-      {/* Dev Control Toolbar (Read-only Seed & Difficulty during active game) */}
+      {/* Control Bar (Displays room metadata) */}
       <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName}</span>
         <span style={{ color: '#888', fontSize: '12px' }}>{t.seedLabel} <strong>{roomSeed}</strong></span>
@@ -1521,7 +1555,13 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
               {gameWinnerNotice.isMe ? t.victoryMsg : `${t.opponentWonMsg} (${gameWinnerNotice.winnerName})`}
             </p>
-            <button onClick={() => window.location.reload()} style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+            <button 
+              onClick={() => {
+                sessionStorage.removeItem(`fortress_active_game_${roomSeed}`);
+                window.location.reload();
+              }} 
+              style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
               🔄 RESTART ADVENTURE
             </button>
           </div>
