@@ -36,6 +36,7 @@ export const MONSTER_DATABASE: MonsterProfile[] = [
   { id: 'mimic_chest', nameKey: 'monsterMimic', strength: 5.0, imageKey: 'mimic_chest', edibility: 'INEDIBLE' },
   { id: 'iron_golem', nameKey: 'monsterIronGolem', strength: 30.0, imageKey: 'iron_golem', edibility: 'INEDIBLE' },
   { id: 'shadow_lich', nameKey: 'monsterLich', strength: 50.0, imageKey: 'shadow_lich', edibility: 'INEDIBLE' },
+  { id: 'witch_king', nameKey: 'monsterLich', strength: 60.0, imageKey: 'witch_king', edibility: 'INEDIBLE' },
 ];
 
 export interface EncounterGroup {

@@ -5,7 +5,7 @@ import { MapEngine } from '../MapEngine';
 import { LogisticalEngine } from '../LogisticalEngine';
 import { StructuralGuardrails } from '../utils/guardrails';
 import { MarketplaceEngine, ShopItem } from '../MarketplaceEngine';
-import { CombatEngine, EncounterGroup } from '../CombatEngine';
+import { CombatEngine, EncounterGroup, MONSTER_DATABASE } from '../CombatEngine';
 import { TileState, Position, TroopRoster, PlayerInventory, QuestRelic } from '../types';
 import { MapView } from './MapView';
 import { MarketplaceModal } from './MarketplaceModal';
@@ -85,10 +85,52 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [pendingRumors, setPendingRumors] = useState<string[]>([]);
   const [townRumorNotice, setTownRumorNotice] = useState<string[] | null>(null);
 
-  // Citadel & Witch King Boss States
+  // Citadel & 16-Room Memory Crawler States
   const [isCitadelSealedNotice, setIsCitadelSealedNotice] = useState<boolean>(false);
-  const [isWitchKingBattle, setIsWitchKingBattle] = useState<boolean>(false);
+  const [isInsideCitadel, setIsInsideCitadel] = useState<boolean>(false);
+  const [isTeleportTrapModal, setIsTeleportTrapModal] = useState<boolean>(false);
   const [gameWinnerNotice, setGameWinnerNotice] = useState<{ winnerName: string; isMe: boolean } | null>(null);
+
+  // 🏛️ Persistent 16-Room Fortress Layout
+  const [fortressRooms, setFortressRooms] = useState<Array<{
+    id: number;
+    type: 'WITCH_KING' | 'TELEPORT_TRAP' | 'MONSTER';
+    monsterId?: string;
+    isRevealed: boolean;
+    isCleared: boolean;
+  }>>(() => {
+    // Generate randomized 16 rooms (1 Witch King, 4 Traps, 11 Guards)
+    const types: Array<'WITCH_KING' | 'TELEPORT_TRAP' | 'MONSTER'> = [
+      'WITCH_KING',
+      'TELEPORT_TRAP', 'TELEPORT_TRAP', 'TELEPORT_TRAP', 'TELEPORT_TRAP',
+      'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER',
+      'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER', 'MONSTER'
+    ];
+    
+    // Shuffle array
+    for (let i = types.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [types[i], types[j]] = [types[j], types[i]];
+    }
+
+    const guardPool = ['iron_golem', 'gargoyle', 'shadow_lich', 'chimera', 'frost_giant', 'skeleton_warrior'];
+
+    return types.map((type, idx) => ({
+      id: idx,
+      type,
+      monsterId: type === 'MONSTER' ? guardPool[Math.floor(Math.random() * guardPool.length)] : undefined,
+      isRevealed: false,
+      isCleared: false,
+    }));
+  });
+
+  // 👑 1v1 Final Boss Rock-Paper-Scissors Duel State
+  const [activeDuel, setActiveDuel] = useState<{
+    round: number;
+    playerWins: number;
+    bossWins: number;
+    lastResult: string | null;
+  } | null>(null);
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
@@ -140,7 +182,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setPlayerPosition(finalSpawnPos);
     setPreviousPosition(finalSpawnPos);
     setLogs([`${t.logSpawn} [${finalSpawnPos.x}, ${finalSpawnPos.y}]`]);
-  }, [roomSeed, difficulty, locale, playerId]);
+  }, [roomSeed, difficulty, playerId]);
 
   // 📡 Realtime Supabase Channel for 2-Player Sync across Desktop & iPad[cite: 2]
   useEffect(() => {
@@ -545,22 +587,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         return;
       }
 
-      // 👑 CITADEL GATE SIEGE & WITCH KING BOSS TRIGGER
+      // 👑 CITADEL STRONGHOLD GATE ENTRY CHECK
       if (targetTile.terrain === 'CITADEL') {
         const hasHorn = inventory.activeRelics.some((r) => String(r).toLowerCase() === 'horn');
+        
+        // Gate Success Roll: 75% with Horn, or 5% * Scout Count without Horn
+        const successChance = hasHorn ? 0.75 : Math.min(0.80, troops.scouts * 0.05);
+        const isBreached = Math.random() <= successChance;
 
-        if (!hasHorn) {
+        if (!isBreached) {
           setIsCitadelSealedNotice(true);
+          setRemainingMF((prev) => Math.max(0, prev - 1));
           setLogs((prev) => [t.logCitadelSealed, ...prev]);
           return;
         }
 
-        // Horn Unlocks Gate: Trigger Witch King Boss Encounter!
-        const witchKingBoss = CombatEngine.spawnWitchKingBoss(troops);
-        setActiveEncounter(witchKingBoss);
-        setIsWitchKingBattle(true);
-        setAllowSurpriseRetreat(false); // Final boss battle cannot be bypassed!
-        setLogs((prev) => [t.witchKingTitle, ...prev]);
+        // Breached! Enter 16-Room Memory Crawler
+        setIsInsideCitadel(true);
+        setLogs((prev) => [`🏰 Gates breached! Entering the Witch King's Fortress...`, ...prev]);
         return;
       }
 
@@ -590,7 +634,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleRetreatFromCombat = () => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
-    setIsWitchKingBattle(false);
     setPlayerPosition(previousPosition);
     setLogs((prev) => [t.logRetreated, ...prev]);
   };
@@ -658,12 +701,90 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setPendingRelicReward(null);
     }
 
-    // 👑 Check for Witch King Defeat Victory Condition!
-    if (isWitchKingBattle) {
-      setIsWitchKingBattle(false);
-      setGameWinnerNotice({ winnerName: playerName, isMe: true });
-      setLogs((prev) => [t.logWitchKingDefeated, victoryLog, ...prev]);
+    if (isPoisoned) {
+      setRemainingMF((prev) => Math.max(0, prev - 1));
+      setLogs((prev) => [t.poisonedMsg, victoryLog, ...prev]);
+    } else {
+      setLogs((prev) => [victoryLog, ...prev]);
+    }
+  };
 
+  // 🧩 16-Room Memory Crawler Click Handler
+  const handleRoomClick = (roomIndex: number) => {
+    const room = fortressRooms[roomIndex];
+    if (room.isCleared) return;
+
+    // Mark room revealed in persistent state
+    setFortressRooms((prev) =>
+      prev.map((r, i) => (i === roomIndex ? { ...r, isRevealed: true } : r))
+    );
+
+    // 🌀 Teleporter Trap
+    if (room.type === 'TELEPORT_TRAP') {
+      setIsInsideCitadel(false);
+      setIsTeleportTrapModal(true);
+      setLogs((prev) => [`🌀 Triggered Teleporter Trap in Room #${roomIndex + 1}! Ejected to overworld!`, ...prev]);
+      return;
+    }
+
+    // ⚔️ Castle Guard Encounter
+    if (room.type === 'MONSTER') {
+      const monsterProf = MONSTER_DATABASE.find((m) => m.id === room.monsterId) || MONSTER_DATABASE[0];
+      const guardEncounter: EncounterGroup = {
+        monster: monsterProf,
+        quantity: Math.max(1, Math.floor(troops.warriors / 10)),
+        totalHp: Math.round(monsterProf.strength * 12),
+        maxHp: Math.round(monsterProf.strength * 12),
+        groupStrength: monsterProf.strength * 2,
+      };
+
+      setActiveEncounter(guardEncounter);
+      setAllowSurpriseRetreat(false);
+      
+      // Mark room cleared upon victory callback!
+      setFortressRooms((prev) =>
+        prev.map((r, i) => (i === roomIndex ? { ...r, isCleared: true } : r))
+      );
+      return;
+    }
+
+    // 👑 The Witch King Room Uncovered -> Start 1v1 RPS Duel!
+    if (room.type === 'WITCH_KING') {
+      setIsInsideCitadel(false);
+      setActiveDuel({ round: 1, playerWins: 0, bossWins: 0, lastResult: null });
+      setLogs((prev) => [t.witchKingTitle, ...prev]);
+    }
+  };
+
+  // ⚔️ 1v1 Rock-Paper-Scissors Duel Stance Resolver
+  const handleExecuteDuelStance = (playerStance: 'BLADE' | 'SHIELD' | 'SPELL') => {
+    if (!activeDuel) return;
+
+    const stances: Array<'BLADE' | 'SHIELD' | 'SPELL'> = ['BLADE', 'SHIELD', 'SPELL'];
+    const bossStance = stances[Math.floor(Math.random() * stances.length)];
+
+    let pWins = activeDuel.playerWins;
+    let bWins = activeDuel.bossWins;
+    let resultMsg = '';
+
+    if (playerStance === bossStance) {
+      resultMsg = `🤝 ${t.roundDraw} (${playerStance} vs ${bossStance})`;
+    } else if (
+      (playerStance === 'BLADE' && bossStance === 'SPELL') ||
+      (playerStance === 'SPELL' && bossStance === 'SHIELD') ||
+      (playerStance === 'SHIELD' && bossStance === 'BLADE')
+    ) {
+      pWins += 1;
+      resultMsg = `🎉 ${t.roundWin} (${playerStance} beats ${bossStance})!`;
+    } else {
+      bWins += 1;
+      resultMsg = `💀 ${t.roundLoss} (${bossStance} beats ${playerStance})!`;
+    }
+
+    // Check Victory (First to 2 wins)
+    if (pWins >= 2) {
+      setActiveDuel(null);
+      setGameWinnerNotice({ winnerName: playerName, isMe: true });
       if (channelRef.current) {
         channelRef.current.send({
           type: 'broadcast',
@@ -674,14 +795,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       return;
     }
 
-    if (isPoisoned) {
-      setRemainingMF((prev) => Math.max(0, prev - 1));
-      setLogs((prev) => [t.poisonedMsg, victoryLog, ...prev]);
-    } else {
-      setLogs((prev) => [victoryLog, ...prev]);
+    if (bWins >= 2) {
+      setActiveDuel(null);
+      handleCombatDefeat(); // Defeat routes player to sanctuary
+      return;
     }
-  };
 
+    setActiveDuel({
+      round: activeDuel.round + 1,
+      playerWins: pWins,
+      bossWins: bWins,
+      lastResult: resultMsg,
+    });
+  };
+  
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
@@ -1031,6 +1158,106 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             >
               ✅ UNDERSTOOD
             </button>
+          </div>
+        </div>
+      )}
+
+{/* 🏰 16-Room Memory Crawler Modal */}
+      {isInsideCitadel && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '20px', maxWidth: '520px', width: '95%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px' }}>{t.citadelTitle}</h3>
+            <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>{t.citadelSubtitle}</p>
+
+            {/* 4x4 Grid of 16 Covered Chambers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '20px' }}>
+              {fortressRooms.map((room, idx) => (
+                <button
+                  key={room.id}
+                  onClick={() => handleRoomClick(idx)}
+                  disabled={room.isCleared}
+                  style={{
+                    height: '75px',
+                    backgroundColor: room.isCleared ? '#052005' : room.isRevealed ? '#200505' : '#222',
+                    border: `2px solid ${room.isCleared ? '#00ff00' : room.isRevealed ? '#ff3333' : '#ab47bc'}`,
+                    borderRadius: '6px',
+                    color: '#fff',
+                    cursor: room.isCleared ? 'default' : 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: '20px' }}>
+                    {room.isCleared ? '✅' : room.isRevealed ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '⚔️') : '❓'}
+                  </span>
+                  <span style={{ fontSize: '10px', marginTop: '4px', color: room.isCleared ? '#00ff00' : '#aaa' }}>
+                    {room.isCleared ? t.roomCleared : `#${idx + 1}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setIsInsideCitadel(false)}
+              style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #666', padding: '8px 20px', cursor: 'pointer', fontFamily: 'monospace' }}
+            >
+              🚪 Exit Citadel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🌀 Teleporter Trap Ejection Modal */}
+      {isTeleportTrapModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.teleportTrapTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.teleportTrapMsg}</p>
+
+            <button
+              onClick={() => setIsTeleportTrapModal(false)}
+              style={{ backgroundColor: '#ab47bc', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 👑 1v1 Final Boss Rock-Paper-Scissors Duel Modal */}
+      {activeDuel && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
+          <div style={{ backgroundColor: '#111', border: '3px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>{t.duelTitle}</h2>
+            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>{t.duelSubtitle}</p>
+
+            {/* Boss Avatar Display */}
+            <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000' }}>
+              <img src="/witch_king.webp" alt="The Witch King" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }} />
+            </div>
+
+            {/* Scoreboard */}
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '10px', marginBottom: '16px', fontSize: '13px', color: '#fff' }}>
+              <div>{t.duelRound} #{activeDuel.round} | You: <strong style={{ color: '#00ff00' }}>{activeDuel.playerWins}</strong> - Witch King: <strong style={{ color: '#ff3333' }}>{activeDuel.bossWins}</strong></div>
+              {activeDuel.lastResult && <div style={{ marginTop: '6px', color: '#ff0' }}>{activeDuel.lastResult}</div>}
+            </div>
+
+            {/* RPS Stance Buttons */}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              <button onClick={() => handleExecuteDuelStance('BLADE')} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #00ff00', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                {t.stanceBlade}
+              </button>
+              <button onClick={() => handleExecuteDuelStance('SHIELD')} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #00ffff', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                {t.stanceShield}
+              </button>
+              <button onClick={() => handleExecuteDuelStance('SPELL')} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #ab47bc', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                {t.stanceSpell}
+              </button>
+            </div>
           </div>
         </div>
       )}
