@@ -37,6 +37,37 @@ const generateRoomCode = () => {
   return code;
 };
 
+// 🎯 Helper: Get Starting Difficulty Class Packages (Levels 1-4)
+const getStartingDifficultyPackage = (diffLevel: number) => {
+  switch (diffLevel) {
+    case 1: // Hero of Prophecy (Easy)
+      return {
+        troops: { warriors: 50, scouts: 3, clerics: 2, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2 },
+        inventory: { gold: 500, rations: 30, hasRaft: false, activeRelics: ['sword' as QuestRelic], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 },
+        maxWarriors: 50,
+      };
+    case 3: // Daring Explorer (Hard)
+      return {
+        troops: { warriors: 15, scouts: 1, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 1 },
+        inventory: { gold: 150, rations: 10, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 },
+        maxWarriors: 15,
+      };
+    case 4: // Solo Survivor (Legendary)
+      return {
+        troops: { warriors: 5, scouts: 1, clerics: 0, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 1 },
+        inventory: { gold: 50, rations: 5, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeking: 0, scrollsSeeing: 0 },
+        maxWarriors: 5,
+      };
+    case 2: // Seasoned Commander (Normal)
+    default:
+      return {
+        troops: { warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2 },
+        inventory: { gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 },
+        maxWarriors: 30,
+      };
+  }
+};
+
 interface FortressWorkspaceProps {
   locale?: LanguageType;
 }
@@ -81,6 +112,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isTurnLocked, setIsTurnLocked] = useState<boolean>(() => {
     return localStorage.getItem('fortress_turn_locked') === 'true';
   });
+
+  // 🗡️ Pending Raid Debuff Flag (-1 MF next turn)
+  const [hasPendingRaidDebuff, setHasPendingRaidDebuff] = useState<boolean>(() => {
+    return localStorage.getItem('fortress_raid_debuff') === 'true';
+  });
+
+  // 🛶 Raft Rule Check: If Mules drop below 4, force drop the Raft!
+  const verifyRaftMuleLock = (currentTroops: TroopRoster, currentInventory: PlayerInventory) => {
+    if (currentInventory.hasRaft && currentTroops.mules < 4) {
+      setInventory((prev) => ({ ...prev, hasRaft: false }));
+      setLogs((prev) => [`⚠️ Lost Raft! Your Mule roster fell below the required 4 Mules!`, ...prev]);
+    }
+  };
 
   const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
   const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
@@ -199,7 +243,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     localStorage.setItem('fortress_is_host', String(isHost));
     localStorage.setItem('fortress_lobby_step', lobbyStep);
     localStorage.setItem('fortress_turn_locked', String(isTurnLocked));
-  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked]);
+    localStorage.setItem('fortress_raid_debuff', String(hasPendingRaidDebuff));
+  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked, hasPendingRaidDebuff]);
 
   // ☁️ Database Helper: Upsert current player data into Supabase
   const savePlayerToCloud = async (pos?: Position, readyState?: boolean, lockedState?: boolean) => {
@@ -357,9 +402,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
           }
 
-          setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - stolenMules) }));
+          const nextMules = Math.max(0, troops.mules - stolenMules);
+          const updatedTroops = { ...troops, mules: nextMules };
+          setTroops(updatedTroops);
+          
+          // 🛶 Verify Raft Mule Lock
+          verifyRaftMuleLock(updatedTroops, inventory);
+
+          // 🗡️ Apply -1 MF Debuff for next turn!
+          setHasPendingRaidDebuff(true);
+
           setRaidedNotice({ attackerName: data.attackerName, stolenGold, stolenMules });
-          setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP, -${stolenMules} Mule${stolenRelic ? `, and ${stolenRelic}` : ''}!`, ...prev]);
+          setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP, -${stolenMules} Mule, and suffers -1 MF next turn!`, ...prev]);
 
           channel.send({
             type: 'broadcast',
@@ -427,6 +481,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
 
+    // Load Starting Difficulty Roster
+    const pkg = getStartingDifficultyPackage(difficulty);
+    setTroops(pkg.troops);
+    setInventory(pkg.inventory);
+    setMaxWarriors(pkg.maxWarriors);
+
     await supabase.from('game_sessions').upsert({
       room_code: code,
       seed: newSeed,
@@ -454,9 +514,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     localStorage.removeItem('fortress_is_host');
     localStorage.removeItem('fortress_lobby_step');
     localStorage.removeItem('fortress_turn_locked');
+    localStorage.removeItem('fortress_raid_debuff');
     setActiveRoomCode('');
     setIsHost(false);
     setIsTurnLocked(false);
+    setHasPendingRaidDebuff(false);
     setLobbyStep('SELECT_MODE');
   };
 
@@ -1158,8 +1220,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
 
     setInventory((prev) => ({ ...prev, rations: newRations }));
-    setTroops((prev) => ({ ...prev, warriors: newWarriors }));
-    setRemainingMF(BASE_TURN_MF);
+    const updatedTroops = { ...troops, warriors: newWarriors };
+    setTroops(updatedTroops);
+
+    // 🛶 Raft Mule Requirement Check
+    verifyRaftMuleLock(updatedTroops, inventory);
+
+    // 🗡️ Check & Apply Pending Raid Debuff (-1 MF)
+    let nextMF = BASE_TURN_MF;
+    if (hasPendingRaidDebuff) {
+      nextMF = Math.max(1, BASE_TURN_MF - 1);
+      setHasPendingRaidDebuff(false);
+      logMsg += ` 🚨 Raid aftermath debuff! Movement reduced to ${nextMF} MF this round.`;
+    }
+
+    setRemainingMF(nextMF);
     setIsTurnLocked(false);
     setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg, ...prev]);
 
@@ -1420,7 +1495,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   max="4"
                   value={difficulty}
                   disabled={!isHost}
-                  onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const newDiff = parseInt(e.target.value) || 1;
+                    setDifficulty(newDiff);
+                    const pkg = getStartingDifficultyPackage(newDiff);
+                    setTroops(pkg.troops);
+                    setInventory(pkg.inventory);
+                    setMaxWarriors(pkg.maxWarriors);
+                  }}
                   style={{ backgroundColor: '#000', color: isHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
                 />
               </label>
