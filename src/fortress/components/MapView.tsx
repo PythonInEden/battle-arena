@@ -150,7 +150,7 @@ export const MapView: React.FC<MapViewProps> = ({
               { gold: 0, rations: 0, hasRaft, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 }
             );
 
-            const isTeleportValid = isTeleportTargeting && (tile.terrain !== 'LAKE' || hasRaft);
+            const isTeleportValid = isTeleportTargeting;
             const isAdjacent = moveCheck.isValid;
             const canAfford = LogisticalEngine.canExecuteStep(remainingMF, moveCheck.cost);
             const isSelectable = isTeleportValid || (isAdjacent && canAfford);

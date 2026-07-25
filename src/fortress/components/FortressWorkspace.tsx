@@ -266,6 +266,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setIsTeleportTargeting((prev) => !prev);
   };
 
+  // Helper to check for nearby opponent players using Scout sight radius
+  const checkForNearbyOpponents = (myPos: Position) => {
+    Object.values(otherPlayers).forEach((opp) => {
+      const dx = Math.abs(myPos.x - opp.pos.x);
+      const dy = Math.abs(myPos.y - opp.pos.y);
+      if (dx <= sightRadius && dy <= sightRadius) {
+        setSpottedOpponentNotice({ name: opp.name, pos: opp.pos });
+      }
+    });
+  };
+
   // 🗡️ Raider Stealth Raid Handler (Supports Live Opponent Raiding)
   const handleExecuteCampRaid = () => {
     if (troops.raiders <= 0) {
@@ -384,6 +395,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       broadcastMyState({ x: targetTile.x, y: targetTile.y });
 
       revealSightArea({ x: targetTile.x, y: targetTile.y }, sightRadius);
+
+      // Check if stepping closer to any existing opponent triggers Scout detection
+      checkForNearbyOpponents({ x: targetTile.x, y: targetTile.y });
 
       // Check auto-pickup ground gold on tile arrival
       checkGroundLootPickup({ x: targetTile.x, y: targetTile.y }, inventory.gold, maxGoldCapacity);
@@ -630,7 +644,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             disabled={troops.raiders <= 0}
             style={{ backgroundColor: '#111', color: troops.raiders > 0 ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 ? 'pointer' : 'default', fontFamily: 'monospace' }}
           >
-            {t.raidCampBtn} ({troops.raiders})
+            {Object.values(otherPlayers).length > 0 
+              ? `🗡️ Raid [${Object.values(otherPlayers)[0].name}]'s Camp` 
+              : t.raidCampBtn} ({troops.raiders})
           </button>
         </div>
 
