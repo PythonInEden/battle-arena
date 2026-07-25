@@ -62,7 +62,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   });
 
   const [lobbyStep, setLobbyStep] = useState<'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'>('SELECT_MODE');
-  const [manualHostOverride, setManualHostOverride] = useState<boolean>(false);
+  
+  // 👑 Strict Explicit Host Role
+  const [isHost, setIsHost] = useState<boolean>(false);
+
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
   const [activeRoomCode, setActiveRoomCode] = useState<string>('');
 
@@ -170,8 +173,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   const sortedRoster = [playerId, ...Object.keys(otherPlayers)].sort();
-  const effectiveIsHost = manualHostOverride || (sortedRoster.length > 0 && sortedRoster[0] === playerId);
-
   const totalPlayersCount = Math.max(1, sortedRoster.length);
   const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
 
@@ -207,8 +208,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             },
           }));
 
-          if (data.hostSeed && !effectiveIsHost) setRoomSeed(data.hostSeed);
-          if (data.hostDifficulty && !effectiveIsHost) setDifficulty(data.hostDifficulty);
+          // Sync seed & difficulty from Host if I am a Guest
+          if (data.hostSeed && !isHost) setRoomSeed(data.hostSeed);
+          if (data.hostDifficulty && !isHost) setDifficulty(data.hostDifficulty);
         }
       })
       .on('broadcast', { event: 'start_game_trigger' }, (payload) => {
@@ -321,8 +323,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               mules: troops.mules,
               isReady,
               isTurnLocked,
-              hostSeed: effectiveIsHost ? roomSeed : undefined,
-              hostDifficulty: effectiveIsHost ? difficulty : undefined,
+              hostSeed: isHost ? roomSeed : undefined,
+              hostDifficulty: isHost ? difficulty : undefined,
             },
           });
         }
@@ -333,12 +335,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked, effectiveIsHost]);
+  }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked, isHost]);
 
   const handleCreateRoom = () => {
     const code = generateRoomCode();
     const newSeed = Math.floor(10000 + Math.random() * 90000);
-    setManualHostOverride(true);
+    setIsHost(true);
     setRoomSeed(newSeed);
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
@@ -347,7 +349,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleJoinRoom = () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
     if (trimmed.length < 4) return alert('Please enter a valid 4-character Room Code!');
-    setManualHostOverride(false);
+    setIsHost(false);
     setActiveRoomCode(trimmed);
     setLobbyStep('IN_LOBBY');
   };
@@ -465,15 +467,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           mules: troops.mules,
           isReady: readyState ?? isReady,
           isTurnLocked: lockedState ?? isTurnLocked,
-          hostSeed: effectiveIsHost ? roomSeed : undefined,
-          hostDifficulty: effectiveIsHost ? difficulty : undefined,
+          hostSeed: isHost ? roomSeed : undefined,
+          hostDifficulty: isHost ? difficulty : undefined,
         },
       });
     }
   };
 
   const handleLaunchGame = () => {
-    if (!effectiveIsHost) return;
+    if (!isHost) return;
     const fullRoster = [playerId, ...Object.keys(otherPlayers)].sort();
     setSyncedPlayerList(fullRoster);
     setLobbyStep('GAME_STARTED');
@@ -1030,85 +1032,103 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
 
+  // Full Viewport Screen Container Style (Fixes white borders on Vercel)
+  const fullScreenContainerStyle: React.CSSProperties = {
+    minHeight: '100vh',
+    width: '100vw',
+    boxSizing: 'border-box',
+    backgroundColor: '#000000',
+    color: '#00ff00',
+    fontFamily: 'monospace',
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    margin: 0,
+    overflowX: 'hidden',
+  };
+
   // --------------------------------------------------------------------------
   // 🏰 STEP 1: ROOM SELECTION & CREATION SCREEN
   // --------------------------------------------------------------------------
   if (lobbyStep === 'SELECT_MODE') {
     return (
-      <div style={{ padding: '24px', width: '100%', maxWidth: '600px', margin: '20px auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
-        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
+      <div style={fullScreenContainerStyle}>
+        <div style={{ width: '100%', maxWidth: '550px', margin: 'auto', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', padding: '24px', textAlign: 'center', boxSizing: 'border-box' }}>
+          <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
+          <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
 
-        {/* Commander Name & Icon Selection Input */}
-        <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
-          <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '12px' }}>
-            {t.enterNamePrompt}
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '10px', padding: '6px 10px', width: '180px', fontFamily: 'monospace', fontWeight: 'bold' }}
-            />
-          </label>
-
-          {/* Hero Icon Selection Picker */}
-          <div style={{ color: '#00ffff', fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>
-            {t.chooseIconLabel} <span style={{ fontSize: '18px' }}>{playerIcon}</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {AVAILABLE_PLAYER_ICONS.map((icon) => (
-              <button
-                key={icon}
-                onClick={() => {
-                  setPlayerIcon(icon);
-                  sessionStorage.setItem('fortress_player_icon', icon);
-                }}
-                style={{
-                  backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
-                  color: playerIcon === icon ? '#000' : '#fff',
-                  border: `2px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
-                  borderRadius: '6px',
-                  padding: '6px 10px',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                }}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Mode Buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
-          <button
-            onClick={handleCreateRoom}
-            style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '14px 28px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '8px', width: '100%', maxWidth: '350px' }}
-          >
-            {t.createRoomBtn}
-          </button>
-
-          <div style={{ color: '#666', fontSize: '12px' }}>— OR JOIN FRIENDS —</div>
-
-          <div style={{ backgroundColor: '#111', border: '1px solid #00ffff', padding: '16px', borderRadius: '8px', width: '100%', maxWidth: '350px', boxSizing: 'border-box' }}>
-            <label style={{ display: 'block', color: '#00ffff', fontSize: '12px', marginBottom: '8px', fontWeight: 'bold' }}>
-              {t.enterRoomCodePrompt}
+          {/* Commander Name & Icon Selection Input */}
+          <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
+            <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '12px' }}>
+              {t.enterNamePrompt}
+              <input
+                type="text"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '10px', padding: '6px 10px', width: '160px', fontFamily: 'monospace', fontWeight: 'bold' }}
+              />
             </label>
-            <input
-              type="text"
-              maxLength={4}
-              value={roomCodeInput}
-              onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-              placeholder="e.g. WKYG"
-              style={{ backgroundColor: '#000', color: '#00ffff', border: '1px solid #00ffff', padding: '8px', textAlign: 'center', fontSize: '20px', fontFamily: 'monospace', fontWeight: 'bold', width: '120px', letterSpacing: '4px', marginBottom: '12px' }}
-            />
+
+            {/* Hero Icon Selection Picker */}
+            <div style={{ color: '#00ffff', fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>
+              {t.chooseIconLabel} <span style={{ fontSize: '18px' }}>{playerIcon}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {AVAILABLE_PLAYER_ICONS.map((icon) => (
+                <button
+                  key={icon}
+                  onClick={() => {
+                    setPlayerIcon(icon);
+                    sessionStorage.setItem('fortress_player_icon', icon);
+                  }}
+                  style={{
+                    backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
+                    color: playerIcon === icon ? '#000' : '#fff',
+                    border: `2px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
+                    borderRadius: '6px',
+                    padding: '6px 10px',
+                    fontSize: '20px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mode Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
             <button
-              onClick={handleJoinRoom}
-              disabled={roomCodeInput.trim().length < 4}
-              style={{ backgroundColor: roomCodeInput.trim().length >= 4 ? '#00ffff' : '#222', color: roomCodeInput.trim().length >= 4 ? '#000' : '#666', border: 'none', padding: '10px 24px', fontWeight: 'bold', fontSize: '13px', cursor: roomCodeInput.trim().length >= 4 ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px', width: '100%' }}
+              onClick={handleCreateRoom}
+              style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '14px 28px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '8px', width: '100%', maxWidth: '350px' }}
             >
-              {t.joinBtnText}
+              {t.createRoomBtn}
             </button>
+
+            <div style={{ color: '#666', fontSize: '12px' }}>— OR JOIN FRIENDS —</div>
+
+            <div style={{ backgroundColor: '#111', border: '1px solid #00ffff', padding: '16px', borderRadius: '8px', width: '100%', maxWidth: '350px', boxSizing: 'border-box' }}>
+              <label style={{ display: 'block', color: '#00ffff', fontSize: '12px', marginBottom: '8px', fontWeight: 'bold' }}>
+                {t.enterRoomCodePrompt}
+              </label>
+              <input
+                type="text"
+                maxLength={4}
+                value={roomCodeInput}
+                onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                placeholder="e.g. WKYG"
+                style={{ backgroundColor: '#000', color: '#00ffff', border: '1px solid #00ffff', padding: '8px', textAlign: 'center', fontSize: '20px', fontFamily: 'monospace', fontWeight: 'bold', width: '120px', letterSpacing: '4px', marginBottom: '12px' }}
+              />
+              <button
+                onClick={handleJoinRoom}
+                disabled={roomCodeInput.trim().length < 4}
+                style={{ backgroundColor: roomCodeInput.trim().length >= 4 ? '#00ffff' : '#222', color: roomCodeInput.trim().length >= 4 ? '#000' : '#666', border: 'none', padding: '10px 24px', fontWeight: 'bold', fontSize: '13px', cursor: roomCodeInput.trim().length >= 4 ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px', width: '100%' }}
+              >
+                {t.joinBtnText}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1120,134 +1140,136 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // --------------------------------------------------------------------------
   if (lobbyStep === 'IN_LOBBY') {
     return (
-      <div style={{ padding: '24px', width: '100%', maxWidth: '700px', margin: '20px auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <button onClick={() => setLobbyStep('SELECT_MODE')} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
-            {t.backToMenuBtn}
-          </button>
-          <span style={{ backgroundColor: effectiveIsHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
-            {effectiveIsHost ? t.hostBadge : t.guestBadge}
-          </span>
-        </div>
-
-        <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>
-          {t.roomCodeLabel} <strong style={{ color: '#ff0', letterSpacing: '4px' }}>{activeRoomCode}</strong>
-        </h1>
-        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>{t.lobbySubtitle}</p>
-
-        {/* Host Room Settings */}
-        <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
-          <div style={{ color: '#fff', fontSize: '13px', marginBottom: '8px' }}>
-            👤 {t.enterNamePrompt} <strong style={{ color: '#ff0' }}>{playerName}</strong> {playerIcon}
+      <div style={fullScreenContainerStyle}>
+        <div style={{ width: '100%', maxWidth: '650px', margin: 'auto', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', padding: '24px', textAlign: 'center', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <button onClick={() => setLobbyStep('SELECT_MODE')} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
+              {t.backToMenuBtn}
+            </button>
+            <span style={{ backgroundColor: isHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
+              {isHost ? t.hostBadge : t.guestBadge}
+            </span>
           </div>
 
-          {/* Hero Icon Change Grid in Lobby */}
-          <div style={{ margin: '10px 0' }}>
-            <span style={{ color: '#00ffff', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
-              {t.chooseIconLabel}
-            </span>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {AVAILABLE_PLAYER_ICONS.map((icon) => (
-                <button
-                  key={icon}
-                  onClick={() => {
-                    setPlayerIcon(icon);
-                    sessionStorage.setItem('fortress_player_icon', icon);
-                    broadcastMyState(playerPosition, isReady, isTurnLocked);
-                  }}
-                  style={{
-                    backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
-                    color: playerIcon === icon ? '#000' : '#fff',
-                    border: `1px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
-                    borderRadius: '4px',
-                    padding: '4px 8px',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {icon}
-                </button>
-              ))}
+          <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>
+            {t.roomCodeLabel} <strong style={{ color: '#ff0', letterSpacing: '4px' }}>{activeRoomCode}</strong>
+          </h1>
+          <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>{t.lobbySubtitle}</p>
+
+          {/* Host Room Settings */}
+          <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
+            <div style={{ color: '#fff', fontSize: '13px', marginBottom: '8px' }}>
+              👤 {t.enterNamePrompt} <strong style={{ color: '#ff0' }}>{playerName}</strong> {playerIcon}
+            </div>
+
+            {/* Hero Icon Change Grid in Lobby */}
+            <div style={{ margin: '10px 0' }}>
+              <span style={{ color: '#00ffff', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+                {t.chooseIconLabel}
+              </span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {AVAILABLE_PLAYER_ICONS.map((icon) => (
+                  <button
+                    key={icon}
+                    onClick={() => {
+                      setPlayerIcon(icon);
+                      sessionStorage.setItem('fortress_player_icon', icon);
+                      broadcastMyState(playerPosition, isReady, isTurnLocked);
+                    }}
+                    style={{
+                      backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
+                      color: playerIcon === icon ? '#000' : '#fff',
+                      border: `1px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <label style={{ color: '#fff' }}>
+                {t.seedLabel}
+                <input
+                  type="number"
+                  value={roomSeed}
+                  disabled={!isHost}
+                  onChange={(e) => setRoomSeed(parseInt(e.target.value) || 10000)}
+                  style={{ backgroundColor: '#000', color: isHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '90px', fontFamily: 'monospace' }}
+                />
+              </label>
+              <label style={{ color: '#fff' }}>
+                {t.diffLabel}
+                <input
+                  type="number"
+                  min="1"
+                  max="4"
+                  value={difficulty}
+                  disabled={!isHost}
+                  onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
+                  style={{ backgroundColor: '#000', color: isHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
+                />
+              </label>
+              {!isHost && <span style={{ fontSize: '11px', color: '#888' }}>(Configured by Lobby Host)</span>}
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <label style={{ color: '#fff' }}>
-              {t.seedLabel}
-              <input
-                type="number"
-                value={roomSeed}
-                disabled={!effectiveIsHost}
-                onChange={(e) => setRoomSeed(parseInt(e.target.value) || 10000)}
-                style={{ backgroundColor: '#000', color: effectiveIsHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '90px', fontFamily: 'monospace' }}
-              />
-            </label>
-            <label style={{ color: '#fff' }}>
-              {t.diffLabel}
-              <input
-                type="number"
-                min="1"
-                max="4"
-                value={difficulty}
-                disabled={!effectiveIsHost}
-                onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
-                style={{ backgroundColor: '#000', color: effectiveIsHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
-              />
-            </label>
-            {!effectiveIsHost && <span style={{ fontSize: '11px', color: '#888' }}>(Configured by Lobby Host)</span>}
-          </div>
-        </div>
-
-        {/* Dynamic Map Info Card */}
-        <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: '#fff' }}>
-          <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Connected Commanders)</div>
-        </div>
-
-        {/* Connected Players Roster */}
-        <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#fff' }}>
-            <span>{effectiveIsHost ? '👑' : '⚔️'} <strong>{playerName}</strong> {playerIcon} (You) {effectiveIsHost && <span style={{ color: '#ff0', fontSize: '11px' }}>[HOST]</span>}</span>
-            <span style={{ color: effectiveIsHost ? '#00ff00' : (isReady ? '#00ff00' : '#ff3333'), fontWeight: 'bold' }}>
-              {effectiveIsHost ? '[ HOST ]' : (isReady ? `[ ${t.readyBtnText} ]` : `[ ${t.waitingForPlayers} ]`)}
-            </span>
+          {/* Dynamic Map Info Card */}
+          <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: '#fff' }}>
+            <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Connected Commanders)</div>
           </div>
 
-          {Object.values(otherPlayers).map((opp) => (
-            <div key={opp.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#aaa' }}>
-              <span>⚔️ {opp.name} {opp.icon || '🧙‍♀️'}</span>
-              <span style={{ color: opp.isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
-                {opp.isReady ? '[ READY ]' : '[ WAITING ]'}
+          {/* Connected Players Roster */}
+          <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#fff' }}>
+              <span>{isHost ? '👑' : '⚔️'} <strong>{playerName}</strong> {playerIcon} (You) {isHost && <span style={{ color: '#ff0', fontSize: '11px' }}>[HOST]</span>}</span>
+              <span style={{ color: isHost ? '#00ff00' : (isReady ? '#00ff00' : '#ff3333'), fontWeight: 'bold' }}>
+                {isHost ? '[ HOST ]' : (isReady ? `[ ${t.readyBtnText} ]` : `[ ${t.waitingForPlayers} ]`)}
               </span>
             </div>
-          ))}
-        </div>
 
-        {/* Action Controls */}
-        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {!effectiveIsHost && (
-            <button
-              onClick={toggleReadyState}
-              style={{ backgroundColor: isReady ? '#330000' : '#003300', color: isReady ? '#ff3333' : '#00ff00', border: `2px solid ${isReady ? '#ff3333' : '#00ff00'}`, padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
-            >
-              {isReady ? t.unreadyBtnText : t.readyBtnText}
-            </button>
-          )}
+            {Object.values(otherPlayers).map((opp) => (
+              <div key={opp.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#aaa' }}>
+                <span>⚔️ {opp.name} {opp.icon || '🧙‍♀️'}</span>
+                <span style={{ color: opp.isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
+                  {opp.isReady ? '[ READY ]' : '[ WAITING ]'}
+                </span>
+              </div>
+            ))}
+          </div>
 
-          {effectiveIsHost ? (
-            <button
-              onClick={handleLaunchGame}
-              disabled={!allGuestsReady}
-              style={{ backgroundColor: allGuestsReady ? '#00ff00' : '#222', color: allGuestsReady ? '#000' : '#666', border: 'none', padding: '14px 32px', fontWeight: 'bold', fontSize: '16px', cursor: allGuestsReady ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px' }}
-            >
-              {allGuestsReady ? t.startGameBtnText : '⏳ WAITING FOR ALL GUESTS READY...'}
-            </button>
-          ) : (
-            <div style={{ alignSelf: 'center', color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
-              {t.waitingForHost}
-            </div>
-          )}
+          {/* Action Controls */}
+          <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {!isHost && (
+              <button
+                onClick={toggleReadyState}
+                style={{ backgroundColor: isReady ? '#330000' : '#003300', color: isReady ? '#ff3333' : '#00ff00', border: `2px solid ${isReady ? '#ff3333' : '#00ff00'}`, padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
+              >
+                {isReady ? t.unreadyBtnText : t.readyBtnText}
+              </button>
+            )}
+
+            {isHost ? (
+              <button
+                onClick={handleLaunchGame}
+                disabled={!allGuestsReady}
+                style={{ backgroundColor: allGuestsReady ? '#00ff00' : '#222', color: allGuestsReady ? '#000' : '#666', border: 'none', padding: '14px 32px', fontWeight: 'bold', fontSize: '16px', cursor: allGuestsReady ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px' }}
+              >
+                {allGuestsReady ? t.startGameBtnText : '⏳ WAITING FOR ALL GUESTS READY...'}
+              </button>
+            ) : (
+              <div style={{ alignSelf: 'center', color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+                {t.waitingForHost}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1257,558 +1279,560 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // 🎮 STEP 3: MAIN OVERWORLD GAME BOARD UI
   // --------------------------------------------------------------------------
   return (
-    <div style={{ padding: '16px', width: '100%', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
-      <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 'clamp(16px, 3vw, 20px)' }}>{t.headerTitle}</h2>
-          <p style={{ margin: '4px 0 0 0', color: '#888', fontSize: '12px' }}>{t.headerSub}</p>
-        </div>
-        <button
-          onClick={() => setShowManualModal(true)}
-          style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-        >
-          {t.openManualBtn}
-        </button>
-      </header>
-
-      {/* Control Bar */}
-      <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName} {playerIcon} {effectiveIsHost && '👑'}</span>
-        <span style={{ color: '#888', fontSize: '12px' }}>Room Code: <strong style={{ color: '#00ffff' }}>{activeRoomCode}</strong></span>
-        <span style={{ color: '#888', fontSize: '12px' }}>{t.diffLabel} <strong>Level {difficulty}</strong></span>
-        
-        <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
-          {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => `${p.name} ${p.icon || ''}`).join(', ') || 'None'}</strong>
-        </div>
-
-        {isDebugUnlocked ? (
+    <div style={fullScreenContainerStyle}>
+      <div style={{ width: '100%', maxWidth: '1200px', boxSizing: 'border-box' }}>
+        <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'clamp(16px, 3vw, 20px)' }}>{t.headerTitle}</h2>
+            <p style={{ margin: '4px 0 0 0', color: '#888', fontSize: '12px' }}>{t.headerSub}</p>
+          </div>
           <button
-            onClick={() => setIsDebugUnlocked(false)}
-            style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold', borderRadius: '3px' }}
+            onClick={() => setShowManualModal(true)}
+            style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '8px 14px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
           >
-            🔒 LOCK TWEAKER
+            {t.openManualBtn}
           </button>
-        ) : (
-          <button
-            onClick={() => setShowDebugPasswordModal(true)}
-            style={{ backgroundColor: '#111', color: '#555', border: '1px solid #222', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}
-          >
-            🔒 Admin Dev Tools
-          </button>
-        )}
-      </div>
+        </header>
 
-      {/* Dev Sandbox Army Tweaker */}
-      {isDebugUnlocked && (
-        <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #ff0', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
-          <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
-          <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
-          <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
-          <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
-          <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
-          <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
-          <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
-          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'boots' as QuestRelic])) })); setRelicNotice('boots'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🥾 Boots</button>
-          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
-          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
-          <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
-        </div>
-      )}
-
-      {/* Responsive Auto-Fit Logistical HUD Bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px', fontSize: '13px' }}>
-        <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
-        <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / {BASE_TURN_MF}</strong></div>
-        <div>{t.rationsLabel} <strong>{inventory.rations}</strong></div>
-        <div>{t.goldLabel} <strong style={{ color: inventory.gold >= maxGoldCapacity ? '#ff0' : '#00ff00' }}>{inventory.gold} / {maxGoldCapacity} GP</strong></div>
-        <div>{t.warriorsLabel} <strong>{troops.warriors}</strong></div>
-        <div>{t.scoutsLabel} <strong>{troops.scouts} ({t.sightLabel} {sightRadius})</strong></div>
-        <div>{t.mulesLabel} <strong>{troops.mules}</strong></div>
-        <div>{t.wizardsLabel} <strong style={{ color: troops.wizards > 0 ? '#ab47bc' : '#888' }}>{troops.wizards > 0 ? t.yes : t.no}</strong></div>
-        <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
-        <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
-        <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
-        <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
-          🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
-            Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
-              .map(r => {
-                if (r === 'boots') return '🥾 Boots';
-                if (r === 'sword') return '🗡️ Sword';
-                if (r === 'armor') return '🛡️ Armor';
-                if (r === 'horn') return '🎺 Horn';
-                return null;
-              })
-              .filter(Boolean)
-              .join(' | ') || 'None'
-          ) : 'None'}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={handleCastSeeingScroll}
-            disabled={inventory.scrollsSeeing <= 0 || isTurnLocked}
-            style={{ backgroundColor: '#111', color: inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#555', border: `1px solid ${inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeing > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
-          >
-            {t.castSeeingBtn} ({inventory.scrollsSeeing})
-          </button>
-
-          <button
-            onClick={handleCastTeleportScroll}
-            disabled={inventory.scrollsTeleport <= 0 || isTurnLocked}
-            style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
-          >
-            {t.castTeleportBtn} ({inventory.scrollsTeleport})
-          </button>
-
-          <button
-            onClick={handleExecuteCampRaid}
-            disabled={troops.raiders <= 0 || isTurnLocked}
-            style={{ backgroundColor: '#111', color: troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
-          >
-            {getValidRaidTarget()
-              ? `🗡️ Raid [${getValidRaidTarget()?.name}]'s Camp` 
-              : t.raidCampBtn} ({troops.raiders})
-          </button>
-        </div>
-
-        <button
-          onClick={handleLockTurnClick}
-          disabled={isTurnLocked}
-          style={{
-            backgroundColor: isTurnLocked ? '#222' : '#00ff00',
-            color: isTurnLocked ? '#ff00ff' : '#000',
-            border: `2px solid ${isTurnLocked ? '#ff00ff' : '#00ff00'}`,
-            padding: '8px 20px',
-            fontWeight: 'bold',
-            cursor: isTurnLocked ? 'default' : 'pointer',
-            fontFamily: 'monospace'
-          }}
-        >
-          {isTurnLocked ? '🔒 TURN LOCKED' : t.endTurnBtn}
-        </button>
-      </div>
-
-      {isTurnLocked && (
-        <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '10px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold' }}>
-          {t.waitingTurnLockMsg}
-        </div>
-      )}
-
-      {isTeleportTargeting && (
-        <div style={{ backgroundColor: '#ab47bc', color: '#fff', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>{t.teleportTargetPrompt}</span>
-          <button onClick={() => setIsTeleportTargeting(false)} style={{ backgroundColor: '#000', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace' }}>
-            {t.teleportCancelBtn}
-          </button>
-        </div>
-      )}
-
-      {grid.length > 0 && (
-        <MapView
-          grid={grid}
-          playerPosition={playerPosition}
-          playerIcon={playerIcon}
-          otherPlayers={otherPlayers}
-          sightRadius={sightRadius}
-          remainingMF={remainingMF}
-          hasRaft={inventory.hasRaft}
-          isTeleportTargeting={isTeleportTargeting}
-          locale={locale}
-          onTileClick={handleTileClick}
-        />
-      )}
-
-      {/* Game Manual Modal */}
-      {showManualModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '10px', padding: '24px', maxWidth: '560px', width: '90%', color: '#fff', fontFamily: 'monospace', textAlign: 'left', maxHeight: '80vh', overflowY: 'auto' }}>
-            <h2 style={{ margin: '0 0 16px 0', color: '#00ffff', fontSize: '18px', textAlign: 'center', borderBottom: '1px solid #00ffff', paddingBottom: '8px' }}>
-              {t.manualTitle}
-            </h2>
-
-            <div style={{ marginBottom: '16px' }}>
-              <h4 style={{ color: '#ff0', margin: '0 0 4px 0' }}>{t.manualSecMovementTitle}</h4>
-              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecMovementText}</p>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <h4 style={{ color: '#ff3333', margin: '0 0 4px 0' }}>{t.manualSecRaidingTitle}</h4>
-              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRaidingText}</p>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <h4 style={{ color: '#ff00ff', margin: '0 0 4px 0' }}>{t.manualSecRelicsTitle}</h4>
-              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRelicsText}</p>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <h4 style={{ color: '#ab47bc', margin: '0 0 4px 0' }}>{t.manualSecCitadelTitle}</h4>
-              <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecCitadelText}</p>
-            </div>
-
-            <div style={{ textAlign: 'center' }}>
-              <button
-                onClick={() => setShowManualModal(false)}
-                style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-              >
-                ✅ BACK TO ADVENTURE
-              </button>
-            </div>
+        {/* Control Bar */}
+        <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName} {playerIcon} {isHost && '👑'}</span>
+          <span style={{ color: '#888', fontSize: '12px' }}>Room Code: <strong style={{ color: '#00ffff' }}>{activeRoomCode}</strong></span>
+          <span style={{ color: '#888', fontSize: '12px' }}>{t.diffLabel} <strong>Level {difficulty}</strong></span>
+          
+          <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
+            {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => `${p.name} ${p.icon || ''}`).join(', ') || 'None'}</strong>
           </div>
-        </div>
-      )}
 
-      {/* Admin Passcode Modal */}
-      {showDebugPasswordModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '380px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>🔑 DEV TOOLS PASSCODE</h3>
-            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>Enter admin passcode to unlock dev sandbox tools:</p>
-
-            <input
-              type="password"
-              value={debugPasswordInput}
-              onChange={(e) => setDebugPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleUnlockDebug()}
-              placeholder="Enter PIN..."
-              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', padding: '8px', width: '80%', fontFamily: 'monospace', textAlign: 'center', fontSize: '18px', marginBottom: '20px', letterSpacing: '4px' }}
-              autoFocus
-            />
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-              <button
-                onClick={handleUnlockDebug}
-                style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-              >
-                🔓 UNLOCK
-              </button>
-              <button
-                onClick={() => { setShowDebugPasswordModal(false); setDebugPasswordInput(''); }}
-                style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
-              >
-                ❌ CANCEL
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isShopOpen && (
-        <MarketplaceModal
-          availableItems={shopCatalog}
-          inventory={inventory}
-          troops={troops}
-          locale={locale}
-          onPurchaseComplete={handlePurchaseComplete}
-          onEjected={handleEjected}
-          onClose={() => setIsShopOpen(false)}
-        />
-      )}
-
-      {activeEncounter && (
-        <CombatModal
-          encounter={activeEncounter}
-          troops={troops}
-          inventory={inventory}
-          locale={locale}
-          allowSurpriseRetreat={allowSurpriseRetreat}
-          onRetreat={handleRetreatFromCombat}
-          onVictory={handleCombatVictory}
-          onDefeat={handleCombatDefeat}
-        />
-      )}
-
-      {droppedGoldNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.droppedGoldModalTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.droppedGoldModalMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff0', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>💰 {t.droppedAmountLabel} <strong style={{ color: '#ff0' }}>+{droppedGoldNotice.amount} GP</strong></div>
-              <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{droppedGoldNotice.pos.x}, {droppedGoldNotice.pos.y}]</strong></div>
-            </div>
-            <button onClick={() => setDroppedGoldNotice(null)} style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {collectedGoldNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #00ff00', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#00ff00', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.goldCollectedModalTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.goldCollectedModalMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #00ff00', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>💰 {t.goldCollectedAmountLabel} <strong style={{ color: '#00ff00' }}>+{collectedGoldNotice.amount} GP</strong></div>
-              <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{collectedGoldNotice.pos.x}, {collectedGoldNotice.pos.y}]</strong></div>
-            </div>
-            <button onClick={() => setCollectedGoldNotice(null)} style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ EXCELLENT
-            </button>
-          </div>
-        </div>
-      )}
-
-      {drownNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #0288d1', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#0288d1', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.drownModalTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.drownModalMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #0288d1', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>📍 Rescued Coordinates: <strong style={{ color: '#0288d1' }}>[{drownNotice.pos.x}, {drownNotice.pos.y}]</strong></div>
-            </div>
-            <button onClick={() => setDrownNotice(null)} style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {raidedNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.raidModalTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.raidModalMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>🗡️ {t.raidedByLabel} <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
-              <div style={{ marginTop: '4px' }}>💰 {t.goldStolenLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
-              <div style={{ marginTop: '4px' }}>🫏 {t.mulesLootedLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
-            </div>
-            <button onClick={() => setRaidedNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isInsideCitadel && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '20px', maxWidth: '520px', width: '95%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '18px' }}>{t.citadelTitle}</h3>
-            <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>{t.citadelSubtitle}</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '20px' }}>
-              {fortressRooms.map((room, idx) => (
-                <button
-                  key={room.id}
-                  onClick={() => handleRoomClick(idx)}
-                  disabled={room.isCleared}
-                  style={{
-                    height: '75px',
-                    backgroundColor: room.isCleared
-                      ? (room.type === 'TELEPORT_TRAP' ? '#200520' : '#052005')
-                      : room.isRevealed ? '#200505' : '#222',
-                    border: `2px solid ${
-                      room.isCleared
-                        ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00')
-                        : room.isRevealed ? '#ff3333' : '#ab47bc'
-                    }`,
-                    borderRadius: '6px',
-                    color: '#fff',
-                    cursor: room.isCleared ? 'default' : 'pointer',
-                    fontFamily: 'monospace',
-                    fontSize: '12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <span style={{ fontSize: '20px' }}>
-                    {room.isCleared
-                      ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '💀')
-                      : room.isRevealed
-                        ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '⚔️')
-                        : '❓'}
-                  </span>
-                  <span style={{ fontSize: '10px', marginTop: '4px', color: room.isCleared ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00') : '#aaa' }}>
-                    {room.isCleared
-                      ? (room.type === 'TELEPORT_TRAP' ? t.roomTrap : t.roomSlain)
-                      : `#${idx + 1}`}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setIsInsideCitadel(false)} style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #666', padding: '8px 20px', cursor: 'pointer', fontFamily: 'monospace' }}>
-              🚪 Exit Citadel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isTeleportTrapModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.teleportTrapTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.teleportTrapMsg}</p>
-            <button onClick={() => setIsTeleportTrapModal(false)} style={{ backgroundColor: '#ab47bc', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
-          </div>
-        </div>
-      )}
-
-      {activeDuel && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
-          <div style={{ backgroundColor: '#111', border: '3px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>{t.duelTitle}</h2>
-            <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>{t.duelSubtitle}</p>
-            <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img
-                src={getMonsterAssetUrl('witch_king')}
-                alt="The Witch King"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  if (!img.dataset.fallbackStep) {
-                    img.dataset.fallbackStep = '1';
-                    img.src = `${supabaseUrl}/storage/v1/object/public/monsters/witch_king.jpeg`;
-                  } else if (img.dataset.fallbackStep === '1') {
-                    img.dataset.fallbackStep = '2';
-                    img.src = '/witch_king.webp';
-                  } else if (img.dataset.fallbackStep === '2') {
-                    img.dataset.fallbackStep = '3';
-                    img.src = '/monsters/witch_king.webp';
-                  } else {
-                    img.style.display = 'none';
-                  }
-                }}
-              />
-            </div>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '10px', marginBottom: '16px', fontSize: '13px', color: '#fff' }}>
-              <div>{t.duelRound} #{activeDuel.round} | You: <strong style={{ color: '#00ff00' }}>{activeDuel.playerWins}</strong> - Witch King: <strong style={{ color: '#ff3333' }}>{activeDuel.bossWins}</strong></div>
-              {activeDuel.lastResult && <div style={{ marginTop: '6px', color: '#ff0' }}>{activeDuel.lastResult}</div>}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button onClick={() => handleExecuteDuelStance('BLADE')} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #00ff00', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
-                {t.stanceBlade}
-              </button>
-              <button onClick={() => handleExecuteDuelStance('SHIELD')} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #00ffff', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
-                {t.stanceShield}
-              </button>
-              <button onClick={() => handleExecuteDuelStance('SPELL')} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #ab47bc', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
-                {t.stanceSpell}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isDuelDefeatNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.duelDefeatTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.duelDefeatMsg}</p>
+          {isDebugUnlocked ? (
             <button
-              onClick={() => {
-                setIsDuelDefeatNotice(false);
-                handleCombatDefeat();
-              }}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              onClick={() => setIsDebugUnlocked(false)}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold', borderRadius: '3px' }}
             >
-              ✅ RETREAT TO SANCTUARY
+              🔒 LOCK TWEAKER
             </button>
-          </div>
-        </div>
-      )}
-
-      {isCitadelSealedNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #b71c1c', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#b71c1c', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.citadelSealedTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.citadelSealedMsg}</p>
-            <button onClick={() => setIsCitadelSealedNotice(false)} style={{ backgroundColor: '#b71c1c', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
-          </div>
-        </div>
-      )}
-
-      {gameWinnerNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
-          <div style={{ backgroundColor: '#111', border: `3px solid ${gameWinnerNotice.isMe ? '#00ff00' : '#ff3333'}`, borderRadius: '8px', padding: '32px', maxWidth: '520px', width: '90%', color: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h2 style={{ margin: '0 0 16px 0', fontSize: '22px' }}>
-              {gameWinnerNotice.isMe ? t.gameVictoryTitle : t.opponentWonTitle}
-            </h2>
-            <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
-              {gameWinnerNotice.isMe ? t.victoryMsg : `${t.opponentWonMsg} (${gameWinnerNotice.winnerName})`}
-            </p>
-            <button 
-              onClick={() => {
-                window.location.reload();
-              }} 
-              style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+          ) : (
+            <button
+              onClick={() => setShowDebugPasswordModal(true)}
+              style={{ backgroundColor: '#111', color: '#555', border: '1px solid #222', padding: '4px 10px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}
             >
-              🔄 RESTART ADVENTURE
+              🔒 Admin Dev Tools
             </button>
+          )}
+        </div>
+
+        {/* Dev Sandbox Army Tweaker */}
+        {isDebugUnlocked && (
+          <div style={{ display: 'flex', gap: '8px', backgroundColor: '#080808', padding: '8px 12px', border: '1px solid #ff0', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', color: '#ff0', fontWeight: 'bold' }}>{t.sandboxTitle}:</span>
+            <button onClick={() => { setTroops(p => ({ ...p, warriors: p.warriors + 10 })); setMaxWarriors(p => p + 10); }} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWarriors}</button>
+            <button onClick={() => addGoldSafely(500)} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addGold}</button>
+            <button onClick={() => setInventory(p => ({ ...p, rations: p.rations + 20 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addRations}</button>
+            <button onClick={() => setTroops(p => ({ ...p, wizards: 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>{t.addWizard}</button>
+            <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
+            <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
+            <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
+            <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'boots' as QuestRelic])) })); setRelicNotice('boots'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🥾 Boots</button>
+            <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
+            <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
+            <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
+          </div>
+        )}
+
+        {/* Responsive Auto-Fit Logistical HUD Bar */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px', fontSize: '12px' }}>
+          <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
+          <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / {BASE_TURN_MF}</strong></div>
+          <div>{t.rationsLabel} <strong>{inventory.rations}</strong></div>
+          <div>{t.goldLabel} <strong style={{ color: inventory.gold >= maxGoldCapacity ? '#ff0' : '#00ff00' }}>{inventory.gold} / {maxGoldCapacity} GP</strong></div>
+          <div>{t.warriorsLabel} <strong>{troops.warriors}</strong></div>
+          <div>{t.scoutsLabel} <strong>{troops.scouts} ({t.sightLabel} {sightRadius})</strong></div>
+          <div>{t.mulesLabel} <strong>{troops.mules}</strong></div>
+          <div>{t.wizardsLabel} <strong style={{ color: troops.wizards > 0 ? '#ab47bc' : '#888' }}>{troops.wizards > 0 ? t.yes : t.no}</strong></div>
+          <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
+          <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
+          <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
+          <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
+            🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
+              Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
+                .map(r => {
+                  if (r === 'boots') return '🥾 Boots';
+                  if (r === 'sword') return '🗡️ Sword';
+                  if (r === 'armor') return '🛡️ Armor';
+                  if (r === 'horn') return '🎺 Horn';
+                  return null;
+                })
+                .filter(Boolean)
+                .join(' | ') || 'None'
+            ) : 'None'}
           </div>
         </div>
-      )}
 
-      {townRumorNotice && townRumorNotice.length > 0 && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#00ffff', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.townRumorTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.townRumorMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #00ffff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff', maxHeight: '180px', overflowY: 'auto' }}>
-              {townRumorNotice.map((rumor, idx) => (
-                <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
-                  {rumor}
-                </div>
-              ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleCastSeeingScroll}
+              disabled={inventory.scrollsSeeing <= 0 || isTurnLocked}
+              style={{ backgroundColor: '#111', color: inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#555', border: `1px solid ${inventory.scrollsSeeing > 0 && !isTurnLocked ? '#00ffff' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsSeeing > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            >
+              {t.castSeeingBtn} ({inventory.scrollsSeeing})
+            </button>
+
+            <button
+              onClick={handleCastTeleportScroll}
+              disabled={inventory.scrollsTeleport <= 0 || isTurnLocked}
+              style={{ backgroundColor: '#111', color: inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#555', border: `1px solid ${inventory.scrollsTeleport > 0 && !isTurnLocked ? '#ab47bc' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: inventory.scrollsTeleport > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            >
+              {t.castTeleportBtn} ({inventory.scrollsTeleport})
+            </button>
+
+            <button
+              onClick={handleExecuteCampRaid}
+              disabled={troops.raiders <= 0 || isTurnLocked}
+              style={{ backgroundColor: '#111', color: troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#555', border: `1px solid ${troops.raiders > 0 && !isTurnLocked ? '#ff3333' : '#333'}`, padding: '6px 12px', fontSize: '12px', cursor: troops.raiders > 0 && !isTurnLocked ? 'pointer' : 'default', fontFamily: 'monospace' }}
+            >
+              {getValidRaidTarget()
+                ? `🗡️ Raid [${getValidRaidTarget()?.name}]'s Camp` 
+                : t.raidCampBtn} ({troops.raiders})
+            </button>
+          </div>
+
+          <button
+            onClick={handleLockTurnClick}
+            disabled={isTurnLocked}
+            style={{
+              backgroundColor: isTurnLocked ? '#222' : '#00ff00',
+              color: isTurnLocked ? '#ff00ff' : '#000',
+              border: `2px solid ${isTurnLocked ? '#ff00ff' : '#00ff00'}`,
+              padding: '8px 20px',
+              fontWeight: 'bold',
+              cursor: isTurnLocked ? 'default' : 'pointer',
+              fontFamily: 'monospace'
+            }}
+          >
+            {isTurnLocked ? '🔒 TURN LOCKED' : t.endTurnBtn}
+          </button>
+        </div>
+
+        {isTurnLocked && (
+          <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '10px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold' }}>
+            {t.waitingTurnLockMsg}
+          </div>
+        )}
+
+        {isTeleportTargeting && (
+          <div style={{ backgroundColor: '#ab47bc', color: '#fff', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '12px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{t.teleportTargetPrompt}</span>
+            <button onClick={() => setIsTeleportTargeting(false)} style={{ backgroundColor: '#000', color: '#fff', border: 'none', padding: '4px 8px', cursor: 'pointer', fontFamily: 'monospace' }}>
+              {t.teleportCancelBtn}
+            </button>
+          </div>
+        )}
+
+        {grid.length > 0 && (
+          <MapView
+            grid={grid}
+            playerPosition={playerPosition}
+            playerIcon={playerIcon}
+            otherPlayers={otherPlayers}
+            sightRadius={sightRadius}
+            remainingMF={remainingMF}
+            hasRaft={inventory.hasRaft}
+            isTeleportTargeting={isTeleportTargeting}
+            locale={locale}
+            onTileClick={handleTileClick}
+          />
+        )}
+
+        {/* Game Manual Modal */}
+        {showManualModal && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 140 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '10px', padding: '24px', maxWidth: '560px', width: '90%', color: '#fff', fontFamily: 'monospace', textAlign: 'left', maxHeight: '80vh', overflowY: 'auto' }}>
+              <h2 style={{ margin: '0 0 16px 0', color: '#00ffff', fontSize: '18px', textAlign: 'center', borderBottom: '1px solid #00ffff', paddingBottom: '8px' }}>
+                {t.manualTitle}
+              </h2>
+
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ color: '#ff0', margin: '0 0 4px 0' }}>{t.manualSecMovementTitle}</h4>
+                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecMovementText}</p>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ color: '#ff3333', margin: '0 0 4px 0' }}>{t.manualSecRaidingTitle}</h4>
+                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRaidingText}</p>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ color: '#ff00ff', margin: '0 0 4px 0' }}>{t.manualSecRelicsTitle}</h4>
+                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecRelicsText}</p>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <h4 style={{ color: '#ab47bc', margin: '0 0 4px 0' }}>{t.manualSecCitadelTitle}</h4>
+                <p style={{ fontSize: '12px', color: '#ccc', margin: 0, lineHeight: '1.5' }}>{t.manualSecCitadelText}</p>
+              </div>
+
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowManualModal(false)}
+                  style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  ✅ BACK TO ADVENTURE
+                </button>
+              </div>
             </div>
-            <button onClick={() => setTownRumorNotice(null)} style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ NOTED WITH THANKS
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {relicNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.relicTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.relicAcquiredMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff' }}>
-              <div>✨ Item Unlocked:</div>
-              <strong style={{ color: '#ff00ff', display: 'block', marginTop: '6px' }}>
-                {relicNotice === 'boots' ? t.relicBootsName : relicNotice === 'sword' ? t.relicSwordName : relicNotice === 'armor' ? t.relicArmorName : t.relicHornName}
-              </strong>
+        {/* Admin Passcode Modal */}
+        {showDebugPasswordModal && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 130 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '380px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>🔑 DEV TOOLS PASSCODE</h3>
+              <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>Enter admin passcode to unlock dev sandbox tools:</p>
+
+              <input
+                type="password"
+                value={debugPasswordInput}
+                onChange={(e) => setDebugPasswordInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleUnlockDebug()}
+                placeholder="Enter PIN..."
+                style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', padding: '8px', width: '80%', fontFamily: 'monospace', textAlign: 'center', fontSize: '18px', marginBottom: '20px', letterSpacing: '4px' }}
+                autoFocus
+              />
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button
+                  onClick={handleUnlockDebug}
+                  style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '8px 20px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  🔓 UNLOCK
+                </button>
+                <button
+                  onClick={() => { setShowDebugPasswordModal(false); setDebugPasswordInput(''); }}
+                  style={{ backgroundColor: '#333', color: '#fff', border: 'none', padding: '8px 16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  ❌ CANCEL
+                </button>
+              </div>
             </div>
-            <button onClick={() => setRelicNotice(null)} style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ EXCELLENT
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {spottedOpponentNotice && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
-          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.opponentSpottedTitle}</h3>
-            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.opponentSpottedMsg}</p>
-            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
-              <div>🧙‍♀️ Player: <strong style={{ color: '#fff' }}>{spottedOpponentNotice.name}</strong></div>
-              <div style={{ marginTop: '4px' }}>📍 Coordinates: <strong style={{ color: '#ff3333' }}>[{spottedOpponentNotice.pos.x}, {spottedOpponentNotice.pos.y}]</strong></div>
+        {isShopOpen && (
+          <MarketplaceModal
+            availableItems={shopCatalog}
+            inventory={inventory}
+            troops={troops}
+            locale={locale}
+            onPurchaseComplete={handlePurchaseComplete}
+            onEjected={handleEjected}
+            onClose={() => setIsShopOpen(false)}
+          />
+        )}
+
+        {activeEncounter && (
+          <CombatModal
+            encounter={activeEncounter}
+            troops={troops}
+            inventory={inventory}
+            locale={locale}
+            allowSurpriseRetreat={allowSurpriseRetreat}
+            onRetreat={handleRetreatFromCombat}
+            onVictory={handleCombatVictory}
+            onDefeat={handleCombatDefeat}
+          />
+        )}
+
+        {droppedGoldNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff0', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#ff0', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.droppedGoldModalTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.droppedGoldModalMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff0', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+                <div>💰 {t.droppedAmountLabel} <strong style={{ color: '#ff0' }}>+{droppedGoldNotice.amount} GP</strong></div>
+                <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{droppedGoldNotice.pos.x}, {droppedGoldNotice.pos.y}]</strong></div>
+              </div>
+              <button onClick={() => setDroppedGoldNotice(null)} style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
             </div>
-            <button onClick={() => setSpottedOpponentNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
-              ✅ UNDERSTOOD
-            </button>
           </div>
-        </div>
-      )}
+        )}
+        
+        {collectedGoldNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #00ff00', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#00ff00', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.goldCollectedModalTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.goldCollectedModalMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #00ff00', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+                <div>💰 {t.goldCollectedAmountLabel} <strong style={{ color: '#00ff00' }}>+{collectedGoldNotice.amount} GP</strong></div>
+                <div style={{ marginTop: '4px' }}>📍 {t.locationLabel} <strong>[{collectedGoldNotice.pos.x}, {collectedGoldNotice.pos.y}]</strong></div>
+              </div>
+              <button onClick={() => setCollectedGoldNotice(null)} style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ EXCELLENT
+              </button>
+            </div>
+          </div>
+        )}
 
-      {/* Action Ticker Log */}
-      <div style={{ backgroundColor: '#050505', border: '1px solid #00ff00', padding: '12px', maxHeight: '150px', overflowY: 'auto' }}>
-        <h4 style={{ margin: '0 0 6px 0', color: '#fff', borderBottom: '1px solid #222' }}>{t.logHeader}</h4>
-        {logs.map((log, index) => (
-          <div key={index} style={{ fontSize: '13px', margin: '2px 0', color: index === 0 ? '#00ff00' : '#888' }}>
-            {log}
+        {drownNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #0288d1', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#0288d1', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.drownModalTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.drownModalMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #0288d1', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+                <div>📍 Rescued Coordinates: <strong style={{ color: '#0288d1' }}>[{drownNotice.pos.x}, {drownNotice.pos.y}]</strong></div>
+              </div>
+              <button onClick={() => setDrownNotice(null)} style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
+            </div>
           </div>
-        ))}
+        )}
+        
+        {raidedNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.raidModalTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.raidModalMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+                <div>🗡️ {t.raidedByLabel} <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
+                <div style={{ marginTop: '4px' }}>💰 {t.goldStolenLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
+                <div style={{ marginTop: '4px' }}>🫏 {t.mulesLootedLabel} <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
+              </div>
+              <button onClick={() => setRaidedNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isInsideCitadel && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '20px', maxWidth: '520px', width: '95%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: '18px' }}>{t.citadelTitle}</h3>
+              <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>{t.citadelSubtitle}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '20px' }}>
+                {fortressRooms.map((room, idx) => (
+                  <button
+                    key={room.id}
+                    onClick={() => handleRoomClick(idx)}
+                    disabled={room.isCleared}
+                    style={{
+                      height: '75px',
+                      backgroundColor: room.isCleared
+                        ? (room.type === 'TELEPORT_TRAP' ? '#200520' : '#052005')
+                        : room.isRevealed ? '#200505' : '#222',
+                      border: `2px solid ${
+                        room.isCleared
+                          ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00')
+                          : room.isRevealed ? '#ff3333' : '#ab47bc'
+                      }`,
+                      borderRadius: '6px',
+                      color: '#fff',
+                      cursor: room.isCleared ? 'default' : 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: '20px' }}>
+                      {room.isCleared
+                        ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '💀')
+                        : room.isRevealed
+                          ? (room.type === 'TELEPORT_TRAP' ? '🌀' : room.type === 'WITCH_KING' ? '👑' : '⚔️')
+                          : '❓'}
+                    </span>
+                    <span style={{ fontSize: '10px', marginTop: '4px', color: room.isCleared ? (room.type === 'TELEPORT_TRAP' ? '#ab47bc' : '#00ff00') : '#aaa' }}>
+                      {room.isCleared
+                        ? (room.type === 'TELEPORT_TRAP' ? t.roomTrap : t.roomSlain)
+                        : `#${idx + 1}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setIsInsideCitadel(false)} style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #666', padding: '8px 20px', cursor: 'pointer', fontFamily: 'monospace' }}>
+                🚪 Exit Citadel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isTeleportTrapModal && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ab47bc', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ab47bc', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.teleportTrapTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.teleportTrapMsg}</p>
+              <button onClick={() => setIsTeleportTrapModal(false)} style={{ backgroundColor: '#ab47bc', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeDuel && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
+            <div style={{ backgroundColor: '#111', border: '3px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h2 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>{t.duelTitle}</h2>
+              <p style={{ color: '#fff', fontSize: '12px', marginBottom: '16px' }}>{t.duelSubtitle}</p>
+              <div style={{ margin: '0 auto 16px auto', width: '120px', height: '120px', border: '2px solid #ff00ff', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src={getMonsterAssetUrl('witch_king')}
+                  alt="The Witch King"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    if (!img.dataset.fallbackStep) {
+                      img.dataset.fallbackStep = '1';
+                      img.src = `${supabaseUrl}/storage/v1/object/public/monsters/witch_king.jpeg`;
+                    } else if (img.dataset.fallbackStep === '1') {
+                      img.dataset.fallbackStep = '2';
+                      img.src = '/witch_king.webp';
+                    } else if (img.dataset.fallbackStep === '2') {
+                      img.dataset.fallbackStep = '3';
+                      img.src = '/monsters/witch_king.webp';
+                    } else {
+                      img.style.display = 'none';
+                    }
+                  }}
+                />
+              </div>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '10px', marginBottom: '16px', fontSize: '13px', color: '#fff' }}>
+                <div>{t.duelRound} #{activeDuel.round} | You: <strong style={{ color: '#00ff00' }}>{activeDuel.playerWins}</strong> - Witch King: <strong style={{ color: '#ff3333' }}>{activeDuel.bossWins}</strong></div>
+                {activeDuel.lastResult && <div style={{ marginTop: '6px', color: '#ff0' }}>{activeDuel.lastResult}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                <button onClick={() => handleExecuteDuelStance('BLADE')} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #00ff00', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                  {t.stanceBlade}
+                </button>
+                <button onClick={() => handleExecuteDuelStance('SHIELD')} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #00ffff', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                  {t.stanceShield}
+                </button>
+                <button onClick={() => handleExecuteDuelStance('SPELL')} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #ab47bc', padding: '10px 14px', fontFamily: 'monospace', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}>
+                  {t.stanceSpell}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isDuelDefeatNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 125 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.duelDefeatTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.duelDefeatMsg}</p>
+              <button
+                onClick={() => {
+                  setIsDuelDefeatNotice(false);
+                  handleCombatDefeat();
+                }}
+                style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ✅ RETREAT TO SANCTUARY
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isCitadelSealedNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #b71c1c', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#b71c1c', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.citadelSealedTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '20px' }}>{t.citadelSealedMsg}</p>
+              <button onClick={() => setIsCitadelSealedNotice(false)} style={{ backgroundColor: '#b71c1c', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {gameWinnerNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
+            <div style={{ backgroundColor: '#111', border: `3px solid ${gameWinnerNotice.isMe ? '#00ff00' : '#ff3333'}`, borderRadius: '8px', padding: '32px', maxWidth: '520px', width: '90%', color: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h2 style={{ margin: '0 0 16px 0', fontSize: '22px' }}>
+                {gameWinnerNotice.isMe ? t.gameVictoryTitle : t.opponentWonTitle}
+              </h2>
+              <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.6', marginBottom: '24px' }}>
+                {gameWinnerNotice.isMe ? t.victoryMsg : `${t.opponentWonMsg} (${gameWinnerNotice.winnerName})`}
+              </p>
+              <button 
+                onClick={() => {
+                  window.location.reload();
+                }} 
+                style={{ backgroundColor: gameWinnerNotice.isMe ? '#00ff00' : '#ff3333', color: '#000', border: 'none', padding: '12px 32px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                🔄 RESTART ADVENTURE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {townRumorNotice && townRumorNotice.length > 0 && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #00ffff', borderRadius: '8px', padding: '24px', maxWidth: '500px', width: '90%', color: '#00ffff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.townRumorTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.townRumorMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #00ffff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff', maxHeight: '180px', overflowY: 'auto' }}>
+                {townRumorNotice.map((rumor, idx) => (
+                  <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
+                    {rumor}
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setTownRumorNotice(null)} style={{ backgroundColor: '#00ffff', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ NOTED WITH THANKS
+              </button>
+            </div>
+          </div>
+        )}
+
+        {relicNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.relicTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.relicAcquiredMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff' }}>
+                <div>✨ Item Unlocked:</div>
+                <strong style={{ color: '#ff00ff', display: 'block', marginTop: '6px' }}>
+                  {relicNotice === 'boots' ? t.relicBootsName : relicNotice === 'sword' ? t.relicSwordName : relicNotice === 'armor' ? t.relicArmorName : t.relicHornName}
+                </strong>
+              </div>
+              <button onClick={() => setRelicNotice(null)} style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ EXCELLENT
+              </button>
+            </div>
+          </div>
+        )}
+
+        {spottedOpponentNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+            <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.opponentSpottedTitle}</h3>
+              <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.opponentSpottedMsg}</p>
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+                <div>🧙‍♀️ Player: <strong style={{ color: '#fff' }}>{spottedOpponentNotice.name}</strong></div>
+                <div style={{ marginTop: '4px' }}>📍 Coordinates: <strong style={{ color: '#ff3333' }}>[{spottedOpponentNotice.pos.x}, {spottedOpponentNotice.pos.y}]</strong></div>
+              </div>
+              <button onClick={() => setSpottedOpponentNotice(null)} style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}>
+                ✅ UNDERSTOOD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Action Ticker Log */}
+        <div style={{ backgroundColor: '#050505', border: '1px solid #00ff00', padding: '12px', maxHeight: '150px', overflowY: 'auto' }}>
+          <h4 style={{ margin: '0 0 6px 0', color: '#fff', borderBottom: '1px solid #222' }}>{t.logHeader}</h4>
+          {logs.map((log, index) => (
+            <div key={index} style={{ fontSize: '13px', margin: '2px 0', color: index === 0 ? '#00ff00' : '#888' }}>
+              {log}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

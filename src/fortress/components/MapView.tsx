@@ -32,13 +32,11 @@ export const MapView: React.FC<MapViewProps> = ({
   const t = FORTRESS_LANG[locale];
   const gridSize = grid.length;
 
-  // Dynamic Tile Rescaling (18px = Bird's Eye View, 52px = Touch Zoom)
-  const [tileSize, setTileSize] = useState<number>(28);
+  const [tileSize, setTileSize] = useState<number>(32);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const playerTileRef = useRef<HTMLDivElement>(null);
 
-  // Auto-center camera on player whenever position or tile zoom changes
   const centerCamera = () => {
     if (playerTileRef.current && containerRef.current) {
       playerTileRef.current.scrollIntoView({
@@ -91,7 +89,7 @@ export const MapView: React.FC<MapViewProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '10px 0', width: '100%' }}>
       
       {/* Zoom & Camera Toolbar */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button
           onClick={() => setTileSize((prev) => Math.max(18, prev - 4))}
           style={{ backgroundColor: '#111', color: '#00ff00', border: '1px solid #00ff00', padding: '4px 10px', fontFamily: 'monospace', cursor: 'pointer', borderRadius: '4px' }}
@@ -101,11 +99,11 @@ export const MapView: React.FC<MapViewProps> = ({
         </button>
 
         <span style={{ fontSize: '12px', color: '#888', minWidth: '45px', textAlign: 'center' }}>
-          {Math.round((tileSize / 28) * 100)}%
+          {Math.round((tileSize / 32) * 100)}%
         </span>
 
         <button
-          onClick={() => setTileSize((prev) => Math.min(52, prev + 4))}
+          onClick={() => setTileSize((prev) => Math.min(56, prev + 4))}
           style={{ backgroundColor: '#111', color: '#00ff00', border: '1px solid #00ff00', padding: '4px 10px', fontFamily: 'monospace', cursor: 'pointer', borderRadius: '4px' }}
           title={t.zoomIn}
         >
@@ -120,7 +118,7 @@ export const MapView: React.FC<MapViewProps> = ({
         </button>
       </div>
 
-      {/* Responsive Viewport Frame */}
+      {/* Viewport Frame */}
       <div 
         ref={containerRef}
         style={{
@@ -132,12 +130,13 @@ export const MapView: React.FC<MapViewProps> = ({
           padding: '8px',
           border: '2px solid #00ff00',
           borderRadius: '6px',
-          maxHeight: '55vh',
+          maxHeight: '52vh',
           maxWidth: '100%',
           overflow: 'auto',
           WebkitOverflowScrolling: 'touch',
           touchAction: 'manipulation',
           boxSizing: 'border-box',
+          margin: '0 auto',
         }}
       >
         {grid.map((row, x) =>
