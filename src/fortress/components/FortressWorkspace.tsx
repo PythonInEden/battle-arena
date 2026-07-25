@@ -72,6 +72,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // Drown Event Modal State
   const [drownNotice, setDrownNotice] = useState<{ pos: Position } | null>(null);
 
+  // Raided Warning Modal State
+  const [raidedNotice, setRaidedNotice] = useState<{ attackerName: string; stolenGold: number; stolenMules: number } | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -147,6 +150,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
           setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - stolenGold) }));
           setTroops((prev) => ({ ...prev, mules: Math.max(0, prev.mules - stolenMules) }));
+          setRaidedNotice({ attackerName: data.attackerName, stolenGold, stolenMules });
           setLogs((prev) => [`${t.raidedByLog} ${data.attackerName}! Lost -${stolenGold} GP and -${stolenMules} Mule!`, ...prev]);
 
           // Send confirmation response back to attacker
@@ -300,7 +304,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return currentPos;
   };
 
-  // 🗡️ Raider Stealth Raid Handler (Supports Live Opponent Raiding)
+  // 🗡️ Raider Stealth Raid Handler (With 3-Tile Distance Guardrail)
   const handleExecuteCampRaid = () => {
     if (troops.raiders <= 0) {
       alert("You need at least 1 Raider Specialist to conduct stealth raids!");
@@ -310,7 +314,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const opponents = Object.values(otherPlayers);
 
     if (opponents.length > 0 && channelRef.current) {
-      const targetOpponent = opponents[0]; // Target connected opponent
+      // Find opponent within 3 tiles stealth raid range
+      const targetOpponent = opponents.find((opp) => {
+        const dx = Math.abs(playerPosition.x - opp.pos.x);
+        const dy = Math.abs(playerPosition.y - opp.pos.y);
+        return dx <= 3 && dy <= 3;
+      });
+
+      if (!targetOpponent) {
+        alert(t.raidOutOfRange);
+        return;
+      }
+
       channelRef.current.send({
         type: 'broadcast',
         event: 'raid_request',
@@ -364,15 +379,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
       if (targetTile.terrain === 'LAKE' && !inventory.hasRaft) {
         const safePos = findNearestSafeTile({ x: targetTile.x, y: targetTile.y });
+
+        // Drowning Penalties: 50% Warriors drowned, all Mules drowned, Gold lost, 50% Rations lost
+        const drownedWarriors = Math.floor(troops.warriors / 2);
+        const survivingWarriors = Math.max(1, troops.warriors - drownedWarriors);
+
         setPlayerPosition(safePos);
-        setInventory((prev) => ({ ...prev, gold: 0, rations: 15 }));
-        setTroops((prev) => ({ ...prev, warriors: 15 }));
-        setMaxWarriors(15);
+        setInventory((prev) => ({ ...prev, gold: 0, rations: Math.floor(prev.rations / 2) }));
+        setTroops((prev) => ({ ...prev, warriors: survivingWarriors, mules: 0 }));
+        setMaxWarriors(survivingWarriors);
         setRemainingMF(10);
         revealSightArea(safePos, sightRadius);
         broadcastMyState(safePos);
         setDrownNotice({ pos: safePos });
-        setLogs((prev) => [`${t.drownLog} [${safePos.x}, ${safePos.y}]!`, ...prev]);
+        setLogs((prev) => [`${t.drownLog} [${safePos.x}, ${safePos.y}]! Drowned -${drownedWarriors} Warriors and all Mules!`, ...prev]);
         return;
       }
 
@@ -788,6 +808,29 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <button
               onClick={() => setDrownNotice(null)}
               style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Camp Raided MsgBox Modal */}
+      {raidedNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff3333', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.raidModalTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.raidModalMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+              <div>🗡️ Raided by: <strong style={{ color: '#fff' }}>{raidedNotice.attackerName}</strong></div>
+              <div style={{ marginTop: '4px' }}>💰 Gold Stolen: <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenGold} GP</strong></div>
+              <div style={{ marginTop: '4px' }}>🫏 Pack Mules Looted: <strong style={{ color: '#ff3333' }}>-{raidedNotice.stolenMules} Mule</strong></div>
+            </div>
+
+            <button
+              onClick={() => setRaidedNotice(null)}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
             >
               ✅ UNDERSTOOD
             </button>
