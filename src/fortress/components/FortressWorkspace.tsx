@@ -16,6 +16,11 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const AVAILABLE_PLAYER_ICONS = [
+  '🧙‍♂️', '⚔️', '🧝‍♂️', '🥷', '🛡️', '👑', 
+  '🧙‍♀️', '🐺', '🐉', '🦅', '🦁', '🦄'
+];
+
 const getMonsterAssetUrl = (imageKey: string) => {
   const cleanKey = imageKey.toLowerCase().trim().replace(/[\s-]+/g, '_');
   return `${supabaseUrl}/storage/v1/object/public/monsters/${cleanKey}.webp`;
@@ -23,7 +28,6 @@ const getMonsterAssetUrl = (imageKey: string) => {
 
 const BASE_TURN_MF = 3;
 
-// Helper to generate a random 4-letter uppercase Room Code (e.g. WKYG)
 const generateRoomCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   let code = '';
@@ -53,9 +57,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return sessionStorage.getItem('fortress_player_name') || `Hero_${Math.floor(Math.random() * 899 + 100)}`;
   });
 
-  // Lobby Flow State: 'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'
+  const [playerIcon, setPlayerIcon] = useState<string>(() => {
+    return sessionStorage.getItem('fortress_player_icon') || '🧙‍♂️';
+  });
+
   const [lobbyStep, setLobbyStep] = useState<'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'>('SELECT_MODE');
-  const [isHost, setIsHost] = useState<boolean>(false);
+  const [manualHostOverride, setManualHostOverride] = useState<boolean>(false);
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
   const [activeRoomCode, setActiveRoomCode] = useState<string>('');
 
@@ -63,14 +70,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isReady, setIsReady] = useState<boolean>(false);
 
-  // Synced Player Order from Host
   const [syncedPlayerList, setSyncedPlayerList] = useState<string[]>([]);
-
-  // Synchronized Turn State
   const [isTurnLocked, setIsTurnLocked] = useState<boolean>(false);
   const [showManualModal, setShowManualModal] = useState<boolean>(false);
 
-  // Admin Dev Tweaker States
   const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
   const [showDebugPasswordModal, setShowDebugPasswordModal] = useState<boolean>(false);
   const [debugPasswordInput, setDebugPasswordInput] = useState<string>('');
@@ -79,6 +82,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [otherPlayers, setOtherPlayers] = useState<Record<string, { 
     id: string; 
     name: string; 
+    icon: string;
     pos: Position; 
     gold: number; 
     mules: number; 
@@ -165,14 +169,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
-  const totalPlayersCount = Math.max(1, 1 + Object.keys(otherPlayers).length);
+  const sortedRoster = [playerId, ...Object.keys(otherPlayers)].sort();
+  const effectiveIsHost = manualHostOverride || (sortedRoster.length > 0 && sortedRoster[0] === playerId);
+
+  const totalPlayersCount = Math.max(1, sortedRoster.length);
   const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
-  const allPlayersReady = isReady && (Object.values(otherPlayers).length === 0 || Object.values(otherPlayers).every((p) => p.isReady));
+
+  const guestPlayers = Object.values(otherPlayers);
+  const allGuestsReady = guestPlayers.length === 0 || guestPlayers.every((p) => p.isReady);
 
   // 📡 Realtime Supabase Channel
   useEffect(() => {
     if (!activeRoomCode) return;
     sessionStorage.setItem('fortress_player_name', playerName);
+    sessionStorage.setItem('fortress_player_icon', playerIcon);
 
     const channelName = `fortress_room_${activeRoomCode}`;
     const channel = supabase.channel(channelName, {
@@ -188,6 +198,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             [data.id]: { 
               id: data.id, 
               name: data.name, 
+              icon: data.icon || '🧙‍♀️',
               pos: data.pos, 
               gold: data.gold, 
               mules: data.mules,
@@ -196,8 +207,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             },
           }));
 
-          if (data.hostSeed && !isHost) setRoomSeed(data.hostSeed);
-          if (data.hostDifficulty && !isHost) setDifficulty(data.hostDifficulty);
+          if (data.hostSeed && !effectiveIsHost) setRoomSeed(data.hostSeed);
+          if (data.hostDifficulty && !effectiveIsHost) setDifficulty(data.hostDifficulty);
         }
       })
       .on('broadcast', { event: 'start_game_trigger' }, (payload) => {
@@ -304,13 +315,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             payload: { 
               id: playerId, 
               name: playerName, 
+              icon: playerIcon,
               pos: playerPosition, 
               gold: inventory.gold, 
               mules: troops.mules,
               isReady,
               isTurnLocked,
-              hostSeed: isHost ? roomSeed : undefined,
-              hostDifficulty: isHost ? difficulty : undefined,
+              hostSeed: effectiveIsHost ? roomSeed : undefined,
+              hostDifficulty: effectiveIsHost ? difficulty : undefined,
             },
           });
         }
@@ -321,28 +333,25 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeRoomCode, roomSeed, difficulty, playerName, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked, isHost]);
+  }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, playerPosition, inventory.gold, troops.mules, isReady, isTurnLocked, effectiveIsHost]);
 
-  // Handle Room Creation
   const handleCreateRoom = () => {
     const code = generateRoomCode();
     const newSeed = Math.floor(10000 + Math.random() * 90000);
-    setIsHost(true);
+    setManualHostOverride(true);
     setRoomSeed(newSeed);
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
   };
 
-  // Handle Joining Existing Room
   const handleJoinRoom = () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
     if (trimmed.length < 4) return alert('Please enter a valid 4-character Room Code!');
-    setIsHost(false);
+    setManualHostOverride(false);
     setActiveRoomCode(trimmed);
     setLobbyStep('IN_LOBBY');
   };
 
-  // 🔄 Reactive Turn Lock Check
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
 
@@ -378,13 +387,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  // 🗺️ Map Generation & Scalable N-Player Radial Ring Spawning
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED') return;
 
     const generatedGrid = MapEngine.generateProceduralMap(roomSeed, difficulty, calculatedGridSize);
 
-    // 🏛️ Seed 4 Quest Relics on Mountain tiles
     const questRelics = ['boots', 'sword', 'armor', 'horn'];
     let relicIdx = 0;
     for (let x = 0; x < generatedGrid.length && relicIdx < questRelics.length; x++) {
@@ -402,7 +409,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     const totalP = Math.max(1, roster.length);
     const N = generatedGrid.length;
 
-    // Calculate ideal radial ring coordinate
     const cx = (N - 1) / 2;
     const cy = (N - 1) / 2;
     const R = Math.floor(N * 0.38);
@@ -453,20 +459,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         payload: {
           id: playerId,
           name: playerName,
+          icon: playerIcon,
           pos: newPos || playerPosition,
           gold: inventory.gold,
           mules: troops.mules,
           isReady: readyState ?? isReady,
           isTurnLocked: lockedState ?? isTurnLocked,
-          hostSeed: isHost ? roomSeed : undefined,
-          hostDifficulty: isHost ? difficulty : undefined,
+          hostSeed: effectiveIsHost ? roomSeed : undefined,
+          hostDifficulty: effectiveIsHost ? difficulty : undefined,
         },
       });
     }
   };
 
   const handleLaunchGame = () => {
-    if (!isHost) return;
+    if (!effectiveIsHost) return;
     const fullRoster = [playerId, ...Object.keys(otherPlayers)].sort();
     setSyncedPlayerList(fullRoster);
     setLobbyStep('GAME_STARTED');
@@ -1028,28 +1035,55 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // --------------------------------------------------------------------------
   if (lobbyStep === 'SELECT_MODE') {
     return (
-      <div style={{ padding: '32px', maxWidth: '600px', margin: '40px auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
+      <div style={{ padding: '24px', width: '100%', maxWidth: '600px', margin: '20px auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
         <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
-        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '32px' }}>{t.lobbySubtitle}</p>
+        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
 
-        {/* Commander Name Input */}
-        <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '28px', textAlign: 'left' }}>
-          <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold' }}>
+        {/* Commander Name & Icon Selection Input */}
+        <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
+          <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '12px' }}>
             {t.enterNamePrompt}
             <input
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '10px', padding: '6px 10px', width: '200px', fontFamily: 'monospace', fontWeight: 'bold' }}
+              style={{ backgroundColor: '#000', color: '#ff0', border: '1px solid #ff0', marginLeft: '10px', padding: '6px 10px', width: '180px', fontFamily: 'monospace', fontWeight: 'bold' }}
             />
           </label>
+
+          {/* Hero Icon Selection Picker */}
+          <div style={{ color: '#00ffff', fontWeight: 'bold', fontSize: '13px', marginBottom: '8px' }}>
+            {t.chooseIconLabel} <span style={{ fontSize: '18px' }}>{playerIcon}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {AVAILABLE_PLAYER_ICONS.map((icon) => (
+              <button
+                key={icon}
+                onClick={() => {
+                  setPlayerIcon(icon);
+                  sessionStorage.setItem('fortress_player_icon', icon);
+                }}
+                style={{
+                  backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
+                  color: playerIcon === icon ? '#000' : '#fff',
+                  border: `2px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Mode Buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
           <button
             onClick={handleCreateRoom}
-            style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '16px 32px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '8px', width: '100%', maxWidth: '350px' }}
+            style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '14px 28px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '8px', width: '100%', maxWidth: '350px' }}
           >
             {t.createRoomBtn}
           </button>
@@ -1086,25 +1120,55 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // --------------------------------------------------------------------------
   if (lobbyStep === 'IN_LOBBY') {
     return (
-      <div style={{ padding: '32px', maxWidth: '700px', margin: '40px auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
+      <div style={{ padding: '24px', width: '100%', maxWidth: '700px', margin: '20px auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#050505', borderRadius: '12px', border: '3px solid #00ff00', textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <button onClick={() => setLobbyStep('SELECT_MODE')} style={{ backgroundColor: '#222', color: '#888', border: '1px solid #444', padding: '6px 12px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '12px' }}>
             {t.backToMenuBtn}
           </button>
-          <span style={{ backgroundColor: isHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
-            {isHost ? t.hostBadge : t.guestBadge}
+          <span style={{ backgroundColor: effectiveIsHost ? '#ff0' : '#00ffff', color: '#000', fontWeight: 'bold', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
+            {effectiveIsHost ? t.hostBadge : t.guestBadge}
           </span>
         </div>
 
         <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>
           {t.roomCodeLabel} <strong style={{ color: '#ff0', letterSpacing: '4px' }}>{activeRoomCode}</strong>
         </h1>
-        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
+        <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '20px' }}>{t.lobbySubtitle}</p>
 
         {/* Host Room Settings */}
         <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
           <div style={{ color: '#fff', fontSize: '13px', marginBottom: '8px' }}>
-            👤 {t.enterNamePrompt} <strong style={{ color: '#ff0' }}>{playerName}</strong>
+            👤 {t.enterNamePrompt} <strong style={{ color: '#ff0' }}>{playerName}</strong> {playerIcon}
+          </div>
+
+          {/* Hero Icon Change Grid in Lobby */}
+          <div style={{ margin: '10px 0' }}>
+            <span style={{ color: '#00ffff', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>
+              {t.chooseIconLabel}
+            </span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {AVAILABLE_PLAYER_ICONS.map((icon) => (
+                <button
+                  key={icon}
+                  onClick={() => {
+                    setPlayerIcon(icon);
+                    sessionStorage.setItem('fortress_player_icon', icon);
+                    broadcastMyState(playerPosition, isReady, isTurnLocked);
+                  }}
+                  style={{
+                    backgroundColor: playerIcon === icon ? '#00ff00' : '#000',
+                    color: playerIcon === icon ? '#000' : '#fff',
+                    border: `1px solid ${playerIcon === icon ? '#00ff00' : '#444'}`,
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1113,9 +1177,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               <input
                 type="number"
                 value={roomSeed}
-                disabled={!isHost}
+                disabled={!effectiveIsHost}
                 onChange={(e) => setRoomSeed(parseInt(e.target.value) || 10000)}
-                style={{ backgroundColor: '#000', color: isHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '90px', fontFamily: 'monospace' }}
+                style={{ backgroundColor: '#000', color: effectiveIsHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '90px', fontFamily: 'monospace' }}
               />
             </label>
             <label style={{ color: '#fff' }}>
@@ -1125,34 +1189,34 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 min="1"
                 max="4"
                 value={difficulty}
-                disabled={!isHost}
+                disabled={!effectiveIsHost}
                 onChange={(e) => setDifficulty(parseInt(e.target.value) || 1)}
-                style={{ backgroundColor: '#000', color: isHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
+                style={{ backgroundColor: '#000', color: effectiveIsHost ? '#00ff00' : '#888', border: '1px solid #00ff00', marginLeft: '8px', padding: '4px', width: '50px', fontFamily: 'monospace' }}
               />
             </label>
-            {!isHost && <span style={{ fontSize: '11px', color: '#888' }}>(Configured by Lobby Host)</span>}
+            {!effectiveIsHost && <span style={{ fontSize: '11px', color: '#888' }}>(Configured by Lobby Host)</span>}
           </div>
         </div>
 
         {/* Dynamic Map Info Card */}
-        <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '24px', fontSize: '13px', color: '#fff' }}>
+        <div style={{ backgroundColor: '#111', border: '1px solid #333', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: '#fff' }}>
           <div>🌐 {t.mapSizeNotice} <strong style={{ color: '#00ffff' }}>{calculatedGridSize} x {calculatedGridSize}</strong> ({totalPlayersCount} Connected Commanders)</div>
         </div>
 
         {/* Connected Players Roster */}
-        <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
+        <div style={{ backgroundColor: '#111', border: '1px solid #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
           <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#ff0' }}>{t.playerCountLabel}</h3>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#fff' }}>
-            <span>{isHost ? '👑' : '⚔️'} <strong>{playerName}</strong> (You) {isHost && <span style={{ color: '#ff0', fontSize: '11px' }}>[HOST]</span>}</span>
-            <span style={{ color: isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
-              {isReady ? `[ ${t.readyBtnText} ]` : `[ ${t.waitingForPlayers} ]`}
+            <span>{effectiveIsHost ? '👑' : '⚔️'} <strong>{playerName}</strong> {playerIcon} (You) {effectiveIsHost && <span style={{ color: '#ff0', fontSize: '11px' }}>[HOST]</span>}</span>
+            <span style={{ color: effectiveIsHost ? '#00ff00' : (isReady ? '#00ff00' : '#ff3333'), fontWeight: 'bold' }}>
+              {effectiveIsHost ? '[ HOST ]' : (isReady ? `[ ${t.readyBtnText} ]` : `[ ${t.waitingForPlayers} ]`)}
             </span>
           </div>
 
           {Object.values(otherPlayers).map((opp) => (
             <div key={opp.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', borderBottom: '1px solid #222', color: '#aaa' }}>
-              <span>⚔️ {opp.name}</span>
+              <span>⚔️ {opp.name} {opp.icon || '🧙‍♀️'}</span>
               <span style={{ color: opp.isReady ? '#00ff00' : '#ff3333', fontWeight: 'bold' }}>
                 {opp.isReady ? '[ READY ]' : '[ WAITING ]'}
               </span>
@@ -1162,20 +1226,22 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={toggleReadyState}
-            style={{ backgroundColor: isReady ? '#330000' : '#003300', color: isReady ? '#ff3333' : '#00ff00', border: `2px solid ${isReady ? '#ff3333' : '#00ff00'}`, padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
-          >
-            {isReady ? t.unreadyBtnText : t.readyBtnText}
-          </button>
+          {!effectiveIsHost && (
+            <button
+              onClick={toggleReadyState}
+              style={{ backgroundColor: isReady ? '#330000' : '#003300', color: isReady ? '#ff3333' : '#00ff00', border: `2px solid ${isReady ? '#ff3333' : '#00ff00'}`, padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '6px' }}
+            >
+              {isReady ? t.unreadyBtnText : t.readyBtnText}
+            </button>
+          )}
 
-          {isHost ? (
+          {effectiveIsHost ? (
             <button
               onClick={handleLaunchGame}
-              disabled={!allPlayersReady}
-              style={{ backgroundColor: allPlayersReady ? '#00ff00' : '#222', color: allPlayersReady ? '#000' : '#666', border: 'none', padding: '12px 28px', fontWeight: 'bold', fontSize: '14px', cursor: allPlayersReady ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px' }}
+              disabled={!allGuestsReady}
+              style={{ backgroundColor: allGuestsReady ? '#00ff00' : '#222', color: allGuestsReady ? '#000' : '#666', border: 'none', padding: '14px 32px', fontWeight: 'bold', fontSize: '16px', cursor: allGuestsReady ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px' }}
             >
-              {allPlayersReady ? t.startGameBtnText : '⏳ WAITING FOR ALL PLAYERS READY...'}
+              {allGuestsReady ? t.startGameBtnText : '⏳ WAITING FOR ALL GUESTS READY...'}
             </button>
           ) : (
             <div style={{ alignSelf: 'center', color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
@@ -1191,11 +1257,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // 🎮 STEP 3: MAIN OVERWORLD GAME BOARD UI
   // --------------------------------------------------------------------------
   return (
-    <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
-      <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ padding: '16px', width: '100%', maxWidth: '1400px', margin: '0 auto', boxSizing: 'border-box', fontFamily: 'monospace', color: '#00ff00', backgroundColor: '#000', borderRadius: '8px', border: '2px solid #00ff00' }}>
+      <header style={{ borderBottom: '2px solid #00ff00', paddingBottom: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
         <div>
-          <h2 style={{ margin: 0 }}>{t.headerTitle}</h2>
-          <p style={{ margin: '4px 0 0 0', color: '#888' }}>{t.headerSub}</p>
+          <h2 style={{ margin: 0, fontSize: 'clamp(16px, 3vw, 20px)' }}>{t.headerTitle}</h2>
+          <p style={{ margin: '4px 0 0 0', color: '#888', fontSize: '12px' }}>{t.headerSub}</p>
         </div>
         <button
           onClick={() => setShowManualModal(true)}
@@ -1207,12 +1273,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
       {/* Control Bar */}
       <div style={{ display: 'flex', gap: '16px', backgroundColor: '#111', padding: '10px 12px', border: '1px dashed #00ff00', marginBottom: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName} {isHost && '👑'}</span>
+        <span style={{ color: '#ff0', fontWeight: 'bold' }}>👤 {playerName} {playerIcon} {effectiveIsHost && '👑'}</span>
         <span style={{ color: '#888', fontSize: '12px' }}>Room Code: <strong style={{ color: '#00ffff' }}>{activeRoomCode}</strong></span>
         <span style={{ color: '#888', fontSize: '12px' }}>{t.diffLabel} <strong>Level {difficulty}</strong></span>
         
         <div style={{ fontSize: '12px', color: '#888', marginLeft: 'auto' }}>
-          {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => p.name).join(', ') || 'None'}</strong>
+          {t.opponentsOnline} <strong style={{ color: Object.values(otherPlayers).length > 0 ? '#00ff00' : '#ff3333' }}>{Object.values(otherPlayers).map(p => `${p.name} ${p.icon || ''}`).join(', ') || 'None'}</strong>
         </div>
 
         {isDebugUnlocked ? (
@@ -1250,8 +1316,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
-      {/* Logistical HUD Bar */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px' }}>
+      {/* Responsive Auto-Fit Logistical HUD Bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', backgroundColor: '#111', padding: '12px', border: '1px solid #00ff00', marginBottom: '16px', fontSize: '13px' }}>
         <div>{t.posLabel} <strong>[{playerPosition.x}, {playerPosition.y}]</strong></div>
         <div>{t.mfLabel} <strong style={{ color: remainingMF > 0 ? '#00ff00' : '#ff3333' }}>{remainingMF} / {BASE_TURN_MF}</strong></div>
         <div>{t.rationsLabel} <strong>{inventory.rations}</strong></div>
@@ -1263,7 +1329,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
         <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
         <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
-        <div style={{ gridColumn: 'span 4', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
+        <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
           🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
             Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
               .map(r => {
@@ -1280,7 +1346,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={handleCastSeeingScroll}
             disabled={inventory.scrollsSeeing <= 0 || isTurnLocked}
@@ -1344,6 +1410,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <MapView
           grid={grid}
           playerPosition={playerPosition}
+          playerIcon={playerIcon}
           otherPlayers={otherPlayers}
           sightRadius={sightRadius}
           remainingMF={remainingMF}

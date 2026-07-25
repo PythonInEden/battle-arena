@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { BattleArena } from './BattleArena';
 import { FortressWorkspace } from './fortress/components/FortressWorkspace';
@@ -68,7 +69,7 @@ export default function App() {
 
   if (currentMode === 'battle') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#121212', padding: '15px', boxSizing: 'border-box' }}>
+      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#121212', padding: '15px', boxSizing: 'border-box' }}>
         <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>{t.backBtn}</button>
         <BattleArena />
       </div>
@@ -77,7 +78,7 @@ export default function App() {
 
   if (currentMode === 'math') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#000', padding: '15px', boxSizing: 'border-box' }}>
+      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000', padding: '15px', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
           <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, marginBottom: 0 }}>{t.backBtn}</button>
           
@@ -97,9 +98,9 @@ export default function App() {
 
   if (currentMode === 'fortress') {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#050505', padding: '20px' }}>
+      <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#050505', padding: '12px', boxSizing: 'border-box' }}>
         {/* Top Navigation Bar with Language Switcher */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1400px', margin: '0 auto 16px auto' }}>
           <button 
             onClick={() => navigateToMode('menu')} 
             style={{ ...backButtonStyle, marginBottom: 0, backgroundColor: '#000', color: '#00ff00', border: '1px solid #00ff00' }}
@@ -134,7 +135,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
+    <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
       
       <div style={{ width: '100%', maxWidth: '600px', display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
         <select 

@@ -7,7 +7,8 @@ import { FORTRESS_LANG, LanguageType } from '../languages';
 interface MapViewProps {
   grid: TileState[][];
   playerPosition: Position;
-  otherPlayers?: Record<string, { id: string; name: string; pos: Position }>;
+  playerIcon?: string;
+  otherPlayers?: Record<string, { id: string; name: string; icon?: string; pos: Position }>;
   sightRadius: number;
   remainingMF: number;
   hasRaft: boolean;
@@ -19,6 +20,7 @@ interface MapViewProps {
 export const MapView: React.FC<MapViewProps> = ({
   grid,
   playerPosition,
+  playerIcon = '🧙‍♂️',
   otherPlayers = {},
   sightRadius,
   remainingMF,
@@ -141,6 +143,7 @@ export const MapView: React.FC<MapViewProps> = ({
         {grid.map((row, x) =>
           row.map((tile, y) => {
             const isPlayerHere = playerPosition.x === x && playerPosition.y === y;
+            const opponentHere = Object.values(otherPlayers).find((p) => p.pos.x === x && p.pos.y === y);
             const inSight = isTileInSight(x, y);
             const isExplored = tile.isExplored || inSight;
 
@@ -191,9 +194,13 @@ export const MapView: React.FC<MapViewProps> = ({
                 title={tooltipText}
               >
                 {isPlayerHere ? (
-                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="You">🧙‍♂️</span>
-                ) : Object.values(otherPlayers).some((p) => p.pos.x === x && p.pos.y === y) ? (
-                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="Opponent Player">🧙‍♀️</span>
+                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title="You">
+                    {playerIcon}
+                  </span>
+                ) : opponentHere ? (
+                  <span style={{ fontSize: `${Math.floor(fontSize * 1.3)}px`, zIndex: 2 }} title={opponentHere.name}>
+                    {opponentHere.icon || '🧙‍♀️'}
+                  </span>
                 ) : isExplored ? (
                   <>
                     <span>{visuals.label}</span>
