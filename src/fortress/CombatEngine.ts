@@ -1,5 +1,5 @@
 // src/fortress/CombatEngine.ts
-import { TroopRoster } from './types';
+import { TroopRoster, PlayerInventory, QuestRelic } from './types';
 
 export type EdibilityType = 'EDIBLE' | 'TOXIC' | 'INEDIBLE';
 
@@ -47,10 +47,17 @@ export interface EncounterGroup {
 }
 
 export class CombatEngine {
-  public static calculatePlayerCombatStrength(troops: TroopRoster): number {
+  public static calculatePlayerCombatStrength(troops: TroopRoster, inventory?: PlayerInventory): number {
     const csBase = (1.0 * troops.warriors) + (3.0 * troops.dwarves) + (2.0 * troops.elves);
     const wizardBonus = troops.wizards > 0 ? 0.20 : 0.0;
-    return Math.max(1, csBase * (1.0 + wizardBonus));
+    let strength = Math.max(1, csBase * (1.0 + wizardBonus));
+
+    // 🗡️ Sword of Strength Perk: +50% Combat Power Multiplier
+    if (inventory?.activeRelics?.includes('sword' as QuestRelic)) {
+      strength *= 1.5;
+    }
+
+    return Math.floor(strength);
   }
 
   public static calculateWinChance(playerCS: number, monsterCS: number): number {
@@ -98,6 +105,15 @@ export class CombatEngine {
 
   public static calculatePoisonRisk(scoutCount: number): number {
     return Math.max(0, 0.30 - 0.05 * scoutCount);
+  }
+
+  public static calculateCasualties(baseLosses: number, inventory?: PlayerInventory): number {
+    let loss = baseLosses;
+    // 🛡️ Armor of Defense Perk: 50% Casualty Reduction
+    if (inventory?.activeRelics?.includes('armor' as QuestRelic)) {
+      loss = Math.floor(loss * 0.5);
+    }
+    return loss;
   }
 
   public static harvestMonsterMeat(

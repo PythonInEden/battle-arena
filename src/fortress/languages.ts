@@ -115,6 +115,12 @@ export const FORTRESS_LANG = {
     penaltyDetail: "-1 Movement Factor (MF)",
     claimContinueBtn: "✅ OK, CLAIM ITEM & CONTINUE",
     leaveShopBtn: "🚪 OK, LEAVE MARKETPLACE",
+    relicTitle: "🏛️ ANCIENT RELIC CLAIMED!",
+    relicAcquiredMsg: "You defeated the Guardian Boss and claimed an Ancient Artifact!",
+    relicBootsName: "🥾 Boots of Stealth (Forest/Mountain movement = 1 MF)",
+    relicHornName: "🎺 Horn of Opening (Citadel Gate Bypass Key)",
+    relicSwordName: "🗡️ Sword of Strength (+50% Party Combat Power)",
+    relicArmorName: "🛡️ Armor of Defense (50% Casualty Reduction)",
 
     // PvE Combat & Harvesting
     combatTitle: "⚔️ WILD MONSTER ENCOUNTER",
@@ -326,6 +332,12 @@ export const FORTRESS_LANG = {
     penaltyDetail: "-1 Điểm Thể Lực (MF)",
     claimContinueBtn: "✅ OK, NHẬN MÓN HÀNG & TIẾP TỤC",
     leaveShopBtn: "🚪 OK, RỜI KHỎI CHỢ",
+    relicTitle: "🏛️ GIÀNH ĐƯỢC BẢO VẬT CỔ ĐẠI!",
+    relicAcquiredMsg: "Bạn đã đánh bại Quái Vật Hộ Vệ và sở hữu Bảo Vật Huyền Thoại!",
+    relicBootsName: "🥾 Giày Tàng Hình (Đi Rừng/Núi chỉ tốn 1 MF)",
+    relicHornName: "🎺 Tù Và Khai Mở (Chìa Khóa Mở Cổng Pháo Đài)",
+    relicSwordName: "🗡️ Thánh Kiếm Sức Mạnh (+50% Sức Mạnh Chiến Đấu)",
+    relicArmorName: "🛡️ Thánh Giáp Phòng Thủ (Giảm 50% Thương Vong Quân Sĩ)",
 
     // PvE Combat & Harvesting
     combatTitle: "⚔️ ĐỤNG ĐỘ QUÁI VẬT HOANG DÃ",

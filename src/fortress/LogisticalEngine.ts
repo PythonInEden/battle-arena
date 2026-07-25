@@ -1,5 +1,5 @@
 // src/fortress/LogisticalEngine.ts
-import { Position, TileState, PlayerInventory } from './types';
+import { Position, TileState, PlayerInventory, QuestRelic } from './types';
 
 export class LogisticalEngine {
   public static calculateSightRadius(scoutCount: number): number {
@@ -35,6 +35,13 @@ export class LogisticalEngine {
     let baseCost = (dx === 1 && dy === 1) ? 2 : 1;
     if (targetTile.terrain === 'MOUNTAIN') {
       baseCost += 1;
+    }
+
+    // 🥾 Boots of Stealth Perk: Reduces Forest & Mountain movement to 1 MF
+    if (inventory?.activeRelics?.includes('boots' as QuestRelic)) {
+      if (targetTile.terrain === 'FOREST' || targetTile.terrain === 'MOUNTAIN') {
+        baseCost = 1;
+      }
     }
 
     return { cost: baseCost, isValid: true };

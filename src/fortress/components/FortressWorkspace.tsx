@@ -6,7 +6,7 @@ import { LogisticalEngine } from '../LogisticalEngine';
 import { StructuralGuardrails } from '../utils/guardrails';
 import { MarketplaceEngine, ShopItem } from '../MarketplaceEngine';
 import { CombatEngine, EncounterGroup } from '../CombatEngine';
-import { TileState, Position, TroopRoster, PlayerInventory } from '../types';
+import { TileState, Position, TroopRoster, PlayerInventory, QuestRelic } from '../types';
 import { MapView } from './MapView';
 import { MarketplaceModal } from './MarketplaceModal';
 import { CombatModal } from './CombatModal';
@@ -74,6 +74,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   // Raided Warning Modal State
   const [raidedNotice, setRaidedNotice] = useState<{ attackerName: string; stolenGold: number; stolenMules: number } | null>(null);
+
+  // Relic Claimed Modal State
+  const [relicNotice, setRelicNotice] = useState<string | null>(null);
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
@@ -662,6 +665,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <button onClick={() => setInventory(p => ({ ...p, scrollsSeeing: p.scrollsSeeing + 1 }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Seeing Scroll</button>
         <button onClick={() => setInventory(p => ({ ...p, scrollsTeleport: p.scrollsTeleport + 1 }))} style={{ backgroundColor: '#222', color: '#ab47bc', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Teleport Scroll</button>
         <button onClick={() => setTroops(p => ({ ...p, raiders: p.raiders + 1 }))} style={{ backgroundColor: '#222', color: '#ff3333', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+1 Raider</button>
+        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'boots' as QuestRelic])) })); setRelicNotice('boots'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🥾 Boots</button>
+        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
+        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
+        <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
       </div>
 
       {/* Logistical HUD Bar with Wizards, Clerics, & Raiders Displayed! */}
@@ -677,6 +684,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         <div>{t.clericsLabel} <strong>{troops.clerics}</strong></div>
         <div>{t.raidersLabel} <strong>{troops.raiders}</strong></div>
         <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
+        <div style={{ gridColumn: 'span 4', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
+          🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
+            inventory.activeRelics.map(r => (r as string) === 'boots' ? '🥾 Boots' : (r as string) === 'sword' ? '🗡️ Sword' : (r as string) === 'armor' ? '🛡️ Armor' : '🎺 Horn').join(' | ')
+          ) : 'None'}
+        </div>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
@@ -855,7 +867,31 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           </div>
         </div>
       )}
-      
+
+      {/* Relic Acquired MsgBox Modal */}
+      {relicNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #ff00ff', borderRadius: '8px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff00ff', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.relicTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.relicAcquiredMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #ff00ff', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#fff' }}>
+              <div>✨ Item Unlocked:</div>
+              <strong style={{ color: '#ff00ff', display: 'block', marginTop: '6px' }}>
+                {relicNotice === 'boots' ? t.relicBootsName : relicNotice === 'sword' ? t.relicSwordName : relicNotice === 'armor' ? t.relicArmorName : t.relicHornName}
+              </strong>
+            </div>
+
+            <button
+              onClick={() => setRelicNotice(null)}
+              style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ EXCELLENT
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Scout Opponent Spotted Modal */}
       {spottedOpponentNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
