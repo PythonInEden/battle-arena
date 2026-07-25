@@ -69,6 +69,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // Collected Gold Modal State
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
 
+  // Drown Event Modal State
+  const [drownNotice, setDrownNotice] = useState<{ pos: Position } | null>(null);
+
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
   useEffect(() => {
@@ -172,11 +175,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          // Broadcast my presence to other devices
+          // Broadcast my presence to other devices with playerId included
           channel.send({
             type: 'broadcast',
             event: 'player_update',
-            payload: { name: playerName, pos: playerPosition, gold: inventory.gold, mules: troops.mules },
+            payload: { id: playerId, name: playerName, pos: playerPosition, gold: inventory.gold, mules: troops.mules },
           });
         }
       });
@@ -277,6 +280,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     });
   };
 
+  // Helper to find the nearest non-lake, non-mountain land tile for local respawns
+  const findNearestSafeTile = (currentPos: Position): Position => {
+    for (let radius = 1; radius < grid.length; radius++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+          if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+          const nx = currentPos.x + dx;
+          const ny = currentPos.y + dy;
+          if (nx >= 0 && nx < grid.length && ny >= 0 && ny < grid[0].length) {
+            const tile = grid[nx][ny];
+            if (tile.terrain !== 'LAKE' && tile.terrain !== 'MOUNTAIN') {
+              return { x: nx, y: ny };
+            }
+          }
+        }
+      }
+    }
+    return currentPos;
+  };
+
   // 🗡️ Raider Stealth Raid Handler (Supports Live Opponent Raiding)
   const handleExecuteCampRaid = () => {
     if (troops.raiders <= 0) {
@@ -340,23 +363,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       setIsTeleportTargeting(false);
 
       if (targetTile.terrain === 'LAKE' && !inventory.hasRaft) {
-        // Find Sanctuary for drowned rescue
-        let sanctuaryPos = { x: 0, y: 0 };
-        for (let x = 0; x < grid.length; x++) {
-          for (let y = 0; y < grid[x].length; y++) {
-            if (grid[x][y].terrain === 'SANCTUARY') {
-              sanctuaryPos = { x, y };
-              break;
-            }
-          }
-        }
-        setPlayerPosition(sanctuaryPos);
+        const safePos = findNearestSafeTile({ x: targetTile.x, y: targetTile.y });
+        setPlayerPosition(safePos);
         setInventory((prev) => ({ ...prev, gold: 0, rations: 15 }));
         setTroops((prev) => ({ ...prev, warriors: 15 }));
         setMaxWarriors(15);
         setRemainingMF(10);
-        broadcastMyState(sanctuaryPos);
-        setLogs((prev) => [`🌊 DROWNED IN LAKE! Teleported into deep water without a Raft! Washed ashore at Sanctuary [${sanctuaryPos.x}, ${sanctuaryPos.y}].`, ...prev]);
+        revealSightArea(safePos, sightRadius);
+        broadcastMyState(safePos);
+        setDrownNotice({ pos: safePos });
+        setLogs((prev) => [`${t.drownLog} [${safePos.x}, ${safePos.y}]!`, ...prev]);
         return;
       }
 
@@ -470,11 +486,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const handleCombatDefeat = () => {
     setActiveEncounter(null);
+    const safePos = findNearestSafeTile(playerPosition);
+    setPlayerPosition(safePos);
     setTroops((prev) => ({ ...prev, warriors: 15 }));
     setMaxWarriors(15);
     setInventory((prev) => ({ ...prev, rations: 15, gold: 0 }));
     setRemainingMF(10);
-    setLogs((prev) => [`💀 Frontline routed! Washed ashore at Sanctuary with rescue pack.`, ...prev]);
+    revealSightArea(safePos, sightRadius);
+    broadcastMyState(safePos);
+    setLogs((prev) => [`💀 Frontline routed! Retreating to nearby safe grid [${safePos.x}, ${safePos.y}].`, ...prev]);
   };
 
   const handlePurchaseComplete = (item: ShopItem, pricePaid: number) => {
@@ -754,6 +774,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         </div>
       )}
 
+{/* Lake Drown Warning Modal */}
+      {drownNotice && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ backgroundColor: '#111', border: '2px solid #0288d1', borderRadius: '8px', padding: '24px', maxWidth: '450px', width: '90%', color: '#0288d1', fontFamily: 'monospace', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>{t.drownModalTitle}</h3>
+            <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.5', marginBottom: '16px' }}>{t.drownModalMsg}</p>
+            
+            <div style={{ backgroundColor: '#050505', border: '1px dashed #0288d1', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px' }}>
+              <div>📍 Rescued Coordinates: <strong style={{ color: '#0288d1' }}>[{drownNotice.pos.x}, {drownNotice.pos.y}]</strong></div>
+            </div>
+
+            <button
+              onClick={() => setDrownNotice(null)}
+              style={{ backgroundColor: '#0288d1', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            >
+              ✅ UNDERSTOOD
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Scout Opponent Spotted Modal */}
       {spottedOpponentNotice && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
