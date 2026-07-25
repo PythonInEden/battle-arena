@@ -52,7 +52,13 @@ export default function App() {
       } else if (modeParam === 'battle') {
         setCurrentMode('battle');
       } else {
-        setCurrentMode('menu');
+        // 📱 Mobile Chrome Auto-Resume: Re-enter active Fortress game session automatically!
+        const activeFortressStep = localStorage.getItem('fortress_lobby_step');
+        if (activeFortressStep === 'GAME_STARTED' || activeFortressStep === 'IN_LOBBY') {
+          setCurrentMode('fortress');
+        } else {
+          setCurrentMode('menu');
+        }
       }
     };
 
@@ -69,7 +75,6 @@ export default function App() {
 
   return (
     <>
-      {/* 🚀 GLOBAL CSS OVERRIDE: Destroys Vite default white margins & fixed constraints */}
       <style>{`
         html, body, #root {
           width: 100% !important;
@@ -110,7 +115,7 @@ export default function App() {
 
       {currentMode === 'fortress' && (
         <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000000', padding: '12px', boxSizing: 'border-box' }}>
-          {/* Top Navigation Bar with Language Switcher */}
+          {/* Top Navigation Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1200px', margin: '0 auto 16px auto', flexWrap: 'wrap', gap: '8px' }}>
             <button 
               onClick={() => navigateToMode('menu')} 
@@ -119,7 +124,6 @@ export default function App() {
               {locale === 'vi' ? '← Quay Lại Menu Trung Tâm' : '← Main Hub Menu Selection'}
             </button>
 
-            {/* Retro Fortress Language Selector */}
             <select 
               value={locale} 
               onChange={(e) => setLocale(e.target.value as 'en' | 'vi')}

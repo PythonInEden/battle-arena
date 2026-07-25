@@ -82,6 +82,28 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     return localStorage.getItem('fortress_turn_locked') === 'true';
   });
 
+  // 📱 PERSISTENT PLAYER POSITION, INVENTORY, & TROOPS FOR MOBILE RESTORES
+  const [playerPosition, setPlayerPosition] = useState<Position>(() => {
+    const saved = localStorage.getItem('fortress_player_pos');
+    return saved ? JSON.parse(saved) : { x: 0, y: 0 };
+  });
+
+  const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
+
+  const [troops, setTroops] = useState<TroopRoster>(() => {
+    const saved = localStorage.getItem('fortress_troops');
+    return saved ? JSON.parse(saved) : { warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2 };
+  });
+
+  const [maxWarriors, setMaxWarriors] = useState<number>(() => {
+    return troops.warriors;
+  });
+
+  const [inventory, setInventory] = useState<PlayerInventory>(() => {
+    const saved = localStorage.getItem('fortress_inventory');
+    return saved ? JSON.parse(saved) : { gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0 };
+  });
+
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
   const [roomSeed, setRoomSeed] = useState<number>(() => Math.floor(10000 + Math.random() * 90000));
   const [difficulty, setDifficulty] = useState<number>(2);
@@ -111,19 +133,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const channelRef = useRef<any>(null);
   
   const [grid, setGrid] = useState<TileState[][]>([]);
-  const [playerPosition, setPlayerPosition] = useState<Position>({ x: 0, y: 0 });
-  const [previousPosition, setPreviousPosition] = useState<Position>({ x: 0, y: 0 });
   const [remainingMF, setRemainingMF] = useState<number>(BASE_TURN_MF);
-
-  const [troops, setTroops] = useState<TroopRoster>({
-    warriors: 30, scouts: 2, clerics: 1, wizards: 0, raiders: 0, elves: 0, dwarves: 0, mules: 2
-  });
-
-  const [maxWarriors, setMaxWarriors] = useState<number>(30);
-
-  const [inventory, setInventory] = useState<PlayerInventory>({
-    gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0
-  });
 
   const [logs, setLogs] = useState<string[]>([]);
   const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
@@ -192,13 +202,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const guestPlayers = Object.values(otherPlayers);
   const allGuestsReady = guestPlayers.length === 0 || guestPlayers.every((p) => p.isReady);
 
-  // 💾 Sync local variables to localStorage for Auto Re-entry
+  // 💾 Sync character state to localStorage
   useEffect(() => {
     if (activeRoomCode) localStorage.setItem('fortress_active_room', activeRoomCode);
     localStorage.setItem('fortress_is_host', String(isHost));
     localStorage.setItem('fortress_lobby_step', lobbyStep);
     localStorage.setItem('fortress_turn_locked', String(isTurnLocked));
-  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked]);
+    if (playerPosition.x !== 0 || playerPosition.y !== 0) {
+      localStorage.setItem('fortress_player_pos', JSON.stringify(playerPosition));
+    }
+    localStorage.setItem('fortress_troops', JSON.stringify(troops));
+    localStorage.setItem('fortress_inventory', JSON.stringify(inventory));
+  }, [activeRoomCode, isHost, lobbyStep, isTurnLocked, playerPosition, troops, inventory]);
 
   // 📡 Realtime Supabase Channel
   useEffect(() => {
@@ -334,7 +349,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          // Announce presence and ask for state sync from existing players
           channel.send({
             type: 'broadcast',
             event: 'player_update',
@@ -385,13 +399,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     localStorage.removeItem('fortress_is_host');
     localStorage.removeItem('fortress_lobby_step');
     localStorage.removeItem('fortress_turn_locked');
+    localStorage.removeItem('fortress_player_pos');
+    localStorage.removeItem('fortress_troops');
+    localStorage.removeItem('fortress_inventory');
     setActiveRoomCode('');
     setIsHost(false);
     setIsTurnLocked(false);
     setLobbyStep('SELECT_MODE');
   };
 
-  // Auto advance round when all connected players are locked
+  // Auto-advance round when all connected players lock turn
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
 
@@ -439,6 +456,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
+  // Map Generation & Position Restoration
   useEffect(() => {
     if (lobbyStep !== 'GAME_STARTED') return;
 
@@ -456,36 +474,44 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    const roster = syncedPlayerList.length > 0 ? syncedPlayerList : [playerId, ...Object.keys(otherPlayers)].sort();
-    const mySlotIndex = Math.max(0, roster.indexOf(playerId));
-    const totalP = Math.max(1, roster.length);
-    const N = generatedGrid.length;
+    // 📱 Check if restoring existing player position from localStorage
+    const savedPos = localStorage.getItem('fortress_player_pos');
+    let finalSpawnPos: Position;
 
-    const cx = (N - 1) / 2;
-    const cy = (N - 1) / 2;
-    const R = Math.floor(N * 0.38);
+    if (savedPos) {
+      finalSpawnPos = JSON.parse(savedPos);
+    } else {
+      const roster = syncedPlayerList.length > 0 ? syncedPlayerList : [playerId, ...Object.keys(otherPlayers)].sort();
+      const mySlotIndex = Math.max(0, roster.indexOf(playerId));
+      const totalP = Math.max(1, roster.length);
+      const N = generatedGrid.length;
 
-    const angle = (2 * Math.PI * mySlotIndex) / totalP - Math.PI / 2;
-    const idealX = Math.max(1, Math.min(N - 2, Math.round(cx + R * Math.cos(angle))));
-    const idealY = Math.max(1, Math.min(N - 2, Math.round(cy + R * Math.sin(angle))));
+      const cx = (N - 1) / 2;
+      const cy = (N - 1) / 2;
+      const R = Math.floor(N * 0.38);
 
-    let spawnPos: Position | null = null;
-    let minDistance = Infinity;
+      const angle = (2 * Math.PI * mySlotIndex) / totalP - Math.PI / 2;
+      const idealX = Math.max(1, Math.min(N - 2, Math.round(cx + R * Math.cos(angle))));
+      const idealY = Math.max(1, Math.min(N - 2, Math.round(cy + R * Math.sin(angle))));
 
-    for (let x = 0; x < N; x++) {
-      for (let y = 0; y < N; y++) {
-        const t = generatedGrid[x][y].terrain;
-        if (t === 'PLAINS' || t === 'FOREST' || t === 'TOWN' || t === 'SANCTUARY') {
-          const dist = Math.hypot(x - idealX, y - idealY);
-          if (dist < minDistance) {
-            minDistance = dist;
-            spawnPos = { x, y };
+      let spawnPos: Position | null = null;
+      let minDistance = Infinity;
+
+      for (let x = 0; x < N; x++) {
+        for (let y = 0; y < N; y++) {
+          const t = generatedGrid[x][y].terrain;
+          if (t === 'PLAINS' || t === 'FOREST' || t === 'TOWN' || t === 'SANCTUARY') {
+            const dist = Math.hypot(x - idealX, y - idealY);
+            if (dist < minDistance) {
+              minDistance = dist;
+              spawnPos = { x, y };
+            }
           }
         }
       }
-    }
 
-    const finalSpawnPos: Position = spawnPos || { x: idealX, y: idealY };
+      finalSpawnPos = spawnPos || { x: idealX, y: idealY };
+    }
 
     const updatedGrid = generatedGrid.map((row) =>
       row.map((tile) => {
@@ -1107,7 +1133,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           <h1 style={{ fontSize: '24px', margin: '0 0 8px 0', textShadow: '0 0 10px #00ff00' }}>{t.lobbyTitle}</h1>
           <p style={{ color: '#aaa', fontSize: '13px', marginBottom: '24px' }}>{t.lobbySubtitle}</p>
 
-          {/* Commander Name & Icon Selection Input */}
           <div style={{ backgroundColor: '#111', border: '1px dashed #00ff00', padding: '16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left' }}>
             <label style={{ display: 'block', color: '#ff0', fontWeight: 'bold', marginBottom: '12px' }}>
               {t.enterNamePrompt}
