@@ -243,6 +243,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sightRadius = LogisticalEngine.calculateSightRadius(troops.scouts);
 
+  // 🛡️ Live React State Refs (Fixes Stale Closure Stat Reset Bug!)
+  const troopsRef = useRef(troops);
+  const inventoryRef = useRef(inventory);
+  const playerPositionRef = useRef(playerPosition);
+  const isTurnLockedRef = useRef(isTurnLocked);
+  const hasPendingRaidDebuffRef = useRef(hasPendingRaidDebuff);
+
+  useEffect(() => { troopsRef.current = troops; }, [troops]);
+  useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
+  useEffect(() => { playerPositionRef.current = playerPosition; }, [playerPosition]);
+  useEffect(() => { isTurnLockedRef.current = isTurnLocked; }, [isTurnLocked]);
+  useEffect(() => { hasPendingRaidDebuffRef.current = hasPendingRaidDebuff; }, [hasPendingRaidDebuff]);
+
   const sortedRoster = [playerId, ...Object.keys(otherPlayers)].sort();
   const totalPlayersCount = Math.max(1, sortedRoster.length);
   const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
@@ -349,10 +362,32 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     // Initial fetch on mount
     fetchCloudRoomState();
 
-    // 🔄 Auto-Sync Fallback: Polls Supabase Postgres every 2.5s to guarantee 100% Ready sync
-    const pollInterval = setInterval(() => {
-      fetchCloudRoomState();
-    }, 2500);
+    // ⚡ Direct Postgres DB Subscription for 100% Instant Lobby Ready Sync!
+    const dbSubscription = supabase
+      .channel(`db_players_sync_${activeRoomCode}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `room_code=eq.${activeRoomCode}` },
+        (payload) => {
+          const updatedRow = payload.new as any;
+          if (updatedRow && updatedRow.player_id !== playerId) {
+            setOtherPlayers((prev) => ({
+              ...prev,
+              [updatedRow.player_id]: {
+                id: updatedRow.player_id,
+                name: updatedRow.name,
+                icon: updatedRow.icon || '🧙‍♀️',
+                pos: { x: updatedRow.pos_x, y: updatedRow.pos_y },
+                gold: updatedRow.gold,
+                mules: updatedRow.troops?.mules || 0,
+                isReady: updatedRow.is_ready,
+                isTurnLocked: updatedRow.is_turn_locked,
+              },
+            }));
+          }
+        }
+      )
+      .subscribe();
 
     const channelName = `fortress_room_${activeRoomCode}`;
     const channel = supabase.channel(channelName, {
@@ -509,7 +544,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     channelRef.current = channel;
 
     return () => {
-      clearInterval(pollInterval);
+      supabase.removeChannel(dbSubscription);
       supabase.removeChannel(channel);
     };
   }, [activeRoomCode, roomSeed, difficulty, playerName, playerIcon, isHost]);
@@ -1298,21 +1333,26 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   };
 
   const executeEndTurnUpkeep = () => {
-    const rationUpkeep = LogisticalEngine.calculateRationUpkeep(troops.warriors);
-    let newRations = inventory.rations - rationUpkeep;
-    let newWarriors = troops.warriors;
+    // 🛡️ Always read live, up-to-the-second state from refs!
+    const activeInventory = inventoryRef.current;
+    const activeTroops = troopsRef.current;
+    const activePos = playerPositionRef.current;
+
+    const rationUpkeep = LogisticalEngine.calculateRationUpkeep(activeTroops.warriors);
+    let newRations = activeInventory.rations - rationUpkeep;
+    let newWarriors = activeTroops.warriors;
     let logMsg = `${t.logTurnEnded} ${rationUpkeep} ${t.logRations}`;
 
     if (newRations < 0) {
-      const casualties = LogisticalEngine.calculateStarvationLosses(troops.warriors);
-      newWarriors = Math.max(0, troops.warriors - casualties);
+      const casualties = LogisticalEngine.calculateStarvationLosses(activeTroops.warriors);
+      newWarriors = Math.max(0, activeTroops.warriors - casualties);
       newRations = 0;
       logMsg += ` ${t.logStarvation} ${casualties} ${t.logWarriorsLost}`;
     }
 
     let clericHealedMsg = '';
-    if (troops.clerics > 0 && newWarriors < maxWarriors) {
-      const healedWarriors = Math.min(maxWarriors, newWarriors + troops.clerics);
+    if (activeTroops.clerics > 0 && newWarriors < maxWarriors) {
+      const healedWarriors = Math.min(maxWarriors, newWarriors + activeTroops.clerics);
       if (healedWarriors > newWarriors) {
         const diff = healedWarriors - newWarriors;
         newWarriors = healedWarriors;
@@ -1320,27 +1360,27 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       }
     }
 
-    let currentInventory = { ...inventory, rations: newRations };
-    let currentTroops = { ...troops, warriors: newWarriors };
+    let currentInventory = { ...activeInventory, rations: newRations };
+    let currentTroops = { ...activeTroops, warriors: newWarriors };
     let theftLogMsg = '';
 
-    // 🧝‍♂️ 15% Volatile Elven Theft Check (Steals Sword & Deserts)
+    // 🧝‍♂️ 15% Volatile Elven Theft Check
     if (currentTroops.elves > 0 && Math.random() <= 0.15) {
       if (currentInventory.activeRelics.includes('sword' as QuestRelic)) {
         currentInventory.activeRelics = currentInventory.activeRelics.filter(r => String(r).toLowerCase() !== 'sword');
         theftLogMsg += ` ${(t as any).logElfTheft || "⚠️ Elves stole your Sword and deserted!"}`;
       }
-      currentTroops.elves = 0; // Elves desert party
+      currentTroops.elves = 0;
     }
 
-    // 🪓 15% Volatile Dwarven Theft Check (Steals 200 GP & Deserts)
+    // 🪓 15% Volatile Dwarven Theft Check
     if (currentTroops.dwarves > 0 && Math.random() <= 0.15) {
       if (currentInventory.gold > 0) {
         const stolenGold = Math.min(200, currentInventory.gold);
         currentInventory.gold = Math.max(0, currentInventory.gold - stolenGold);
         theftLogMsg += ` ${(t as any).logDwarfTheft || "⚠️ Dwarves stole 200 GP and fled!"}`;
       }
-      currentTroops.dwarves = 0; // Dwarves desert party
+      currentTroops.dwarves = 0;
     }
 
     setInventory(currentInventory);
@@ -1351,7 +1391,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     // 🗡️ Check & Apply Pending Raid Debuff (-1 MF)
     let nextMF = BASE_TURN_MF;
-    if (hasPendingRaidDebuff) {
+    if (hasPendingRaidDebuffRef.current) {
       nextMF = Math.max(1, BASE_TURN_MF - 1);
       setHasPendingRaidDebuff(false);
       logMsg += ` 🚨 Raid aftermath debuff! Movement reduced to ${nextMF} MF this round.`;
@@ -1361,8 +1401,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setIsTurnLocked(false);
     setLogs((prev) => [t.logNewTurn, logMsg + clericHealedMsg + theftLogMsg, ...prev]);
 
-    savePlayerToCloud(playerPosition, isReady, false);
-    broadcastMyState(playerPosition, isReady, false);
+    savePlayerToCloud(activePos, isReady, false);
+    broadcastMyState(activePos, isReady, false);
   };
 
   const maxGoldCapacity = StructuralGuardrails.calculateMaxGoldCapacity(troops);
