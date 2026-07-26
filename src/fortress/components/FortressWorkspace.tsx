@@ -250,6 +250,34 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const isTurnLockedRef = useRef(isTurnLocked);
   const hasPendingRaidDebuffRef = useRef(hasPendingRaidDebuff);
 
+  // ⏱️ AFK Timer for Host Protection
+  const [afkTimer, setAfkTimer] = useState<number>(0);
+
+  // ⚡ 100% Automated Turn Advance: Triggers automatically when ALL players in room are locked!
+  useEffect(() => {
+    if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
+
+    const rivals = Object.values(otherPlayers);
+    const allRivalsLocked = rivals.length > 0 && rivals.every((r) => r.isTurnLocked);
+
+    if (allRivalsLocked) {
+      executeEndTurnUpkeep();
+    }
+  }, [isTurnLocked, otherPlayers, lobbyStep]);
+
+  // ⏱️ Increment AFK Timer while waiting for locked turn
+  useEffect(() => {
+    let interval: any = null;
+    if (isTurnLocked) {
+      interval = setInterval(() => {
+        setAfkTimer((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setAfkTimer(0);
+    }
+    return () => clearInterval(interval);
+  }, [isTurnLocked]);
+
   useEffect(() => { troopsRef.current = troops; }, [troops]);
   useEffect(() => { inventoryRef.current = inventory; }, [inventory]);
   useEffect(() => { playerPositionRef.current = playerPosition; }, [playerPosition]);
@@ -1912,17 +1940,39 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           </button>
         </div>
 
-        {/* ⏳ Turn Waiting Overlay with FORCE NEXT ROUND option */}
+        {/* ⏳ Clean Automated Turn Waiting Overlay */}
         {isTurnLocked && (
           <div style={{ backgroundColor: '#1a001a', border: '1px dashed #ff00ff', color: '#ff00ff', padding: '12px', textAlign: 'center', fontSize: '12px', marginBottom: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <span>{t.waitingTurnLockMsg}</span>
-            <button
-              onClick={handleForceAdvanceTurn}
-              style={{ backgroundColor: '#ff00ff', color: '#fff', border: 'none', padding: '6px 14px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', fontSize: '11px' }}
-              title="Force next round if a player disconnects or is taking too long"
-            >
-              ⚡ FORCE NEXT ROUND
-            </button>
+            <span>
+              ⏳ TURN LOCKED ({afkTimer}s). Waiting for:{' '}
+              <strong style={{ color: '#ff3333' }}>
+                {Object.values(otherPlayers)
+                  .filter((p) => !p.isTurnLocked)
+                  .map((p) => p.name)
+                  .join(', ') || 'Processing next round...'}
+              </strong>
+            </span>
+
+            {/* 👑 Only Host can skip AFK players, and ONLY after 45s timer */}
+            {isHost && (
+              <button
+                onClick={handleForceAdvanceTurn}
+                disabled={afkTimer < 45}
+                style={{
+                  backgroundColor: afkTimer >= 45 ? '#ff3333' : '#333',
+                  color: afkTimer >= 45 ? '#fff' : '#888',
+                  border: 'none',
+                  padding: '6px 14px',
+                  fontWeight: 'bold',
+                  cursor: afkTimer >= 45 ? 'pointer' : 'not-allowed',
+                  fontFamily: 'monospace',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                }}
+              >
+                {afkTimer >= 45 ? '👑 SKIP AFK PLAYERS' : `⏳ AFK SKIP IN (${45 - afkTimer}s)`}
+              </button>
+            )}
           </div>
         )}
 
