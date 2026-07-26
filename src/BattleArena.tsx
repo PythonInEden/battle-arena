@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // 1. Initialize Cloud Connection
@@ -41,6 +41,15 @@ const IMMUTABLE_SYSTEM_BOTS = [
 // 🛠️ Retro Unicode Dice Face Map
 const DICE_ICONS = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 
+const generateRoomCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
 // 🛠️ Dynamic Image Link Generator
 const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: string, skillName?: string) => {
   const cleanClass = className.toLowerCase().trim();
@@ -60,7 +69,7 @@ const LANG = {
     nameInputLabel: "Your Player Name:",
     nameInputPlace: "Type your real name...",
     selectLabel: "Choose a Character:",
-    claimBtn: "Claim Hero & Join Game",
+    claimBtn: "Claim Hero & Join Room",
     releaseBtn: "Leave Slot / Change Hero",
     createTitle: "Create New Character",
     namePlace: "Enter hero name...",
@@ -105,7 +114,16 @@ const LANG = {
     statusOpponentLocked: "⚡ Opponent is Ready!",
     chargesLeft: "Uses Left:",
     outOfCharges: "DEPLETED",
-    onCooldown: "COOLDOWN (1 R)"
+    onCooldown: "COOLDOWN (1 R)",
+    createRoomBtn: "🏰 CREATE TOURNAMENT ROOM",
+    enterRoomCodePrompt: "ENTER 4-LETTER ROOM CODE:",
+    joinBtnText: "⚔️ JOIN ROOM",
+    hostBadge: "👑 ROOM HOST",
+    guestBadge: "⚔️ PLAYER",
+    launchTournamentBtn: "🚀 LAUNCH TOURNAMENT (HOST ONLY)",
+    waitingForHostLaunch: "⏳ Waiting for Host to start the tournament...",
+    needMorePlayers: "⚠️ Need at least 2 claimed heroes ready to launch!",
+    roomCodeLabel: "ROOM CODE:"
   },
   vi: {
     title: "⚔️ ĐẤU TRƯỜNG ANH HÙNG ⚔️",
@@ -159,7 +177,16 @@ const LANG = {
     statusOpponentLocked: "⚡ Đối thủ đã sẵn sàng!",
     chargesLeft: "Lượt dùng:",
     outOfCharges: "HẾT LƯỢT",
-    onCooldown: "ĐỜI CHIÊU (1 H)"
+    onCooldown: "ĐỜI CHIÊU (1 H)",
+    createRoomBtn: "🏰 TẠO PHÒNG ĐẤU TRƯỜNG",
+    enterRoomCodePrompt: "NHẬP MÃ PHÒNG (4 KÝ TỰ):",
+    joinBtnText: "⚔️ VÀO PHÒNG",
+    hostBadge: "👑 CHỦ PHÒNG",
+    guestBadge: "⚔️ ĐẤU SĨ",
+    launchTournamentBtn: "🚀 BẮT ĐẦU GIẢI ĐẤU (CHỦ PHÒNG)",
+    waitingForHostLaunch: "⏳ Đang chờ Chủ Phòng kích hoạt giải đấu...",
+    needMorePlayers: "⚠️ Cần ít nhất 2 tướng đã sẵn sàng để bắt đầu!",
+    roomCodeLabel: "MÃ PHÒNG:"
   }
 };
 
@@ -229,7 +256,26 @@ export function BattleArena() {
   const [locale, setLocale] = useState<'en' | 'vi'>('vi');
   const [characters, setCharacters] = useState<DBCharacter[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
-  
+
+  // 🏰 ROOM & HOSTING STATES (Inspired by FortressWorkspace)
+  const [activeRoomCode, setActiveRoomCode] = useState<string>(() => {
+    return sessionStorage.getItem('arena_active_room') || '';
+  });
+
+  const [isHost, setIsHost] = useState<boolean>(() => {
+    return sessionStorage.getItem('arena_is_host') === 'true';
+  });
+
+  const [lobbyStep, setLobbyStep] = useState<'SELECT_MODE' | 'IN_LOBBY' | 'GAME_STARTED'>(() => {
+    const savedStep = sessionStorage.getItem('arena_lobby_step');
+    if (savedStep === 'GAME_STARTED' || savedStep === 'IN_LOBBY') {
+      return savedStep as any;
+    }
+    return 'SELECT_MODE';
+  });
+
+  const [roomCodeInput, setRoomCodeInput] = useState<string>('');
+
   const [currentPlayerName, setCurrentPlayerName] = useState<string>(() => {
     return sessionStorage.getItem('forest_game_username') || '';
   });
@@ -262,10 +308,18 @@ export function BattleArena() {
   }>>({});
 
   const [playerActions, setPlayerActions] = useState<Record<string, string>>({});
+  const channelRef = useRef<any>(null);
 
   const t = LANG[locale];
   const totalPointsSpent = might + vitality + reflex;
   const pointsLeft = 10 - totalPointsSpent;
+
+  // Persist session variables
+  useEffect(() => {
+    if (activeRoomCode) sessionStorage.setItem('arena_active_room', activeRoomCode);
+    sessionStorage.setItem('arena_is_host', String(isHost));
+    sessionStorage.setItem('arena_lobby_step', lobbyStep);
+  }, [activeRoomCode, isHost, lobbyStep]);
 
   const fetchCharacters = async () => {
     const { data } = await supabase.from('characters').select('*').order('id', { ascending: false });
@@ -276,7 +330,7 @@ export function BattleArena() {
     .filter(c => c.assigned_to !== null && c.assigned_to !== '')
     .sort((a, b) => (a.assigned_to || '').localeCompare(b.assigned_to || ''));
 
-  const isTournamentActive = activeClaimed.length > 0 && activeClaimed.every(c => c.is_ready === true);
+  const allClaimedAreReady = activeClaimed.length >= 2 && activeClaimed.every(c => c.is_ready === true);
   const myClaimedCharacter = characters.find(c => c.assigned_to === currentPlayerName && currentPlayerName !== '');
   const currentlyBrowsingCharacter = characters.find(c => c.id.toString() === selectedCharId);
 
@@ -303,13 +357,90 @@ export function BattleArena() {
     };
   };
 
+  // 🏰 ROOM MANAGEMENT HANDLERS
+  const handleCreateRoom = () => {
+    const code = generateRoomCode();
+    setIsHost(true);
+    setActiveRoomCode(code);
+    setLobbyStep('IN_LOBBY');
+  };
+
+  const handleJoinRoom = () => {
+    const trimmed = roomCodeInput.trim().toUpperCase();
+    if (trimmed.length < 4) return alert("Please enter a valid 4-letter Room Code!");
+    setIsHost(false);
+    setActiveRoomCode(trimmed);
+    setLobbyStep('IN_LOBBY');
+  };
+
+  const handleLeaveRoom = () => {
+    sessionStorage.removeItem('arena_active_room');
+    sessionStorage.removeItem('arena_is_host');
+    sessionStorage.removeItem('arena_lobby_step');
+    setActiveRoomCode('');
+    setIsHost(false);
+    setLobbyStep('SELECT_MODE');
+  };
+
+  // 🚀 HOST EXPLICIT LAUNCH TRIGGER
+  const handleHostLaunchTournament = async () => {
+    if (!isHost) return;
+    if (!allClaimedAreReady) return alert(t.needMorePlayers);
+
+    setLobbyStep('GAME_STARTED');
+
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'start_tournament_trigger',
+        payload: { roomCode: activeRoomCode }
+      });
+    }
+  };
+
   // 🧹 EMERGENCY RESET LOBBY FUNCTION
   const handleResetLobby = async () => {
     await supabase.from('characters').update({ is_ready: false, assigned_to: null }).neq('id', 0);
     await supabase.from('matches').delete().neq('p1_hp', -999);
     setArenaState({});
+    setLobbyStep('IN_LOBBY');
     await fetchCharacters();
+
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'reset_tournament_trigger',
+        payload: {}
+      });
+    }
   };
+
+  // 📡 REALTIME BROADCAST & ROOM CHANNEL (Fortress-style)
+  useEffect(() => {
+    if (!activeRoomCode) return;
+
+    const roomChannelName = `arena_room_${activeRoomCode}`;
+    const channel = supabase.channel(roomChannelName, {
+      config: { broadcast: { self: false } }
+    });
+
+    channel
+      .on('broadcast', { event: 'start_tournament_trigger' }, () => {
+        setLobbyStep('GAME_STARTED');
+      })
+      .on('broadcast', { event: 'reset_tournament_trigger' }, () => {
+        setArenaState({});
+        setLobbyStep('IN_LOBBY');
+        fetchCharacters();
+      })
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeRoomCode]);
 
   // ⚡ AUTOMATED DICE ROLLING ENGINE
   const autoTriggerCombatRound = async (matchRow: any, p1: Combatant, p2: Combatant) => {
@@ -380,7 +511,7 @@ export function BattleArena() {
     }, 1500);
   };
 
-  // 📡 CONTINUOUS 1-SECOND POLLING & REALTIME MATCH LISTENER
+  // 📡 CONTINUOUS AUTO-POLLING WHILE GAME STARTED
   useEffect(() => {
     const fetchActiveMatches = async () => {
       const { data } = await supabase.from('matches').select('*');
@@ -410,12 +541,12 @@ export function BattleArena() {
       }
     };
 
-    if (isTournamentActive) {
+    if (lobbyStep === 'GAME_STARTED') {
       fetchActiveMatches();
-      const interval = setInterval(fetchActiveMatches, 1000); // 1-second auto-poll to prevent F5 refresh requirement
+      const interval = setInterval(fetchActiveMatches, 1000);
       return () => clearInterval(interval);
     }
-  }, [isTournamentActive]);
+  }, [lobbyStep]);
 
   useEffect(() => {
     const matchesChannel = supabase
@@ -469,7 +600,7 @@ export function BattleArena() {
 
   // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE
   const computeTournamentStages = () => {
-    if (!isTournamentActive || activeClaimed.length === 0) return [];
+    if (lobbyStep !== 'GAME_STARTED' || activeClaimed.length === 0) return [];
 
     const stages: Array<{
       stageIndex: number;
@@ -543,7 +674,7 @@ export function BattleArena() {
 
   // 🚀 AUTOMATED STAGE SEEDING EFFECT
   useEffect(() => {
-    if (!isTournamentActive || computedStages.length === 0) return;
+    if (lobbyStep !== 'GAME_STARTED' || computedStages.length === 0) return;
 
     const seedActiveStageMatches = async () => {
       for (const stage of computedStages) {
@@ -576,7 +707,7 @@ export function BattleArena() {
     };
 
     seedActiveStageMatches();
-  }, [isTournamentActive, computedStages, locale]);
+  }, [lobbyStep, computedStages, locale]);
 
   useEffect(() => {
     fetchCharacters();
@@ -640,7 +771,7 @@ export function BattleArena() {
 
   const handleClaim = async () => {
     if (!selectedCharId || !currentPlayerName) return;
-    if (isTournamentActive) return alert(t.lobbyLockAlert);
+    if (lobbyStep === 'GAME_STARTED') return alert(t.lobbyLockAlert);
     await supabase.from('characters').update({ assigned_to: currentPlayerName, is_ready: false }).eq('id', selectedCharId);
     setSelectedCharId('');
     await fetchCharacters(); 
@@ -708,16 +839,14 @@ export function BattleArena() {
     }
   };
 
-  // Helper to calculate Skill Usage Charges & Cooldowns
   const getSkillStatus = (matchLogs: string[], fighterName: string, skillName: string, _currentRound: number) => {
     const skillLogs = matchLogs.filter(log => log.includes(fighterName) && log.includes(`[${skillName}]`));
     const timesUsed = skillLogs.length;
-    const chargesLeft = Math.max(0, 2 - timesUsed); // 2 Max Uses per match
+    const chargesLeft = Math.max(0, 2 - timesUsed);
 
     let isOnCooldown = false;
     if (matchLogs.length > 0) {
       const lastLog = matchLogs[0];
-      // Check if used in the immediately preceding round
       if (lastLog.includes(fighterName) && lastLog.includes(`[${skillName}]`)) {
         isOnCooldown = true;
       }
@@ -726,15 +855,69 @@ export function BattleArena() {
     return { chargesLeft, isOnCooldown, isDepleted: chargesLeft <= 0 };
   };
 
+  // =========================================================================
+  // 🏰 STEP 1: ROOM SELECTION & CREATION SCREEN (Fortress-style)
+  // =========================================================================
+  if (lobbyStep === 'SELECT_MODE') {
+    return (
+      <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', minHeight: '100vh', width: '100%', boxSizing: 'border-box', padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: '500px', backgroundColor: '#050505', border: '3px solid #0f0', borderRadius: '12px', padding: '30px', textAlign: 'center', boxSizing: 'border-box' }}>
+          <h1 style={{ fontSize: '26px', margin: '0 0 10px 0', textShadow: '0 0 10px #0f0' }}>{t.title}</h1>
+          <p style={{ color: '#888', fontSize: '14px', marginBottom: '25px' }}>{t.sub}</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
+            <button
+              onClick={handleCreateRoom}
+              style={{ backgroundColor: '#0f0', color: '#000', border: 'none', padding: '16px 32px', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '8px', width: '100%' }}
+            >
+              {t.createRoomBtn}
+            </button>
+
+            <div style={{ color: '#666', fontSize: '13px' }}>— OR JOIN ROOM —</div>
+
+            <div style={{ backgroundColor: '#111', border: '1px solid #00ffff', padding: '20px', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }}>
+              <label style={{ display: 'block', color: '#00ffff', fontSize: '13px', marginBottom: '10px', fontWeight: 'bold' }}>
+                {t.enterRoomCodePrompt}
+              </label>
+              <input
+                type="text"
+                maxLength={4}
+                value={roomCodeInput}
+                onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                placeholder="ABCD"
+                style={{ backgroundColor: '#000', color: '#00ffff', border: '1px solid #00ffff', padding: '10px', textAlign: 'center', fontSize: '22px', fontFamily: 'monospace', fontWeight: 'bold', width: '140px', letterSpacing: '4px', marginBottom: '15px' }}
+              />
+              <button
+                onClick={handleJoinRoom}
+                disabled={roomCodeInput.trim().length < 4}
+                style={{ backgroundColor: roomCodeInput.trim().length >= 4 ? '#00ffff' : '#222', color: roomCodeInput.trim().length >= 4 ? '#000' : '#666', border: 'none', padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: roomCodeInput.trim().length >= 4 ? 'pointer' : 'not-allowed', fontFamily: 'monospace', borderRadius: '6px', width: '100%' }}
+              >
+                {t.joinBtnText}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 🎮 MAIN ARENA & LOBBY VIEW
+  // =========================================================================
   return (
     <div style={{ backgroundColor: '#000', color: '#0f0', fontFamily: 'monospace', width: '100%', boxSizing: 'border-box', padding: '20px' }}>
       
-      <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f0', paddingBottom: '10px', marginBottom: '20px' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f0', paddingBottom: '10px', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h1 style={{ margin: 0 }}>{t.title}</h1>
-          <p style={{ color: '#888', margin: '5px 0 0 0' }}>{t.sub}</p>
+          <p style={{ color: '#888', margin: '5px 0 0 0' }}>
+            {t.roomCodeLabel} <strong style={{ color: '#ff0', letterSpacing: '2px' }}>{activeRoomCode}</strong> | {isHost ? t.hostBadge : t.guestBadge}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button onClick={handleLeaveRoom} style={{ backgroundColor: '#222', color: '#aaa', border: '1px solid #555', height: '40px', padding: '0 15px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '12px' }}>
+            🚪 LEAVE ROOM
+          </button>
           <button onClick={handleResetLobby} style={{ background: '#ff3333', color: '#fff', fontWeight: 'bold', cursor: 'pointer', height: '40px', padding: '0 15px', border: 'none', borderRadius: '4px' }}>
             {t.resetLobbyBtn}
           </button>
@@ -744,7 +927,7 @@ export function BattleArena() {
         </div>
       </header>
 
-      {/* REGISTRATION SYSTEM */}
+      {/* REGISTRATION & CHARACTER CLAIM SYSTEM */}
       <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #0f0', backgroundColor: '#050505' }}>
         {!currentPlayerName ? (
           <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -795,17 +978,45 @@ export function BattleArena() {
         )}
       </section>
 
-      {/* READY CHECK ROOM */}
-      {activeClaimed.length > 0 && !isTournamentActive && (
+      {/* READY CHECK ROOM & HOST LAUNCH CONTROL */}
+      {activeClaimed.length > 0 && lobbyStep !== 'GAME_STARTED' && (
         <section style={{ margin: '20px 0', padding: '20px', border: '1px dashed #ff0', backgroundColor: '#0a0a00' }}>
           <h3 style={{ color: '#ff0', marginTop: 0 }}>{t.waitingRoomTitle}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
             {activeClaimed.map(c => (
               <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #220', paddingBottom: '8px' }}>
                 <span style={{ color: '#fff' }}>👤 <strong>@{c.assigned_to}</strong> leading <strong>{c.name}</strong> ({c.job_class})</span>
                 <span style={{ color: c.is_ready ? '#0f0' : '#ff3333', fontWeight: 'bold' }}>{c.is_ready ? `[ ${t.statusReady} ]` : `[ ${t.statusWaiting} ]`}</span>
               </div>
             ))}
+          </div>
+
+          {/* 🚀 HOST MASTER LAUNCH CONTROLLER */}
+          <div style={{ textAlign: 'center', borderTop: '1px dashed #ff0', paddingTop: '15px' }}>
+            {isHost ? (
+              <button
+                onClick={handleHostLaunchTournament}
+                disabled={!allClaimedAreReady}
+                style={{
+                  backgroundColor: allClaimedAreReady ? '#0f0' : '#222',
+                  color: allClaimedAreReady ? '#000' : '#666',
+                  border: 'none',
+                  padding: '14px 35px',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: allClaimedAreReady ? 'pointer' : 'not-allowed',
+                  fontFamily: 'monospace',
+                  borderRadius: '6px'
+                }}
+              >
+                {allClaimedAreReady ? t.launchTournamentBtn : t.needMorePlayers}
+              </button>
+            ) : (
+              <div style={{ color: '#ff0', fontStyle: 'italic', fontSize: '14px' }}>
+                {t.waitingForHostLaunch}
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -822,7 +1033,7 @@ export function BattleArena() {
       )}
 
       {/* TOURNAMENT DYNAMIC STAGES BRACKET INTERFACE */}
-      {isTournamentActive && computedStages.length > 0 && (
+      {lobbyStep === 'GAME_STARTED' && computedStages.length > 0 && (
         <section style={{ margin: '30px 0', padding: '20px', border: '2px solid #0f0', backgroundColor: '#020a02' }}>
           <h2 style={{ fontFamily: 'monospace', textAlign: 'center', color: '#fff', letterSpacing: '2px', marginBottom: '30px' }}>{t.arenaTitle}</h2>
 
@@ -939,7 +1150,7 @@ export function BattleArena() {
                           </div>
                         </div>
 
-                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (WITH CHARGE & COOLDOWN CONTROLS) */}
+                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
                         {!liveState.winner && !liveState.isRolling && (isMyP1 || isMyP2) && (
                           <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                             <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
@@ -1028,7 +1239,7 @@ export function BattleArena() {
       )}
 
       {/* CREATE HERO SECTION */}
-      {!myClaimedCharacter && !isTournamentActive && (
+      {!myClaimedCharacter && lobbyStep !== 'GAME_STARTED' && (
         <section style={{ border: '1px solid #0f0', padding: '20px', maxWidth: '800px', marginBottom: '30px' }}>
           <h2>[ {t.createTitle} ]</h2>
           <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
