@@ -355,19 +355,33 @@ export function BattleArena() {
     };
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     const code = generateRoomCode();
     setIsHost(true);
     setActiveRoomCode(code);
     setLobbyStep('IN_LOBBY');
+
+    await supabase.from('game_sessions').upsert({
+      room_code: code,
+      host_id: currentPlayerName || 'Host',
+      status: 'LOBBY'
+    });
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
     if (trimmed.length < 4) return alert("Please enter a valid 4-letter Room Code!");
-    setIsHost(false);
+    
+    const { data: session } = await supabase
+      .from('game_sessions')
+      .select('host_id, status')
+      .eq('room_code', trimmed)
+      .maybeSingle();
+
+    const amIHost = session ? session.host_id === currentPlayerName : false;
+    setIsHost(amIHost);
     setActiveRoomCode(trimmed);
-    setLobbyStep('IN_LOBBY');
+    setLobbyStep(session && session.status === 'GAME_STARTED' ? 'GAME_STARTED' : 'IN_LOBBY');
   };
 
   const handleLeaveRoom = () => {
@@ -385,6 +399,11 @@ export function BattleArena() {
 
     setLobbyStep('GAME_STARTED');
 
+    await supabase.from('game_sessions').upsert({
+      room_code: activeRoomCode,
+      status: 'GAME_STARTED'
+    });
+
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
@@ -397,6 +416,8 @@ export function BattleArena() {
   const handleResetLobby = async () => {
     await supabase.from('characters').update({ is_ready: false, assigned_to: null }).neq('id', 0);
     await supabase.from('matches').delete().neq('p1_hp', -999);
+    await supabase.from('game_sessions').update({ status: 'LOBBY' }).eq('room_code', activeRoomCode);
+    
     setArenaState({});
     setLobbyStep('IN_LOBBY');
     await fetchCharacters();
@@ -440,7 +461,7 @@ export function BattleArena() {
     };
   }, [activeRoomCode]);
 
-  // ⚡ AUTOMATED DICE ROLLING ENGINE
+  // ⚡ AUTOMATED DICE ROLLING ENGINE (WITH DYNAMIC LOCALIZED LOGS)
   const autoTriggerCombatRound = async (matchRow: any, p1: Combatant, p2: Combatant) => {
     await supabase.from('matches').update({ is_rolling: true }).eq('id', matchRow.id);
 
@@ -464,21 +485,40 @@ export function BattleArena() {
       const resolveStrike = (attacker: Combatant, _defender: Combatant, actionStr: string, defenseActive: boolean) => {
         let baseDamage = Math.floor(Math.random() * 10) + 1 + attacker.might;
         let logMsg = ""; let healVal = 0;
+
         if (actionStr === 'defend') {
-          return { dmg: 0, heal: 0, isHeal: false, log: `${attacker.name} chọn Thủ Thế Toàn Diện.` };
+          const defMsg = locale === 'vi' 
+            ? `🛡️ ${attacker.name} chọn Thủ Thế Toàn Diện.` 
+            : `🛡️ ${attacker.name} chooses Defend Stance.`;
+          return { dmg: 0, heal: 0, isHeal: false, log: defMsg };
         }
+
         if (actionStr.startsWith('skill')) {
           const idx = parseInt(actionStr.replace('skill', ''));
           const skillName = attacker.skills[idx] || "Basic Strike";
           if (skillName === "Second Wind" || skillName === "Holy Heal" || skillName === "Lay on Hands") {
             healVal = 10 + attacker.might;
-            return { dmg: 0, heal: healVal, isHeal: true, log: `💖 ${attacker.name} dùng [${skillName}] (+${healVal} HP)` };
+            const healMsg = locale === 'vi'
+              ? `💖 ${attacker.name} dùng [${skillName}] (+${healVal} HP)`
+              : `💖 ${attacker.name} uses [${skillName}] (+${healVal} HP)`;
+            return { dmg: 0, heal: healVal, isHeal: true, log: healMsg };
           }
           if (["Heavy Slash", "Double Strafe", "Fireball", "Stealth Strike"].includes(skillName)) baseDamage *= 2;
-          logMsg = `🔥 ${attacker.name} tung [${skillName}]!`;
-        } else { logMsg = `⚔️ ${attacker.name} Tấn Công Thường.`; }
-        if (defenseActive) { baseDamage = Math.max(1, Math.floor(baseDamage / 2)); logMsg += " (Bị giảm nửa giáp)"; }
-        logMsg += ` Gây ${baseDamage} DMG.`;
+          logMsg = locale === 'vi' 
+            ? `🔥 ${attacker.name} tung [${skillName}]!` 
+            : `🔥 ${attacker.name} unleashes [${skillName}]!`;
+        } else { 
+          logMsg = locale === 'vi' 
+            ? `⚔️ ${attacker.name} Tấn Công Thường.` 
+            : `⚔️ ${attacker.name} strikes with a Basic Attack.`; 
+        }
+
+        if (defenseActive) { 
+          baseDamage = Math.max(1, Math.floor(baseDamage / 2)); 
+          logMsg += locale === 'vi' ? " (Bị giảm nửa giáp)" : " (Mitigated by defense)"; 
+        }
+
+        logMsg += locale === 'vi' ? ` Gây ${baseDamage} SÁT THƯƠNG.` : ` Dealt ${baseDamage} DMG.`;
         return { dmg: baseDamage, heal: 0, isHeal: false, log: logMsg };
       };
 
@@ -509,42 +549,61 @@ export function BattleArena() {
     }, 1500);
   };
 
-  // 📡 CONTINUOUS AUTO-POLLING WHILE GAME STARTED
+  // 📡 CONTINUOUS 1-SECOND LOBBY & TOURNAMENT POLLING (Guarantees Instant Transition)
   useEffect(() => {
-    const fetchActiveMatches = async () => {
-      const { data } = await supabase.from('matches').select('*');
-      if (data && data.length > 0) {
-        const map: Record<string, any> = {};
-        data.forEach((m: any) => {
-          const key = `match_${m.p1_char_id}_vs_${m.p2_char_id}`;
-          map[key] = {
-            id: m.id,
-            hp1: m.p1_hp,
-            hp2: m.p2_hp,
-            round: m.round_number,
-            logs: m.logs || [],
-            winner: m.winner,
-            isRolling: m.is_rolling,
-            displayDice1: m.dice1,
-            displayDice2: m.dice2,
-            p1_action: m.p1_action,
-            p2_action: m.p2_action,
-            p1_char_id: m.p1_char_id,
-            p2_char_id: m.p2_char_id,
-            player1_name: m.player1_name,
-            player2_name: m.player2_name
-          };
-        });
-        setArenaState(prev => ({ ...prev, ...map }));
+    const checkRoomAndMatches = async () => {
+      if (!activeRoomCode) return;
+
+      // Check database status for session auto-start
+      const { data: session } = await supabase
+        .from('game_sessions')
+        .select('status, host_id')
+        .eq('room_code', activeRoomCode)
+        .maybeSingle();
+
+      if (session) {
+        if (session.status === 'GAME_STARTED' && lobbyStep !== 'GAME_STARTED') {
+          setLobbyStep('GAME_STARTED');
+        }
+        if (session.host_id) {
+          setIsHost(session.host_id === currentPlayerName);
+        }
+      }
+
+      // Check matches if game started
+      if (lobbyStep === 'GAME_STARTED') {
+        const { data } = await supabase.from('matches').select('*');
+        if (data && data.length > 0) {
+          const map: Record<string, any> = {};
+          data.forEach((m: any) => {
+            const key = `match_${m.p1_char_id}_vs_${m.p2_char_id}`;
+            map[key] = {
+              id: m.id,
+              hp1: m.p1_hp,
+              hp2: m.p2_hp,
+              round: m.round_number,
+              logs: m.logs || [],
+              winner: m.winner,
+              isRolling: m.is_rolling,
+              displayDice1: m.dice1,
+              displayDice2: m.dice2,
+              p1_action: m.p1_action,
+              p2_action: m.p2_action,
+              p1_char_id: m.p1_char_id,
+              p2_char_id: m.p2_char_id,
+              player1_name: m.player1_name,
+              player2_name: m.player2_name
+            };
+          });
+          setArenaState(prev => ({ ...prev, ...map }));
+        }
       }
     };
 
-    if (lobbyStep === 'GAME_STARTED') {
-      fetchActiveMatches();
-      const interval = setInterval(fetchActiveMatches, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [lobbyStep]);
+    checkRoomAndMatches();
+    const interval = setInterval(checkRoomAndMatches, 1000);
+    return () => clearInterval(interval);
+  }, [activeRoomCode, lobbyStep, currentPlayerName]);
 
   useEffect(() => {
     const matchesChannel = supabase
@@ -557,6 +616,11 @@ export function BattleArena() {
             const match = payload.new as any;
             const matchId = `match_${match.p1_char_id}_vs_${match.p2_char_id}`;
             
+            // Auto transition screen on receiving match payload
+            if (lobbyStep !== 'GAME_STARTED') {
+              setLobbyStep('GAME_STARTED');
+            }
+
             setArenaState((prev: any) => ({
               ...prev,
               [matchId]: {
@@ -594,7 +658,7 @@ export function BattleArena() {
     return () => {
       supabase.removeChannel(matchesChannel);
     };
-  }, [currentPlayerName, characters]);
+  }, [currentPlayerName, characters, lobbyStep]);
 
   // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE
   const computeTournamentStages = () => {
@@ -707,11 +771,9 @@ export function BattleArena() {
     seedActiveStageMatches();
   }, [lobbyStep, computedStages, locale]);
 
-  // 📡 LOBBY CHARACTER SUBSCRIPTION WITH 2-SECOND HEARTBEAT AUTO-POLL (Fixes iPad Desync)
+  // 📡 LOBBY CHARACTER SUBSCRIPTION WITH 2-SECOND HEARTBEAT AUTO-POLL
   useEffect(() => {
     fetchCharacters();
-
-    // 2-second heartbeat auto-poll to guarantee iPad sync even if mobile Safari pauses WebSockets
     const interval = setInterval(fetchCharacters, 2000);
 
     const channel = supabase
@@ -809,7 +871,6 @@ export function BattleArena() {
     await supabase.from('characters').update({ is_ready: !currentReadyState }).eq('id', charId);
     await fetchCharacters();
 
-    // Broadcast ready status toggle to all room members immediately
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
