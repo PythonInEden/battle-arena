@@ -257,7 +257,6 @@ export function BattleArena() {
   const [characters, setCharacters] = useState<DBCharacter[]>([]);
   const [selectedCharId, setSelectedCharId] = useState<string>('');
 
-  // 🏰 ROOM & HOSTING STATES (Inspired by FortressWorkspace)
   const [activeRoomCode, setActiveRoomCode] = useState<string>(() => {
     return sessionStorage.getItem('arena_active_room') || '';
   });
@@ -314,7 +313,6 @@ export function BattleArena() {
   const totalPointsSpent = might + vitality + reflex;
   const pointsLeft = 10 - totalPointsSpent;
 
-  // Persist session variables
   useEffect(() => {
     if (activeRoomCode) sessionStorage.setItem('arena_active_room', activeRoomCode);
     sessionStorage.setItem('arena_is_host', String(isHost));
@@ -357,7 +355,6 @@ export function BattleArena() {
     };
   };
 
-  // 🏰 ROOM MANAGEMENT HANDLERS
   const handleCreateRoom = () => {
     const code = generateRoomCode();
     setIsHost(true);
@@ -382,7 +379,6 @@ export function BattleArena() {
     setLobbyStep('SELECT_MODE');
   };
 
-  // 🚀 HOST EXPLICIT LAUNCH TRIGGER
   const handleHostLaunchTournament = async () => {
     if (!isHost) return;
     if (!allClaimedAreReady) return alert(t.needMorePlayers);
@@ -398,7 +394,6 @@ export function BattleArena() {
     }
   };
 
-  // 🧹 EMERGENCY RESET LOBBY FUNCTION
   const handleResetLobby = async () => {
     await supabase.from('characters').update({ is_ready: false, assigned_to: null }).neq('id', 0);
     await supabase.from('matches').delete().neq('p1_hp', -999);
@@ -415,7 +410,7 @@ export function BattleArena() {
     }
   };
 
-  // 📡 REALTIME BROADCAST & ROOM CHANNEL (Fortress-style)
+  // 📡 REALTIME BROADCAST & ROOM CHANNEL (With Immediate Ready Change Listener)
   useEffect(() => {
     if (!activeRoomCode) return;
 
@@ -431,6 +426,9 @@ export function BattleArena() {
       .on('broadcast', { event: 'reset_tournament_trigger' }, () => {
         setArenaState({});
         setLobbyStep('IN_LOBBY');
+        fetchCharacters();
+      })
+      .on('broadcast', { event: 'character_ready_changed' }, () => {
         fetchCharacters();
       })
       .subscribe();
@@ -709,15 +707,24 @@ export function BattleArena() {
     seedActiveStageMatches();
   }, [lobbyStep, computedStages, locale]);
 
+  // 📡 LOBBY CHARACTER SUBSCRIPTION WITH 2-SECOND HEARTBEAT AUTO-POLL (Fixes iPad Desync)
   useEffect(() => {
     fetchCharacters();
+
+    // 2-second heartbeat auto-poll to guarantee iPad sync even if mobile Safari pauses WebSockets
+    const interval = setInterval(fetchCharacters, 2000);
+
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, () => {
         fetchCharacters();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    return () => { 
+      clearInterval(interval);
+      supabase.removeChannel(channel); 
+    };
   }, []);
 
   // 🧹 AUTO-RELEASE HERO ON CLOSE / REFRESH / NAVIGATE AWAY
@@ -775,16 +782,41 @@ export function BattleArena() {
     await supabase.from('characters').update({ assigned_to: currentPlayerName, is_ready: false }).eq('id', selectedCharId);
     setSelectedCharId('');
     await fetchCharacters(); 
+
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'character_ready_changed',
+        payload: {}
+      });
+    }
   };
 
   const handleRelease = async (charId: number) => {
     await supabase.from('characters').update({ assigned_to: null, is_ready: false }).eq('id', charId);
     await fetchCharacters();
+
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'character_ready_changed',
+        payload: {}
+      });
+    }
   };
 
   const handleToggleReady = async (charId: number, currentReadyState: boolean) => {
     await supabase.from('characters').update({ is_ready: !currentReadyState }).eq('id', charId);
     await fetchCharacters();
+
+    // Broadcast ready status toggle to all room members immediately
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'character_ready_changed',
+        payload: {}
+      });
+    }
   };
 
   const handleDeleteCharacter = async (charId: number, createdBy: string | null) => {
@@ -803,7 +835,6 @@ export function BattleArena() {
     }
   };
 
-  // 🔒 LOCK IN ACTION & MARK ROUND AS READY
   const handleLockAction = async (p1: Combatant, p2: Combatant, chosenAction: string) => {
     const isP1 = currentPlayerName === p1.assigned_to;
     const isP2 = currentPlayerName === p2.assigned_to;
@@ -856,7 +887,7 @@ export function BattleArena() {
   };
 
   // =========================================================================
-  // 🏰 STEP 1: ROOM SELECTION & CREATION SCREEN (Fortress-style)
+  // 🏰 STEP 1: ROOM SELECTION & CREATION SCREEN
   // =========================================================================
   if (lobbyStep === 'SELECT_MODE') {
     return (
@@ -1150,7 +1181,7 @@ export function BattleArena() {
                           </div>
                         </div>
 
-                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL */}
+                        {/* 🕹️ TACTICAL ABILITIES CONTROL PANEL (WITH CHARGE & COOLDOWN CONTROLS) */}
                         {!liveState.winner && !liveState.isRolling && (isMyP1 || isMyP2) && (
                           <div style={{ marginTop: '15px', border: '1px solid #0f0', padding: '15px', backgroundColor: '#050505', borderRadius: '4px' }}>
                             <span style={{ display: 'block', color: '#fff', fontWeight: 'bold', marginBottom: '10px', fontSize: '13px' }}>{t.deckTitle}</span>
