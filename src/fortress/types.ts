@@ -34,6 +34,8 @@ export interface PlayerInventory {
   gold: number;
   rations: number;
   hasRaft: boolean;
+  hasHammerOfThor?: boolean;
+  hasTalismanOfSpeed?: boolean;
   activeRelics: QuestRelic[];
   scrollsTeleport: number;
   scrollsSeeing: number;

@@ -141,7 +141,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [maxWarriors, setMaxWarriors] = useState<number>(30);
 
   const [inventory, setInventory] = useState<PlayerInventory>({
-    gold: 300, rations: 20, hasRaft: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0
+    gold: 300, rations: 20, hasRaft: false, hasHammerOfThor: false, hasTalismanOfSpeed: false, activeRelics: [], scrollsTeleport: 0, scrollsSeeing: 0, scrollsSeeking: 0
   });
 
   const [roomCodeInput, setRoomCodeInput] = useState<string>('');
@@ -155,7 +155,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [isDebugUnlocked, setIsDebugUnlocked] = useState<boolean>(false);
   const [showDebugPasswordModal, setShowDebugPasswordModal] = useState<boolean>(false);
   const [debugPasswordInput, setDebugPasswordInput] = useState<string>('');
-  const DEV_PASSCODE = '1234';
+  const DEV_PASSCODE = '6378';
 
   const [otherPlayers, setOtherPlayers] = useState<Record<string, { 
     id: string; 
@@ -1371,6 +1371,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     let newWarriors = activeTroops.warriors;
     let logMsg = `${t.logTurnEnded} ${rationUpkeep} ${t.logRations}`;
 
+    // ⚡ Talisman of Speed (+1 Movement Factor per turn)[cite: 5]
+    const baseTurnMF = activeInventory.hasTalismanOfSpeed ? (BASE_TURN_MF + 1) : BASE_TURN_MF;
+
     if (newRations < 0) {
       const casualties = LogisticalEngine.calculateStarvationLosses(activeTroops.warriors);
       newWarriors = Math.max(0, activeTroops.warriors - casualties);
@@ -1392,18 +1395,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     let currentTroops = { ...activeTroops, warriors: newWarriors };
     let theftLogMsg = '';
 
-    // 🧝‍♂️ 15% Volatile Elven Theft Check
+    // 🧝‍♂️ 15% Volatile Elven Theft Check (Steals Talisman of Speed or Sword of Strength)[cite: 1, 11]
     if (currentTroops.elves > 0 && Math.random() <= 0.15) {
-      if (currentInventory.activeRelics.includes('sword' as QuestRelic)) {
+      if (currentInventory.hasTalismanOfSpeed) {
+        currentInventory.hasTalismanOfSpeed = false;
+        theftLogMsg += ` ⚠️ ELVEN DESERTION! Your volatile Elves stole your ⚡ Talisman of Speed and fled into the forest!`;
+      } else if (currentInventory.activeRelics.includes('sword' as QuestRelic)) {
         currentInventory.activeRelics = currentInventory.activeRelics.filter(r => String(r).toLowerCase() !== 'sword');
         theftLogMsg += ` ${(t as any).logElfTheft || "⚠️ Elves stole your Sword and deserted!"}`;
       }
       currentTroops.elves = 0;
     }
 
-    // 🪓 15% Volatile Dwarven Theft Check
+    // 🪓 15% Volatile Dwarven Theft Check (Steals Hammer of Thor or 200 GP)
     if (currentTroops.dwarves > 0 && Math.random() <= 0.15) {
-      if (currentInventory.gold > 0) {
+      if (currentInventory.hasHammerOfThor) {
+        currentInventory.hasHammerOfThor = false;
+        theftLogMsg += ` ⚠️ DWARVEN BETRAYAL! Your volatile Dwarves stole your 🔨 Hammer of Thor and fled back into the mountains!`;
+      } else if (currentInventory.gold > 0) {
         const stolenGold = Math.min(200, currentInventory.gold);
         currentInventory.gold = Math.max(0, currentInventory.gold - stolenGold);
         theftLogMsg += ` ${(t as any).logDwarfTheft || "⚠️ Dwarves stole 200 GP and fled!"}`;
@@ -1418,9 +1427,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     verifyRaftMuleLock(currentTroops, currentInventory);
 
     // 🗡️ Check & Apply Pending Raid Debuff (-1 MF)
-    let nextMF = BASE_TURN_MF;
+    let nextMF = baseTurnMF;
     if (hasPendingRaidDebuffRef.current) {
-      nextMF = Math.max(1, BASE_TURN_MF - 1);
+      nextMF = Math.max(1, baseTurnMF - 1);
       setHasPendingRaidDebuff(false);
       logMsg += ` 🚨 Raid aftermath debuff! Movement reduced to ${nextMF} MF this round.`;
     }
@@ -1830,6 +1839,10 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'sword' as QuestRelic])) })); setRelicNotice('sword'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🗡️ Sword</button>
             <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'armor' as QuestRelic])) })); setRelicNotice('armor'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🛡️ Armor</button>
             <button onClick={() => { setInventory(p => ({ ...p, activeRelics: Array.from(new Set([...p.activeRelics, 'horn' as QuestRelic])) })); setRelicNotice('horn'); }} style={{ backgroundColor: '#222', color: '#ff00ff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🎺 Horn</button>
+            <button onClick={() => setInventory(p => ({ ...p, hasHammerOfThor: !p.hasHammerOfThor }))} style={{ backgroundColor: '#222', color: '#ff0', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🔨 Hammer Thor</button>
+            <button onClick={() => setInventory(p => ({ ...p, hasTalismanOfSpeed: !p.hasTalismanOfSpeed }))} style={{ backgroundColor: '#222', color: '#00ffff', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+⚡ Talisman Speed</button>
+            <button onClick={() => setTroops(p => ({ ...p, elves: p.elves + 5 }))} style={{ backgroundColor: '#222', color: '#00ff00', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🧝‍♂️ 5 Elves</button>
+            <button onClick={() => setTroops(p => ({ ...p, dwarves: p.dwarves + 5 }))} style={{ backgroundColor: '#222', color: '#ff9800', border: '1px solid #555', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace' }}>+🪓 5 Dwarves</button>
           </div>
         )}
 
@@ -1848,19 +1861,23 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           <div>{(t as any).elvesLabel || "🧝‍♂️ Elves:"} <strong>{troops.elves}</strong></div>
           <div>{(t as any).dwarvesLabel || "🪓 Dwarves:"} <strong>{troops.dwarves}</strong></div>
           <div>{t.raftLabel} <strong>{inventory.hasRaft ? t.yes : t.no}</strong></div>
-          <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px' }}>
-            🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
-              Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
-                .map(r => {
-                  if (r === 'boots') return '🥾 Boots';
-                  if (r === 'sword') return '🗡️ Sword';
-                  if (r === 'armor') return '🛡️ Armor';
-                  if (r === 'horn') return '🎺 Horn';
-                  return null;
-                })
-                .filter(Boolean)
-                .join(' | ') || 'None'
-            ) : 'None'}
+          <div style={{ gridColumn: '1 / -1', color: '#ff00ff', fontSize: '12px', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <span>
+              🏛️ Active Relics: {inventory.activeRelics.length > 0 ? (
+                Array.from(new Set(inventory.activeRelics.map(r => String(r).toLowerCase())))
+                  .map(r => {
+                    if (r === 'boots') return '🥾 Boots';
+                    if (r === 'sword') return '🗡️ Sword';
+                    if (r === 'armor') return '🛡️ Armor';
+                    if (r === 'horn') return '🎺 Horn';
+                    return null;
+                  })
+                  .filter(Boolean)
+                  .join(' | ') || 'None'
+              ) : 'None'}
+            </span>
+            {inventory.hasHammerOfThor && <span style={{ color: '#ff0' }}>🔨 Hammer of Thor (+15% CS)</span>}
+            {inventory.hasTalismanOfSpeed && <span style={{ color: '#00ffff' }}>⚡ Talisman of Speed (+1 MF/Turn)</span>}
           </div>
         </div>
 

@@ -326,7 +326,19 @@ export const FORTRESS_LANG = {
     peaceMurderedLog: "🩸 Envoy murdered! Stole 150 GP, but rival gained +20% Holy Vengeance combat power against you!",
     holyVengeanceActiveLog: "⚡ Holy Vengeance Active! +20% combat power against treacherous rival!",
     logElfTheft: "⚠️ ELVEN DESERTION! Your volatile Elves stole your Sword of Strength and deserted under cover of night!",
-    logDwarfTheft: "⚠️ DWARVEN BETRAYAL! Your Dwarves raided your treasury (-200 GP) and fled back into the mountains!"
+    logElfSpeedTheft: "⚠️ ELVEN DESERTION! Your volatile Elves stole your ⚡ Talisman of Speed and fled into the forest!",
+    logDwarfTheft: "⚠️ DWARVEN BETRAYAL! Your Dwarves raided your treasury (-200 GP) and fled back into the mountains!",
+    logDwarfThorTheft: "⚠️ DWARVEN BETRAYAL! Your volatile Dwarves stole your 🔨 Hammer of Thor and fled back into the mountains!",
+    bardTitle: "🧝‍♂️ ELVEN BARD MAGIC",
+    bardLullaby: "💤 Lullaby",
+    bardMockery: "🔮 Mockery (-20% ATK)",
+    bardHealing: "🎵 Heal Tunes",
+    logBardLullaby: "🎶 Cast Lullaby! Put monsters to sleep for 1 round!",
+    logBardMockery: "🔮 Cast Vicious Mockery! Dealt psychic DMG & reduced enemy ATK by 20%!",
+    logBardHealing: "🎵 Played Healing Tune! Restored wounded Warriors!",
+    logMonsterAsleep: "💤 Monster is asleep and cannot attack this round!",
+    hudThor: "🔨 Hammer of Thor (+15% CS)",
+    hudSpeed: "⚡ Talisman of Speed (+1 MF/Turn)"
   },
   vi: {
     // Sandbox Tweaker
@@ -651,6 +663,18 @@ export const FORTRESS_LANG = {
     peaceMurderedLog: "🩸 Đã giết sứ giả! Cướp 150 Vàng nhưng đối thủ nhận điểm nộ +20% Sức Mạnh Thánh Phẫn!",
     holyVengeanceActiveLog: "⚡ Phẫn Nộ Trả Thù! Tăng +20% sức mạnh chiến đấu chống lại kẻ phản Bội!",
     logElfTheft: "⚠️ TINH LINH ĐÀO TẨU! Băng nhóm Tinh Linh đã cướp mất Thánh Kiếm và biến mất trong đêm!",
-    logDwarfTheft: "⚠️ NGƯỜI LÙN PHẢN BỘI! Tộc Người Lùn đã hốt 200 Vàng và tẩu thoát về vùng núi cao!"
+    logElfSpeedTheft: "⚠️ TINH LINH ĐÀO TẨU! Băng nhóm Tinh Linh đã cướp mất ⚡ Bùa Thần Tốc và ẩn nấp vào rừng sâu!",
+    logDwarfTheft: "⚠️ NGƯỜI LÙN PHẢN BỘI! Tộc Người Lùn đã hốt 200 Vàng và tẩu thoát về vùng núi cao!",
+    logDwarfThorTheft: "⚠️ NGƯỜI LÙN PHẢN BỘI! Tộc Người Lùn đã chộp lấy 🔨 Búa Thần Thor và tẩu thoát về núi cao!",
+    bardTitle: "🧝‍♂️ PHÉP THUẬT TINH LINH",
+    bardLullaby: "💤 Khúc Hát Ru",
+    bardMockery: "🔮 Lời Châm Biếm (-20% ATK)",
+    bardHealing: "🎵 Khúc Hồi Sinh",
+    logBardLullaby: "🎶 Thi triển Khúc Hát Ru! Quái vật chìm vào giấc ngủ 1 lượt!",
+    logBardMockery: "🔮 Thi triển Lời Châm Biếm! Gây sát thương tâm linh & giảm 20% công quái vật!",
+    logBardHealing: "🎵 Chơi Khúc Hồi Sinh! Hồi phục quân sĩ bị thương!",
+    logMonsterAsleep: "💤 Quái vật đang ngủ thiếp đi và không thể tấn công lượt này!",
+    hudThor: "🔨 Búa Thor (+15% Sức Chiến Đấu)",
+    hudSpeed: "⚡ Bùa Thần Tốc (+1 Thể Lực/Lượt)"
   }
 };

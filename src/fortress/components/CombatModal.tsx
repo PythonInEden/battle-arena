@@ -35,6 +35,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const [currentWarriors, setCurrentWarriors] = useState<number>(troops.warriors);
   const [combatLogs, setCombatLogs] = useState<string[]>([]);
   const [goldLoot, setGoldLoot] = useState<number>(0);
+  const [isEnemyAsleep, setIsEnemyAsleep] = useState<boolean>(false);
+  const [enemyAttackDebuff, setEnemyAttackDebuff] = useState<number>(0);
 
   const getMonsterName = (nameKey: string) => (t as any)[nameKey] || nameKey;
   // Dynamic Monster Image Fetcher from Supabase Public Storage
@@ -51,14 +53,25 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     const playerDmg = Math.round((0.9 + Math.random() * 0.4) * playerCS * 4);
     const nextMonsterHp = Math.max(0, currentMonsterHp - playerDmg);
 
-    const monsterDmg = Math.round((0.5 + Math.random() * 0.3) * encounter.groupStrength * 2);
-    const warriorLosses = Math.min(currentWarriors, Math.floor(monsterDmg / 8));
-    const nextWarriors = Math.max(0, currentWarriors - warriorLosses);
+    let monsterDmg = 0;
+    let warriorLosses = 0;
 
+    if (isEnemyAsleep) {
+      setCombatLogs((prev) => [(t as any).logMonsterAsleep || "💤 Monster is asleep!", ...prev]);
+      setIsEnemyAsleep(false);
+    } else {
+      const baseMonsterDmg = (0.5 + Math.random() * 0.3) * encounter.groupStrength * 2;
+      const effectiveDebuff = Math.max(0, 1 - enemyAttackDebuff);
+      monsterDmg = Math.round(baseMonsterDmg * effectiveDebuff);
+      warriorLosses = Math.min(currentWarriors, Math.floor(monsterDmg / 8));
+    }
+
+    const nextWarriors = Math.max(0, currentWarriors - warriorLosses);
     setCurrentMonsterHp(nextMonsterHp);
     setCurrentWarriors(nextWarriors);
+    setEnemyAttackDebuff(0); // Reset debuff for next round
 
-    const roundLog = `⚔️ Dealt ${playerDmg} DMG! Monster retaliated dealing ${monsterDmg} DMG (-${warriorLosses} Warriors).`;
+    const roundLog = `⚔️ Dealt ${playerDmg} DMG! ${monsterDmg > 0 ? `Monster retaliated dealing ${monsterDmg} DMG (-${warriorLosses} Warriors).` : 'No monster retaliation!'}`;
     setCombatLogs((prev) => [roundLog, ...prev]);
 
     if (nextMonsterHp <= 0) {
@@ -67,6 +80,25 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       setPhase('VICTORY');
     } else if (nextWarriors <= 0) {
       setPhase('DEFEAT');
+    }
+  };
+
+  // 🧝‍♂️ Bard Active Magic Skills (Requires Elves in Army)
+  const handleCastBardSkill = (skill: 'LULLABY' | 'MOCKERY' | 'HEALING') => {
+    if (troops.elves <= 0) return;
+
+    if (skill === 'LULLABY') {
+      setIsEnemyAsleep(true);
+      setCombatLogs((prev) => [(t as any).logBardLullaby || "🎶 Cast Lullaby!", ...prev]);
+    } else if (skill === 'MOCKERY') {
+      const psychicDmg = Math.round(playerCS * 2);
+      setCurrentMonsterHp((prev) => Math.max(0, prev - psychicDmg));
+      setEnemyAttackDebuff(0.20); // -20% Enemy Attack Strength[cite: 1]
+      setCombatLogs((prev) => [`${(t as any).logBardMockery || "🔮 Cast Vicious Mockery!"} (-${psychicDmg} HP)`, ...prev]);
+    } else if (skill === 'HEALING') {
+      const healedCount = Math.floor(1 + Math.random() * 5);
+      setCurrentWarriors((prev) => prev + healedCount);
+      setCombatLogs((prev) => [`${(t as any).logBardHealing || "🎵 Played Healing Tune!"} (+${healedCount})`, ...prev]);
     }
   };
 
@@ -162,6 +194,35 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div>💪 Str: {encounter.monster.strength}</div>
               </div>
             </div>
+
+            {/* 🧝‍♂️ Elven Bard Skill Controls */}
+            {troops.elves > 0 && (
+              <div style={{ backgroundColor: '#052005', border: '1px solid #00ff00', padding: '8px', marginBottom: '12px', borderRadius: '4px' }}>
+                <div style={{ fontSize: '11px', color: '#00ff00', fontWeight: 'bold', marginBottom: '6px' }}>
+                  {(t as any).bardTitle || "🧝‍♂️ ELVEN BARD MAGIC"} ({troops.elves}):
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={() => handleCastBardSkill('LULLABY')}
+                    style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '6px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
+                  >
+                    {(t as any).bardLullaby || "💤 Lullaby"}
+                  </button>
+                  <button
+                    onClick={() => handleCastBardSkill('MOCKERY')}
+                    style={{ backgroundColor: '#111', color: '#ff00ff', border: '1px solid #ff00ff', padding: '6px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
+                  >
+                    {(t as any).bardMockery || "🔮 Mockery"}
+                  </button>
+                  <button
+                    onClick={() => handleCastBardSkill('HEALING')}
+                    style={{ backgroundColor: '#111', color: '#00ff00', border: '1px solid #00ff00', padding: '6px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
+                  >
+                    {(t as any).bardHealing || "🎵 Heal Tunes"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
               <button

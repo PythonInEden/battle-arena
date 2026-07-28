@@ -51,9 +51,11 @@ export class CombatEngine {
   public static calculatePlayerCombatStrength(troops: TroopRoster, inventory?: PlayerInventory): number {
     const csBase = (1.0 * troops.warriors) + (3.0 * troops.dwarves) + (2.0 * troops.elves);
     const wizardBonus = troops.wizards > 0 ? 0.20 : 0.0;
-    let strength = Math.max(1, csBase * (1.0 + wizardBonus));
+    const thorBonus = inventory?.hasHammerOfThor ? 0.15 : 0.0; // 🔨 Hammer of Thor: +15% CS Bonus[cite: 1]
 
-    // 🗡️ Sword of Strength Perk: +50% Combat Power Multiplier
+    let strength = Math.max(1, csBase * (1.0 + wizardBonus + thorBonus));
+
+    // 🗡️ Sword of Strength Perk: +50% Combat Power Multiplier[cite: 4]
     if (inventory?.activeRelics?.includes('sword' as QuestRelic)) {
       strength *= 1.5;
     }
