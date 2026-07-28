@@ -56,7 +56,14 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   if (type === 'avatar') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_avatar.webp`;
   if (type === 'win') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_win.webp`;
   if (type === 'lost') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_lost.webp`;
+
   const cleanSkill = skillName ? skillName.toLowerCase().trim().replace(/[\s-]+/g, '_') : '';
+
+  // 🛡️ SHARED BASIC ACTIONS (Loads generic basic_attack.webp or defend_stance.webp)
+  if (cleanSkill === 'basic_attack' || cleanSkill === 'defend_stance') {
+    return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanSkill}.webp`;
+  }
+
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 

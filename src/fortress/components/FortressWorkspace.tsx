@@ -187,8 +187,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [incomingPeaceRequest, setIncomingPeaceRequest] = useState<{ attackerId: string; attackerName: string } | null>(null);
   const [holyVengeanceTargets, setHolyVengeanceTargets] = useState<string[]>([]);
 
-  // 🔮 Seeking Scroll Modal State
+  // 🔮 Seeking Scroll & Theft Modal State
   const [seekingNotice, setSeekingNotice] = useState<{ title: string; targetName: string; pos: Position } | null>(null);
+  const [theftNotice, setTheftNotice] = useState<{ title: string; message: string; imageKey: string } | null>(null);
 
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
@@ -480,8 +481,16 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       .on('broadcast', { event: 'raid_request' }, (payload) => {
         const data = payload.payload;
         if (data.targetId === playerId) {
-          const evasionChance = Math.min(0.8, troops.scouts * 0.2);
-          if (Math.random() < evasionChance) {
+          // Spec Section 2.6 & 6.2 Raid Calculation Math
+          const raidersCount = data.raiderCount || 1;
+          const isResting = isTurnLocked || remainingMF === BASE_TURN_MF;
+          const baseProbability = isResting ? (raidersCount * 0.10) : (0.50 + raidersCount * 0.05);
+          const scoutReduction = troops.scouts * 0.05;
+          const finalSuccessChance = Math.max(0, baseProbability - scoutReduction);
+
+          const raidRoll = Math.random();
+          if (raidRoll > finalSuccessChance) {
+            // Raid Failed: Sentries alarm & attacker raiders wiped out[cite: 1]
             setLogs((prev) => [t.raidThwartedLog, ...prev]);
             channel.send({
               type: 'broadcast',
@@ -529,6 +538,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               stolenRelic,
             },
           });
+        }
+      })
+      .on('broadcast', { event: 'raid_thwarted' }, (payload) => {
+        const data = payload.payload;
+        if (data.attackerId === playerId) {
+          // Spec Section 6.3: Failed raid wipes out deployed raiders[cite: 1]
+          setTroops((prev) => ({ ...prev, raiders: 0 }));
+          setLogs((prev) => [`🚨 ${t.raidThwartedAttackerLog} All Raiders were wiped out by ${data.defenderName}'s sentries!`, ...prev]);
         }
       })
       .on('broadcast', { event: 'raid_response' }, (payload) => {
@@ -917,7 +934,12 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       channelRef.current.send({
         type: 'broadcast',
         event: 'raid_request',
-        payload: { attackerId: playerId, attackerName: playerName, targetId: validTarget.id },
+        payload: { 
+          attackerId: playerId, 
+          attackerName: playerName, 
+          targetId: validTarget.id,
+          raiderCount: troops.raiders, // Pass raiders count for spec raid math[cite: 1]
+        },
       });
     } else {
       addGoldSafely(150);
@@ -1090,11 +1112,18 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     }
   };
 
-  const handleRetreatFromCombat = () => {
+  const handleRetreatFromCombat = (goldDropped: number = 0) => {
     setActiveEncounter(null);
     setPendingRelicReward(null);
     setPlayerPosition(previousPosition);
-    setLogs((prev) => [t.logRetreated, ...prev]);
+
+    if (goldDropped > 0) {
+      setInventory((prev) => ({ ...prev, gold: Math.max(0, prev.gold - goldDropped) }));
+      depositExcessGoldToTile(playerPosition, goldDropped);
+      setLogs((prev) => [`${(t as any).fleeGoldLog || "🏃 Flew from battle! Dropped 25% gold:"} -${goldDropped} GP at [${playerPosition.x}, ${playerPosition.y}]!`, ...prev]);
+    } else {
+      setLogs((prev) => [t.logRetreated, ...prev]);
+    }
   };
 
   const handleCombatVictory = (
@@ -1397,26 +1426,46 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
     // 🧝‍♂️ 15% Volatile Elven Theft Check (Steals Talisman of Speed or Sword of Strength)[cite: 1, 11]
     if (currentTroops.elves > 0 && Math.random() <= 0.15) {
+      let stolenItemMsg = '';
       if (currentInventory.hasTalismanOfSpeed) {
         currentInventory.hasTalismanOfSpeed = false;
-        theftLogMsg += ` ⚠️ ELVEN DESERTION! Your volatile Elves stole your ⚡ Talisman of Speed and fled into the forest!`;
-      } else if (currentInventory.activeRelics.includes('sword' as QuestRelic)) {
+        stolenItemMsg = (t as any).logElfSpeedTheft || "⚠️ Elves stole your ⚡ Talisman of Speed!";
+      } else if (currentInventory.activeRelics.some(r => String(r).toLowerCase() === 'sword')) {
         currentInventory.activeRelics = currentInventory.activeRelics.filter(r => String(r).toLowerCase() !== 'sword');
-        theftLogMsg += ` ${(t as any).logElfTheft || "⚠️ Elves stole your Sword and deserted!"}`;
+        stolenItemMsg = (t as any).logElfTheft || "⚠️ Elves stole your 🗡️ Sword of Strength!";
+      } else {
+        stolenItemMsg = (t as any).logElfSpeedTheft || "⚠️ Elves deserted into the forest!";
       }
+
+      setTheftNotice({
+        title: (t as any).theftElfTitle || "🚨 ELVEN DESERTION!",
+        message: stolenItemMsg,
+        imageKey: 'group_elves.webp',
+      });
+      theftLogMsg += ` ${stolenItemMsg}`;
       currentTroops.elves = 0;
     }
 
-    // 🪓 15% Volatile Dwarven Theft Check (Steals Hammer of Thor or 200 GP)
+    // 🪓 15% Volatile Dwarven Theft Check (Steals Hammer of Thor or 200 GP)[cite: 1, 11]
     if (currentTroops.dwarves > 0 && Math.random() <= 0.15) {
+      let stolenItemMsg = '';
       if (currentInventory.hasHammerOfThor) {
         currentInventory.hasHammerOfThor = false;
-        theftLogMsg += ` ⚠️ DWARVEN BETRAYAL! Your volatile Dwarves stole your 🔨 Hammer of Thor and fled back into the mountains!`;
+        stolenItemMsg = (t as any).logDwarfThorTheft || "⚠️ Dwarves stole your 🔨 Hammer of Thor!";
       } else if (currentInventory.gold > 0) {
         const stolenGold = Math.min(200, currentInventory.gold);
         currentInventory.gold = Math.max(0, currentInventory.gold - stolenGold);
-        theftLogMsg += ` ${(t as any).logDwarfTheft || "⚠️ Dwarves stole 200 GP and fled!"}`;
+        stolenItemMsg = (t as any).logDwarfTheft || "⚠️ Dwarves stole 200 GP and fled!";
+      } else {
+        stolenItemMsg = (t as any).logDwarfThorTheft || "⚠️ Dwarves deserted into the mountains!";
       }
+
+      setTheftNotice({
+        title: (t as any).theftDwarfTitle || "🚨 DWARVEN BETRAYAL!",
+        message: stolenItemMsg,
+        imageKey: 'group_dwarfs.webp',
+      });
+      theftLogMsg += ` ${stolenItemMsg}`;
       currentTroops.dwarves = 0;
     }
 
@@ -1918,26 +1967,40 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 : t.raidCampBtn} ({troops.raiders})
             </button>
 
-            {/* 🕊️ Send Peace Messenger Button */}
-            {getValidRaidTarget() && (
-              <button
-                onClick={() => {
-                  const target = getValidRaidTarget();
-                  if (target && channelRef.current) {
-                    channelRef.current.send({
-                      type: 'broadcast',
-                      event: 'peace_request',
-                      payload: { attackerId: playerId, attackerName: playerName, targetId: target.id },
-                    });
-                    alert(`🕊️ Peace Messenger sent to ${target.name}! Waiting for their response...`);
-                  }
-                }}
-                disabled={isTurnLocked}
-                style={{ backgroundColor: '#111', color: '#00ffff', border: '1px solid #00ffff', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', fontFamily: 'monospace' }}
-              >
-                {t.sendPeaceBtn}
-              </button>
-            )}
+            {/* 🕊️ Send Peace Messenger Button (with Spec Permanent Lock Check)[cite: 1, 19] */}
+            {getValidRaidTarget() && (() => {
+              const target = getValidRaidTarget();
+              const isDiplomacyLocked = target && holyVengeanceTargets.includes(target.id);
+
+              return (
+                <button
+                  onClick={() => {
+                    if (isDiplomacyLocked) return;
+                    if (target && channelRef.current) {
+                      channelRef.current.send({
+                        type: 'broadcast',
+                        event: 'peace_request',
+                        payload: { attackerId: playerId, attackerName: playerName, targetId: target.id },
+                      });
+                      alert(`🕊️ Peace Messenger sent to ${target.name}! Waiting for their response...`);
+                    }
+                  }}
+                  disabled={isTurnLocked || isDiplomacyLocked}
+                  style={{
+                    backgroundColor: '#111',
+                    color: isDiplomacyLocked ? '#ff3333' : '#00ffff',
+                    border: `1px solid ${isDiplomacyLocked ? '#ff3333' : '#00ffff'}`,
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    cursor: isDiplomacyLocked ? 'not-allowed' : 'pointer',
+                    fontFamily: 'monospace',
+                    opacity: isDiplomacyLocked ? 0.6 : 1,
+                  }}
+                >
+                  {isDiplomacyLocked ? ((t as any).diplomacyLockedBtn || "🚫 Diplomacy Locked") : t.sendPeaceBtn}
+                </button>
+              );
+            })()}
           </div>
 
           <button
@@ -2073,9 +2136,19 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             inventory={inventory}
             locale={locale}
             allowSurpriseRetreat={allowSurpriseRetreat}
+            isHolyVengeanceActive={holyVengeanceTargets.length > 0}
             onRetreat={handleRetreatFromCombat}
             onVictory={handleCombatVictory}
             onDefeat={handleCombatDefeat}
+            onPrayerRecovery={(rewardType, amount) => {
+              if (rewardType === 'WARRIORS') {
+                setTroops((prev) => ({ ...prev, warriors: prev.warriors + amount }));
+                setLogs((prev) => [`✨ Prayer answered! Heaven granted +${amount} Warriors!`, ...prev]);
+              } else {
+                setInventory((prev) => ({ ...prev, rations: prev.rations + amount }));
+                setLogs((prev) => [`✨ Prayer answered! Heaven granted +${amount} Rations!`, ...prev]);
+              }
+            }}
           />
         )}
 
@@ -2493,6 +2566,35 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                   {t.murderPeaceBtn}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🚨 THEFT / DESERTION ALERT MODAL */}
+        {theftNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 170 }}>
+            <div style={{ backgroundColor: '#111', border: '3px solid #ff3333', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '20px', color: '#ff3333' }}>{theftNotice.title}</h3>
+              
+              <div style={{ margin: '0 auto 16px auto', width: '180px', height: '120px', border: '2px solid #ff3333', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#000' }}>
+                <img
+                  src={getHeroAssetUrl(theftNotice.imageKey)}
+                  alt="Desertion"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+
+              <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.5', marginBottom: '20px' }}>
+                {theftNotice.message}
+              </p>
+
+              <button
+                onClick={() => setTheftNotice(null)}
+                style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 28px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ✅ UNDERSTOOD
+              </button>
             </div>
           </div>
         )}

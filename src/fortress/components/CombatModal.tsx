@@ -10,9 +10,11 @@ interface CombatModalProps {
   inventory: PlayerInventory;
   locale: LanguageType;
   allowSurpriseRetreat: boolean;
-  onRetreat: () => void;
+  isHolyVengeanceActive?: boolean;
+  onRetreat: (goldDropped?: number) => void;
   onVictory: (updatedTroops: TroopRoster, updatedInventory: PlayerInventory, rationsGained: number, goldLooted: number, isPoisoned: boolean) => void;
   onDefeat: () => void;
+  onPrayerRecovery?: (rewardType: 'WARRIORS' | 'RATIONS', amount: number) => void;
 }
 
 export const CombatModal: React.FC<CombatModalProps> = ({
@@ -21,22 +23,28 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   inventory,
   locale,
   allowSurpriseRetreat,
+  isHolyVengeanceActive = false,
   onRetreat,
   onVictory,
   onDefeat,
+  onPrayerRecovery,
 }) => {
   const t = FORTRESS_LANG[locale];
 
-  const [phase, setPhase] = useState<'SURPRISE_PROMPT' | 'FIGHTING' | 'VICTORY' | 'DEFEAT'>(
+  const [phase, setPhase] = useState<'SURPRISE_PROMPT' | 'FIGHTING' | 'PRAYER_PROMPT' | 'VICTORY' | 'DEFEAT'>(
     allowSurpriseRetreat ? 'SURPRISE_PROMPT' : 'FIGHTING'
   );
 
   const [currentMonsterHp, setCurrentMonsterHp] = useState<number>(encounter.totalHp);
   const [currentWarriors, setCurrentWarriors] = useState<number>(troops.warriors);
+  const [currentTroops, setCurrentTroops] = useState<TroopRoster>({ ...troops });
   const [combatLogs, setCombatLogs] = useState<string[]>([]);
   const [goldLoot, setGoldLoot] = useState<number>(0);
   const [isEnemyAsleep, setIsEnemyAsleep] = useState<boolean>(false);
   const [enemyAttackDebuff, setEnemyAttackDebuff] = useState<number>(0);
+  const [prayerResult, setPrayerResult] = useState<{ success: boolean; rewardType: 'WARRIORS' | 'RATIONS'; amount: number } | null>(null);
+
+  const fleeGoldDrop = CombatEngine.calculateFleeGoldDrop(inventory.gold);
 
   const getMonsterName = (nameKey: string) => (t as any)[nameKey] || nameKey;
   // Dynamic Monster Image Fetcher from Supabase Public Storage
@@ -45,7 +53,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     const cleanKey = imageKey.toLowerCase().trim();
     return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanKey}.webp`;
   };
-  const playerCS = CombatEngine.calculatePlayerCombatStrength({ ...troops, warriors: currentWarriors });
+  const playerCS = CombatEngine.calculatePlayerCombatStrength({ ...currentTroops, warriors: currentWarriors }, inventory, isHolyVengeanceActive);
   const winChance = CombatEngine.calculateWinChance(playerCS, encounter.groupStrength);
 
   // Execute Combat Round
@@ -71,7 +79,28 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     setCurrentWarriors(nextWarriors);
     setEnemyAttackDebuff(0); // Reset debuff for next round
 
-    const roundLog = `⚔️ Dealt ${playerDmg} DMG! ${monsterDmg > 0 ? `Monster retaliated dealing ${monsterDmg} DMG (-${warriorLosses} Warriors).` : 'No monster retaliation!'}`;
+    // ⚠️ Backline Crossfire Attrition Roll[cite: 1]
+    const crossfire = CombatEngine.rollBacklineCrossfire(currentTroops);
+    let crossfireLogMsg = '';
+    if (crossfire.lostScouts > 0 || crossfire.lostClerics > 0 || crossfire.lostRaiders > 0 || crossfire.lostWizards > 0) {
+      const updatedTroops = {
+        ...currentTroops,
+        scouts: Math.max(0, currentTroops.scouts - crossfire.lostScouts),
+        clerics: Math.max(0, currentTroops.clerics - crossfire.lostClerics),
+        raiders: Math.max(0, currentTroops.raiders - crossfire.lostRaiders),
+        wizards: Math.max(0, currentTroops.wizards - crossfire.lostWizards),
+      };
+      setCurrentTroops(updatedTroops);
+
+      const lostList: string[] = [];
+      if (crossfire.lostScouts > 0) lostList.push(`-${crossfire.lostScouts} Scout`);
+      if (crossfire.lostClerics > 0) lostList.push(`-${crossfire.lostClerics} Cleric`);
+      if (crossfire.lostRaiders > 0) lostList.push(`-${crossfire.lostRaiders} Raider`);
+      if (crossfire.lostWizards > 0) lostList.push(`-${crossfire.lostWizards} Wizard`);
+      crossfireLogMsg = ` ${(t as any).crossfireLog || '⚠️ Backline crossfire:'} ${lostList.join(', ')}!`;
+    }
+
+    const roundLog = `⚔️ Dealt ${playerDmg} DMG! ${monsterDmg > 0 ? `Monster retaliated dealing ${monsterDmg} DMG (-${warriorLosses} Warriors).` : 'No monster retaliation!'}${crossfireLogMsg}`;
     setCombatLogs((prev) => [roundLog, ...prev]);
 
     if (nextMonsterHp <= 0) {
@@ -79,7 +108,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       setGoldLoot(loot);
       setPhase('VICTORY');
     } else if (nextWarriors <= 0) {
-      setPhase('DEFEAT');
+      // 🌿 Trigger Prayer Recovery Action when Warriors hit 0[cite: 1]
+      setPhase('PRAYER_PROMPT');
+    }
+  };
+
+  // 🙏 Handle Prayer Action Execution[cite: 1]
+  const handleExecutePrayer = () => {
+    const roll = CombatEngine.rollPrayerAction();
+    setPrayerResult(roll);
+
+    if (roll.success && onPrayerRecovery) {
+      onPrayerRecovery(roll.rewardType, roll.amount);
     }
   };
 
@@ -117,7 +157,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       isPoisoned = harvestResult.isPoisoned;
     }
 
-    const updatedTroops: TroopRoster = { ...troops, warriors: currentWarriors };
+    const updatedTroops: TroopRoster = { ...currentTroops, warriors: currentWarriors };
     const updatedInventory: PlayerInventory = {
       ...inventory,
       gold: inventory.gold + goldLoot,
@@ -156,7 +196,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
             <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
               <button
-                onClick={onRetreat}
+                onClick={() => onRetreat()}
                 style={{ backgroundColor: '#333', color: '#00ff00', border: '1px solid #00ff00', padding: '12px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace' }}
               >
                 {t.retreatBtn}
@@ -232,12 +272,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 {t.attackRoundBtn}
               </button>
               
-              {/* Mid-Combat Flee Button */}
+              {/* Mid-Combat Flee Button (with 25% Gold Drop Penalty)[cite: 1] */}
               <button
-                onClick={onRetreat}
-                style={{ backgroundColor: '#333', color: '#00ff00', border: '1px solid #00ff00', padding: '12px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
+                onClick={() => onRetreat(fleeGoldDrop)}
+                style={{ backgroundColor: '#333', color: '#00ff00', border: '1px solid #00ff00', padding: '12px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', fontFamily: 'monospace', flex: 1 }}
               >
-                {t.fleeMidCombatBtn}
+                {(t as any).fleeMidCombatBtn || "🏃 FLEE"} {fleeGoldDrop > 0 ? `(-${fleeGoldDrop} GP)` : ''}
               </button>
             </div>
 
@@ -281,15 +321,77 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           </div>
         )}
 
+        {/* 🙏 Prayer Recovery Prompt Screen (0 Warriors)[cite: 1] */}
+        {phase === 'PRAYER_PROMPT' && (
+          <div style={{ textAlign: 'center' }}>
+            <h3 style={{ color: '#ff0' }}>{(t as any).prayerTitle || "🙏 PRAYER FOR SALVATION"}</h3>
+            <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.5', margin: '12px 0' }}>
+              {(t as any).prayerDesc || "Your frontline has fallen! Offer a prayer for divine intervention (80% Success Chance)."}
+            </p>
+
+            {prayerResult === null ? (
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
+                <button
+                  onClick={handleExecutePrayer}
+                  style={{ backgroundColor: '#ff0', color: '#000', border: 'none', padding: '12px 24px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {(t as any).prayBtn || "🙏 Pray (80% Success)"}
+                </button>
+
+                <button
+                  onClick={() => setPhase('DEFEAT')}
+                  style={{ backgroundColor: '#333', color: '#fff', border: '1px solid #555', padding: '12px 20px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+                >
+                  {(t as any).acceptSanctuaryBtn || "🏥 Retreat to Sanctuary"}
+                </button>
+              </div>
+            ) : (
+              <div style={{ margin: '16px 0', backgroundColor: '#050505', border: `2px solid ${prayerResult.success ? '#00ff00' : '#ff3333'}`, padding: '16px', borderRadius: '8px' }}>
+                {prayerResult.success ? (
+                  <div>
+                    <h4 style={{ color: '#00ff00', margin: '0 0 8px 0' }}>{(t as any).prayerSuccessMsg || "✨ DIVINE MIRACLE!"}</h4>
+                    <p style={{ color: '#ff0', fontSize: '16px', fontWeight: 'bold', margin: '8px 0' }}>
+                      +{prayerResult.amount} {prayerResult.rewardType === 'WARRIORS' ? '⚔️ Warriors' : '🌾 Rations'}!
+                    </p>
+                    <button
+                      onClick={() => {
+                        if (prayerResult.rewardType === 'WARRIORS') {
+                          setCurrentWarriors(prayerResult.amount);
+                          setPhase('FIGHTING');
+                        } else {
+                          onDefeat();
+                        }
+                      }}
+                      style={{ backgroundColor: '#00ff00', color: '#000', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', marginTop: '12px', borderRadius: '4px' }}
+                    >
+                      {prayerResult.rewardType === 'WARRIORS' ? '⚔️ CONTINUE BATTLE' : '✅ CLAIM RATIONS & RETREAT'}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <h4 style={{ color: '#ff3333', margin: '0 0 8px 0' }}>{(t as any).prayerFailedMsg || "💀 Prayer unanswered..."}</h4>
+                    <button
+                      onClick={onDefeat}
+                      style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', marginTop: '12px', borderRadius: '4px' }}
+                    >
+                      {(t as any).acceptSanctuaryBtn || "🏥 Retreat to Sanctuary"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Defeat Screen */}
         {phase === 'DEFEAT' && (
           <div style={{ textAlign: 'center' }}>
             <h2 style={{ color: '#ff3333' }}>{t.defeatTitle}</h2>
             <button
               onClick={onDefeat}
-              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', marginTop: '16px' }}
+              style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '12px 24px', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', marginTop: '16px', borderRadius: '4px' }}
             >
-              OK (RESCUED TO SANCTUARY)
+              {(t as any).acceptSanctuaryBtn || "🏥 RETREAT TO SANCTUARY"}
             </button>
           </div>
         )}

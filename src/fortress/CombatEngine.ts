@@ -36,7 +36,7 @@ export const MONSTER_DATABASE: MonsterProfile[] = [
   { id: 'mimic_chest', nameKey: 'monsterMimic', strength: 5.0, imageKey: 'mimic_chest', edibility: 'INEDIBLE' },
   { id: 'iron_golem', nameKey: 'monsterIronGolem', strength: 30.0, imageKey: 'iron_golem', edibility: 'INEDIBLE' },
   { id: 'shadow_lich', nameKey: 'monsterLich', strength: 50.0, imageKey: 'shadow_lich', edibility: 'INEDIBLE' },
-  { id: 'witch_king', nameKey: 'monsterLich', strength: 60.0, imageKey: 'witch_king', edibility: 'INEDIBLE' },
+  { id: 'witch_king', nameKey: 'monsterWitchKing', strength: 60.0, imageKey: 'witch_king', edibility: 'INEDIBLE' },
 ];
 
 export interface EncounterGroup {
@@ -48,14 +48,19 @@ export interface EncounterGroup {
 }
 
 export class CombatEngine {
-  public static calculatePlayerCombatStrength(troops: TroopRoster, inventory?: PlayerInventory): number {
+  public static calculatePlayerCombatStrength(
+    troops: TroopRoster,
+    inventory?: PlayerInventory,
+    isHolyVengeanceActive?: boolean
+  ): number {
     const csBase = (1.0 * troops.warriors) + (3.0 * troops.dwarves) + (2.0 * troops.elves);
-    const wizardBonus = troops.wizards > 0 ? 0.20 : 0.0;
+    const wizardBonus = troops.wizards > 0 ? 0.20 : 0.0; // +20% Wizard Bonus[cite: 1]
     const thorBonus = inventory?.hasHammerOfThor ? 0.15 : 0.0; // 🔨 Hammer of Thor: +15% CS Bonus[cite: 1]
+    const vengeanceBonus = isHolyVengeanceActive ? 0.20 : 0.0; // ⚡ Holy Vengeance: +20% CS Bonus[cite: 1]
 
-    let strength = Math.max(1, csBase * (1.0 + wizardBonus + thorBonus));
+    let strength = Math.max(1, csBase * (1.0 + wizardBonus + thorBonus + vengeanceBonus));
 
-    // 🗡️ Sword of Strength Perk: +50% Combat Power Multiplier[cite: 4]
+    // 🗡️ Sword of Strength Perk: +50% Combat Power Multiplier[cite: 1]
     if (inventory?.activeRelics?.includes('sword' as QuestRelic)) {
       strength *= 1.5;
     }
@@ -79,7 +84,8 @@ export class CombatEngine {
 
   public static spawnEncounter(terrain: 'FOREST' | 'MOUNTAIN', troops: TroopRoster): EncounterGroup {
     const playerCS = this.calculatePlayerCombatStrength(troops);
-    const targetStrength = (0.4 + Math.random() * 0.5) * playerCS; // 40%-90% of player CS
+    // Spec Section 4.2: Target Strength = Random(0.5, 1.2) * Player Strength[cite: 1]
+    const targetStrength = (0.5 + Math.random() * 0.7) * playerCS;
 
     let candidates = MONSTER_DATABASE.filter(m => m.id !== 'shadow_lich');
     if (terrain === 'FOREST') {
@@ -149,12 +155,12 @@ export class CombatEngine {
   public static spawnWitchKingBoss(troops: TroopRoster): EncounterGroup {
     const playerCS = this.calculatePlayerCombatStrength(troops);
     
-    // The Witch King profile (Shadow Lich base)
+    // The Witch King profile
     const witchKingMonster: MonsterProfile = {
       id: 'witch_king',
-      nameKey: 'monsterLich',
+      nameKey: 'monsterWitchKing',
       strength: 60.0,
-      imageKey: 'shadow_lich',
+      imageKey: 'witch_king',
       edibility: 'INEDIBLE'
     };
 
@@ -193,5 +199,55 @@ export class CombatEngine {
     const isPoisoned = Math.random() <= poisonRisk;
 
     return { rationsGained: toxicYield, isPoisoned };
+  }
+
+  /**
+   * ⚠️ Backline Crossfire Attrition Roll[cite: 1]
+   * Scouts, Clerics, Raiders have 5% risk per round; Wizards have 2% risk[cite: 1].
+   */
+  public static rollBacklineCrossfire(troops: TroopRoster): {
+    lostScouts: number;
+    lostClerics: number;
+    lostRaiders: number;
+    lostWizards: number;
+  } {
+    let lostScouts = 0;
+    let lostClerics = 0;
+    let lostRaiders = 0;
+    let lostWizards = 0;
+
+    for (let i = 0; i < troops.scouts; i++) {
+      if (Math.random() <= 0.05) lostScouts++;
+    }
+    for (let i = 0; i < troops.clerics; i++) {
+      if (Math.random() <= 0.05) lostClerics++;
+    }
+    for (let i = 0; i < troops.raiders; i++) {
+      if (Math.random() <= 0.05) lostRaiders++;
+    }
+    for (let i = 0; i < troops.wizards; i++) {
+      if (Math.random() <= 0.02) lostWizards++;
+    }
+
+    return { lostScouts, lostClerics, lostRaiders, lostWizards };
+  }
+
+  /**
+   * 🏃 Mid-Combat Fleeing Gold Penalty (25% Drop)[cite: 1]
+   */
+  public static calculateFleeGoldDrop(currentGold: number): number {
+    if (currentGold <= 0) return 0;
+    return Math.floor(currentGold * 0.25);
+  }
+
+  /**
+   * 🙏 Prayer Recovery Action (80% success roll for 15-25 Warriors or Rations)[cite: 1]
+   */
+  public static rollPrayerAction(): { success: boolean; rewardType: 'WARRIORS' | 'RATIONS'; amount: number } {
+    const success = Math.random() <= 0.80; // 80% Success Rate[cite: 1]
+    const amount = Math.floor(15 + Math.random() * 11); // 15 to 25[cite: 1]
+    const rewardType = Math.random() <= 0.50 ? 'WARRIORS' : 'RATIONS';
+
+    return { success, rewardType, amount };
   }
 }
