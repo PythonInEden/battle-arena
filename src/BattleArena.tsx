@@ -20,7 +20,7 @@ interface DBCharacter {
 }
 
 interface Combatant {
-  id: number | string;
+  id: number;
   name: string;
   job_class: string;
   might: number;
@@ -32,10 +32,10 @@ interface Combatant {
   isBot?: boolean;
 }
 
-// 🛠️ IMMUTABLE SYSTEM BOSSES
+// 🛠️ IMMUTABLE SYSTEM BOSSES (Numeric IDs for Supabase BIGINT compatibility)
 const IMMUTABLE_SYSTEM_BOTS = [
-  { id: 'sys_bot_1', name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", is_ready: true },
-  { id: 'sys_bot_2', name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Poison Dagger", "Smoke Bomb"], assigned_to: "[System Bot]", is_ready: true }
+  { id: -101, name: "🤖 Training Golem", job_class: "Fighter", might: 4, vitality: 4, reflex: 2, skills: ["Shield Slam", "Heavy Slash"], assigned_to: "[System Bot]", is_ready: true },
+  { id: -102, name: "👹 Shadow Stalker", job_class: "Rogue", might: 5, vitality: 3, reflex: 2, skills: ["Poison Dagger", "Smoke Bomb"], assigned_to: "[System Bot]", is_ready: true }
 ];
 
 // 🛠️ Retro Unicode Dice Face Map
@@ -56,14 +56,14 @@ const getGameAssetUrl = (type: 'avatar' | 'skill' | 'win' | 'lost', className: s
   if (type === 'avatar') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_avatar.webp`;
   if (type === 'win') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_win.webp`;
   if (type === 'lost') return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_pose_lost.webp`;
-
+  
   const cleanSkill = skillName ? skillName.toLowerCase().trim().replace(/[\s-]+/g, '_') : '';
-
+  
   // 🛡️ SHARED BASIC ACTIONS (Loads generic basic_attack.webp or defend_stance.webp)
   if (cleanSkill === 'basic_attack' || cleanSkill === 'defend_stance') {
     return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanSkill}.webp`;
   }
-
+  
   return `${supabaseUrl}/storage/v1/object/public/hero-images/${cleanClass}_skill_${cleanSkill}.webp`;
 };
 
@@ -341,22 +341,24 @@ export function BattleArena() {
 
   const getCombatantByNameOrId = (identifier: string | number): Combatant => {
     const strId = identifier.toString();
-    const byId = characters.find(c => c.id.toString() === strId);
+    const numId = parseInt(strId, 10);
+
+    const byId = characters.find(c => c.id === numId || c.id.toString() === strId);
     if (byId) return byId;
 
     const byName = characters.find(c => c.name === identifier);
     if (byName) return byName;
 
-    const sysBot = IMMUTABLE_SYSTEM_BOTS.find(b => b.id === strId || b.name === identifier);
+    const sysBot = IMMUTABLE_SYSTEM_BOTS.find(b => b.id === numId || b.name === identifier);
     if (sysBot) return { ...sysBot, isBot: true };
 
     return {
-      id: strId.startsWith('bot_') || strId.startsWith('sys_') ? strId : `bot_${strId}`,
-      name: typeof identifier === 'string' ? identifier : "Warrior",
+      id: isNaN(numId) ? -999 : numId,
+      name: typeof identifier === 'string' ? identifier : "Bot Warrior",
       job_class: "Fighter",
       might: 3, vitality: 3, reflex: 3,
       skills: ["Shield Slam", "Heavy Slash"],
-      assigned_to: strId.includes('bot') ? `[${t.botLabel}]` : null,
+      assigned_to: `[${t.botLabel}]`,
       is_ready: true,
       isBot: true
     };
@@ -438,7 +440,7 @@ export function BattleArena() {
     }
   };
 
-  // 📡 REALTIME BROADCAST & ROOM CHANNEL (With Immediate Ready Change Listener)
+  // 📡 REALTIME BROADCAST & ROOM CHANNEL
   useEffect(() => {
     if (!activeRoomCode) return;
 
@@ -468,7 +470,7 @@ export function BattleArena() {
     };
   }, [activeRoomCode]);
 
-  // ⚡ AUTOMATED DICE ROLLING ENGINE (WITH DYNAMIC LOCALIZED LOGS)
+  // ⚡ AUTOMATED DICE ROLLING ENGINE (LOCALIZED COMBAT LOGS)
   const autoTriggerCombatRound = async (matchRow: any, p1: Combatant, p2: Combatant) => {
     await supabase.from('matches').update({ is_rolling: true }).eq('id', matchRow.id);
 
@@ -556,12 +558,11 @@ export function BattleArena() {
     }, 1500);
   };
 
-  // 📡 CONTINUOUS 1-SECOND LOBBY & TOURNAMENT POLLING (Guarantees Instant Transition)
+  // 📡 CONTINUOUS 1-SECOND LOBBY & TOURNAMENT POLLING
   useEffect(() => {
     const checkRoomAndMatches = async () => {
       if (!activeRoomCode) return;
 
-      // Check database status for session auto-start
       const { data: session } = await supabase
         .from('game_sessions')
         .select('status, host_id')
@@ -577,7 +578,6 @@ export function BattleArena() {
         }
       }
 
-      // Check matches if game started
       if (lobbyStep === 'GAME_STARTED') {
         const { data } = await supabase.from('matches').select('*');
         if (data && data.length > 0) {
@@ -623,7 +623,6 @@ export function BattleArena() {
             const match = payload.new as any;
             const matchId = `match_${match.p1_char_id}_vs_${match.p2_char_id}`;
             
-            // Auto transition screen on receiving match payload
             if (lobbyStep !== 'GAME_STARTED') {
               setLobbyStep('GAME_STARTED');
             }
@@ -667,7 +666,7 @@ export function BattleArena() {
     };
   }, [currentPlayerName, characters, lobbyStep]);
 
-  // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE
+  // 🏆 DYNAMIC MULTI-ROUND BRACKET ENGINE (Numeric Bot ID Fix)
   const computeTournamentStages = () => {
     if (lobbyStep !== 'GAME_STARTED' || activeClaimed.length === 0) return [];
 
@@ -688,9 +687,10 @@ export function BattleArena() {
         if (i + 1 < currentParticipants.length) {
           pairs.push([currentParticipants[i], currentParticipants[i + 1]]);
         } else {
+          // Odd player paired with Shadow Bot using numeric integer ID
           const botTemplate = IMMUTABLE_SYSTEM_BOTS[stageIndex % IMMUTABLE_SYSTEM_BOTS.length];
           const shadowBot: Combatant = {
-            id: `sys_bot_stage_${stageIndex}_${i}`,
+            id: -2000 - (stageIndex * 10) - i, // Fixed integer ID for Supabase BIGINT
             name: botTemplate.name,
             job_class: botTemplate.job_class,
             might: botTemplate.might,
@@ -778,7 +778,7 @@ export function BattleArena() {
     seedActiveStageMatches();
   }, [lobbyStep, computedStages, locale]);
 
-  // 📡 LOBBY CHARACTER SUBSCRIPTION WITH 2-SECOND HEARTBEAT AUTO-POLL
+  // 📡 LOBBY CHARACTER SUBSCRIPTION WITH 2-SECOND AUTO-POLL
   useEffect(() => {
     fetchCharacters();
     const interval = setInterval(fetchCharacters, 2000);
@@ -796,7 +796,7 @@ export function BattleArena() {
     };
   }, []);
 
-  // 🧹 AUTO-RELEASE HERO ON CLOSE / REFRESH / NAVIGATE AWAY
+  // 🧹 AUTO-RELEASE HERO ON CLOSE / REFRESH
   useEffect(() => {
     const handleTabClose = () => {
       if (myClaimedCharacter) {
@@ -903,6 +903,7 @@ export function BattleArena() {
     }
   };
 
+  // 🔒 LOCK IN ACTION & AUTO-GENERATE BOT ACTION
   const handleLockAction = async (p1: Combatant, p2: Combatant, chosenAction: string) => {
     const isP1 = currentPlayerName === p1.assigned_to;
     const isP2 = currentPlayerName === p2.assigned_to;
@@ -912,7 +913,9 @@ export function BattleArena() {
     if (isP1) updateData.p1_action = chosenAction;
     if (isP2) updateData.p2_action = chosenAction;
 
-    if (p2.isBot && isP1) {
+    // Check if opponent is an AI bot
+    const isBotOpponent = p2.isBot || (p2.assigned_to && (p2.assigned_to.includes('Bot') || p2.assigned_to.includes('bot')));
+    if (isBotOpponent && isP1) {
       const botOptions = ['attack', 'defend', 'skill0', 'skill1'];
       updateData.p2_action = botOptions[Math.floor(Math.random() * botOptions.length)];
     }

@@ -625,8 +625,35 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     if (trimmed.length < 4) return alert('Please enter a valid 4-character Room Code!');
     setIsHost(false);
     setActiveRoomCode(trimmed);
-    setLobbyStep('IN_LOBBY');
 
+    // 🚪 Mid-Game Late Join Check
+    try {
+      const { data: sessionData } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('room_code', trimmed)
+        .single();
+
+      if (sessionData) {
+        setRoomSeed(sessionData.seed);
+        setDifficulty(sessionData.difficulty);
+
+        const pkg = getStartingDifficultyPackage(sessionData.difficulty);
+        setTroops(pkg.troops);
+        setInventory(pkg.inventory);
+        setMaxWarriors(pkg.maxWarriors);
+
+        if (sessionData.status === 'GAME_STARTED') {
+          setLobbyStep('GAME_STARTED');
+          savePlayerToCloud({ x: 0, y: 0 }, true, false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error joining room session:', err);
+    }
+
+    setLobbyStep('IN_LOBBY');
     savePlayerToCloud({ x: 0, y: 0 }, false, false);
   };
 
@@ -740,7 +767,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         }
       }
 
-      finalSpawnPos = spawnPos || { x: idealX, y: idealY };
+      // 🛡️ Fallback: Strictly find ANY valid land tile if primary calculation fails
+      if (!spawnPos) {
+        for (let x = 0; x < N; x++) {
+          for (let y = 0; y < N; y++) {
+            const t = generatedGrid[x][y].terrain;
+            if (t !== 'LAKE' && t !== 'MOUNTAIN') {
+              spawnPos = { x, y };
+              break;
+            }
+          }
+          if (spawnPos) break;
+        }
+      }
+
+      finalSpawnPos = spawnPos || { x: 1, y: 1 };
     }
 
     const updatedGrid = generatedGrid.map((row) =>
@@ -1410,14 +1451,22 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       logMsg += ` ${t.logStarvation} ${casualties} ${t.logWarriorsLost}`;
     }
 
+    // 📿 Clerics can ONLY heal if there is food available (newRations > 0) and troops survive
     let clericHealedMsg = '';
-    if (activeTroops.clerics > 0 && newWarriors < maxWarriors) {
+    if (newRations > 0 && activeTroops.clerics > 0 && newWarriors > 0 && newWarriors < maxWarriors) {
       const healedWarriors = Math.min(maxWarriors, newWarriors + activeTroops.clerics);
       if (healedWarriors > newWarriors) {
         const diff = healedWarriors - newWarriors;
         newWarriors = healedWarriors;
         clericHealedMsg = ` 📿 Clerics healed +${diff} wounded Warriors during rest!`;
       }
+    }
+
+    // 💀 Total Party Wipeout Check (0 Warriors)
+    if (newWarriors <= 0) {
+      alert("💀 STARVATION WIPEOUT! All your troops have perished. Retreating to Sanctuary!");
+      handleCombatDefeat();
+      return;
     }
 
     let currentInventory = { ...activeInventory, rations: newRations };
@@ -2033,26 +2082,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
               </strong>
             </span>
 
-            {/* 👑 Only Host can skip AFK players, and ONLY after 45s timer */}
-            {isHost && (
-              <button
-                onClick={handleForceAdvanceTurn}
-                disabled={afkTimer < 45}
-                style={{
-                  backgroundColor: afkTimer >= 45 ? '#ff3333' : '#333',
-                  color: afkTimer >= 45 ? '#fff' : '#888',
-                  border: 'none',
-                  padding: '6px 14px',
-                  fontWeight: 'bold',
-                  cursor: afkTimer >= 45 ? 'pointer' : 'not-allowed',
-                  fontFamily: 'monospace',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                }}
-              >
-                {afkTimer >= 45 ? '👑 SKIP AFK PLAYERS' : `⏳ AFK SKIP IN (${45 - afkTimer}s)`}
-              </button>
-            )}
+            {/* ⚡ Open to ALL players after 30 seconds of waiting */}
+            <button
+              onClick={handleForceAdvanceTurn}
+              disabled={afkTimer < 30}
+              style={{
+                backgroundColor: afkTimer >= 30 ? '#ff3333' : '#222',
+                color: afkTimer >= 30 ? '#fff' : '#666',
+                border: 'none',
+                padding: '6px 14px',
+                fontWeight: 'bold',
+                cursor: afkTimer >= 30 ? 'pointer' : 'not-allowed',
+                fontFamily: 'monospace',
+                borderRadius: '4px',
+                fontSize: '11px',
+              }}
+            >
+              {afkTimer >= 30 ? '⚡ SKIP AFK PLAYERS' : `⏳ AFK SKIP IN (${30 - afkTimer}s)`}
+            </button>
           </div>
         )}
 
