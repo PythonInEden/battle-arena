@@ -643,14 +643,14 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         .select('*')
         .eq('room_code', trimmed)
         .eq('name', cleanName)
-        .single();
+        .maybeSingle();
 
       // 🔄 2. Check room session status
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('*')
         .eq('room_code', trimmed)
-        .single();
+        .maybeSingle();
 
       if (sessionData) {
         setRoomSeed(sessionData.seed);
@@ -709,24 +709,6 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setHasPendingRaidDebuff(false);
     setLobbyStep('SELECT_MODE');
   };
-
-  useEffect(() => {
-    if (lobbyStep !== 'GAME_STARTED' || !isTurnLocked) return;
-
-    const rivals = Object.values(otherPlayers);
-    const areAllRivalsLocked = rivals.length > 0 && rivals.every((r) => r.isTurnLocked);
-
-    if (areAllRivalsLocked) {
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'global_new_round',
-          payload: {},
-        });
-      }
-      executeEndTurnUpkeep();
-    }
-  }, [isTurnLocked, otherPlayers, lobbyStep]);
 
   const handleForceAdvanceTurn = () => {
     if (channelRef.current) {
