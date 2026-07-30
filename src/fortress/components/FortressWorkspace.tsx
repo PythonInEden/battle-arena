@@ -341,8 +341,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       if (sessionData) {
         setRoomSeed(sessionData.seed);
         setDifficulty(sessionData.difficulty);
-        if (sessionData.status === 'GAME_STARTED' && lobbyStep !== 'GAME_STARTED') {
+
+        // 🚪 Mid-Game Late Joiner Fix: Force screen to GAME_STARTED & load difficulty package!
+        if (sessionData.status === 'GAME_STARTED') {
           setLobbyStep('GAME_STARTED');
+          
+          // Apply difficulty package if new player joining late
+          const pkg = getStartingDifficultyPackage(sessionData.difficulty);
+          setTroops((prev) => (prev.warriors === 0 ? pkg.troops : prev));
+          setInventory((prev) => (prev.rations === 0 ? pkg.inventory : prev));
         }
       }
 
