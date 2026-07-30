@@ -630,11 +630,22 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const handleJoinRoom = async () => {
     const trimmed = roomCodeInput.trim().toUpperCase();
     if (trimmed.length < 4) return alert('Please enter a valid 4-character Room Code!');
+    const cleanName = playerName.trim();
+    if (!cleanName) return alert('Please enter a valid Commander Name!');
+
     setIsHost(false);
     setActiveRoomCode(trimmed);
 
-    // 🚪 Mid-Game Late Join Check
     try {
+      // 🔍 1. Check if an existing hero with this name already exists in this room session
+      const { data: existingPlayer } = await supabase
+        .from('players')
+        .select('*')
+        .eq('room_code', trimmed)
+        .eq('name', cleanName)
+        .single();
+
+      // 🔄 2. Check room session status
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('*')
@@ -644,24 +655,46 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       if (sessionData) {
         setRoomSeed(sessionData.seed);
         setDifficulty(sessionData.difficulty);
+      }
 
-        const pkg = getStartingDifficultyPackage(sessionData.difficulty);
-        setTroops(pkg.troops);
-        setInventory(pkg.inventory);
-        setMaxWarriors(pkg.maxWarriors);
-
-        if (sessionData.status === 'GAME_STARTED') {
-          setLobbyStep('GAME_STARTED');
-          savePlayerToCloud({ x: 0, y: 0 }, true, false);
-          return;
+      // 📲 CASE A: Reconnecting to Existing Hero from a New Device/Browser!
+      if (existingPlayer) {
+        localStorage.setItem('fortress_player_id', existingPlayer.player_id);
+        setPlayerPosition({ x: existingPlayer.pos_x, y: existingPlayer.pos_y });
+        
+        if (existingPlayer.troops && Object.keys(existingPlayer.troops).length > 0) {
+          setTroops(existingPlayer.troops);
         }
+        if (existingPlayer.inventory && Object.keys(existingPlayer.inventory).length > 0) {
+          setInventory(existingPlayer.inventory);
+        }
+
+        if (sessionData?.status === 'GAME_STARTED') {
+          setLobbyStep('GAME_STARTED');
+        } else {
+          setLobbyStep('IN_LOBBY');
+        }
+        return;
+      }
+
+      // 🆕 CASE B: Brand New Player Joining the Session
+      const startDiff = sessionData?.difficulty || difficulty;
+      const pkg = getStartingDifficultyPackage(startDiff);
+      setTroops(pkg.troops);
+      setInventory(pkg.inventory);
+      setMaxWarriors(pkg.maxWarriors);
+
+      if (sessionData?.status === 'GAME_STARTED') {
+        setLobbyStep('GAME_STARTED');
+        await savePlayerToCloud({ x: 1, y: 1 }, true, false);
+      } else {
+        setLobbyStep('IN_LOBBY');
+        await savePlayerToCloud({ x: 0, y: 0 }, false, false);
       }
     } catch (err) {
-      console.error('Error joining room session:', err);
+      console.error('Error in handleJoinRoom:', err);
+      setLobbyStep('IN_LOBBY');
     }
-
-    setLobbyStep('IN_LOBBY');
-    savePlayerToCloud({ x: 0, y: 0 }, false, false);
   };
 
   const handleLeaveRoom = () => {
@@ -706,10 +739,30 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     executeEndTurnUpkeep();
   };
 
-  const toggleReadyState = () => {
+  const toggleReadyState = async () => {
     const nextReady = !isReady;
     setIsReady(nextReady);
-    savePlayerToCloud(playerPosition, nextReady, isTurnLocked);
+
+    // Write to Postgres DB
+    await savePlayerToCloud(playerPosition, nextReady, isTurnLocked);
+
+    // Instant WebSocket Broadcast to Host
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'player_update',
+        payload: {
+          id: playerId,
+          name: playerName,
+          icon: playerIcon,
+          pos: playerPosition,
+          gold: inventory.gold,
+          mules: troops.mules,
+          isReady: nextReady,
+          isTurnLocked,
+        },
+      });
+    }
   };
 
   const handleUnlockDebug = () => {
