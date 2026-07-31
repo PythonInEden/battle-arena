@@ -193,6 +193,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   // 🔮 Seeking Scroll & Theft Modal State
   const [seekingNotice, setSeekingNotice] = useState<{ title: string; targetName: string; pos: Position } | null>(null);
   const [theftNotice, setTheftNotice] = useState<{ title: string; message: string; imageKey: string } | null>(null);
+  const [murderedEnvoyNotice, setMurderedEnvoyNotice] = useState<{ attackerName: string } | null>(null);
 
   const [droppedGoldNotice, setDroppedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
   const [collectedGoldNotice, setCollectedGoldNotice] = useState<{ amount: number; pos: Position } | null>(null);
@@ -336,31 +337,20 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     if (!activeRoomCode) return;
 
     try {
-      const { data: sessionData } = await supabase
-        .from('game_sessions')
-        .select('*')
-        .eq('room_code', activeRoomCode)
-        .single();
-
-      if (sessionData) {
-        setRoomSeed(sessionData.seed);
-        setDifficulty(sessionData.difficulty);
-        if (sessionData.grid_size) setActiveGridSize(sessionData.grid_size);
-
-        // 🚪 Mid-Game Late Joiner & Rejoin Fix: Force screen directly into active game!
-        if (sessionData.status === 'GAME_STARTED') {
-          setLobbyStep('GAME_STARTED');
-        }
-      }
-
+      // 1. Fetch Players first to evaluate map fallback check
       const { data: playersData } = await supabase
         .from('players')
         .select('*')
         .eq('room_code', activeRoomCode);
 
+      let isGameActiveFallback = false;
+
       if (playersData) {
         const otherMap: Record<string, any> = {};
         playersData.forEach((p) => {
+          // 🔥 FAILSAFE: If ANY player is on the map, the game MUST have started!
+          if (p.pos_x > 0 || p.pos_y > 0) isGameActiveFallback = true;
+
           if (p.player_id === playerId) {
             if (p.pos_x !== 0 || p.pos_y !== 0) {
               setPlayerPosition({ x: p.pos_x, y: p.pos_y });
@@ -383,6 +373,24 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           }
         });
         setOtherPlayers(otherMap);
+      }
+
+      // 2. Fetch Session Data
+      const { data: sessionData } = await supabase
+        .from('game_sessions')
+        .select('*')
+        .eq('room_code', activeRoomCode)
+        .maybeSingle();
+
+      if (sessionData) {
+        setRoomSeed(sessionData.seed);
+        setDifficulty(sessionData.difficulty);
+        if (sessionData.grid_size) setActiveGridSize(sessionData.grid_size);
+
+        // 🚪 Mid-Game Late Joiner & Rejoin Fix: Force screen directly into active game!
+        if (sessionData.status === 'GAME_STARTED' || isGameActiveFallback) {
+          setLobbyStep('GAME_STARTED');
+        }
       }
     } catch (err) {
       console.error('Error fetching cloud room state:', err);
@@ -481,7 +489,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
             setLogs((prev) => [t.peaceAcceptedLog, ...prev]);
           } else if (data.murdered) {
             setHolyVengeanceTargets((prev) => [...prev, data.responderId]);
-            setLogs((prev) => [`🩸 ${data.responderName} murdered your Peace Envoy! ${t.holyVengeanceActiveLog}`, ...prev]);
+            
+            // 💀 Deduct the murdered Raider Envoy!
+            setTroops((prev) => ({ ...prev, raiders: Math.max(0, prev.raiders - 1) }));
+            setMurderedEnvoyNotice({ attackerName: data.responderName });
+            setLogs((prev) => [`🩸 ${data.responderName} murdered your Peace Envoy! Lost 1 Raider! ${t.holyVengeanceActiveLog}`, ...prev]);
           }
         }
       })
@@ -648,12 +660,21 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
         .eq('name', cleanName)
         .maybeSingle();
 
+      // 🔥 1.5 FAILSAFE: Check if ANY player is already on the map
+      const { data: allPlayers } = await supabase
+        .from('players')
+        .select('pos_x, pos_y')
+        .eq('room_code', trimmed);
+      const isGameActiveFallback = allPlayers?.some(p => p.pos_x > 0 || p.pos_y > 0) || false;
+
       // 🔄 2. Check room session status
       const { data: sessionData } = await supabase
         .from('game_sessions')
         .select('*')
         .eq('room_code', trimmed)
         .maybeSingle();
+        
+      const gameStarted = sessionData?.status === 'GAME_STARTED' || isGameActiveFallback;
 
       if (sessionData) {
         setRoomSeed(sessionData.seed);
@@ -673,7 +694,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
           setInventory(existingPlayer.inventory);
         }
 
-        if (sessionData?.status === 'GAME_STARTED') {
+        if (gameStarted) {
           setLobbyStep('GAME_STARTED');
         } else {
           setLobbyStep('IN_LOBBY');
@@ -2070,37 +2091,41 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 : t.raidCampBtn} ({troops.raiders})
             </button>
 
-            {/* 🕊️ Send Peace Messenger Button (with Spec Permanent Lock Check)[cite: 1, 19] */}
+            {/* 🕊️ Send Peace Envoy Button (Requires 1 Raider)[cite: 1] */}
             {getValidRaidTarget() && (() => {
               const target = getValidRaidTarget();
               const isDiplomacyLocked = target && holyVengeanceTargets.includes(target.id);
+              const hasRaider = troops.raiders > 0;
 
               return (
                 <button
                   onClick={() => {
                     if (isDiplomacyLocked) return;
+                    if (!hasRaider) {
+                      alert("You need at least 1 Raider specialist to send as a Peace Envoy!");
+                      return;
+                    }
                     if (target && channelRef.current) {
                       channelRef.current.send({
                         type: 'broadcast',
                         event: 'peace_request',
                         payload: { attackerId: playerId, attackerName: playerName, targetId: target.id },
                       });
-                      alert(`🕊️ Peace Messenger sent to ${target.name}! Waiting for their response...`);
+                      alert(`🕊️ Peace Envoy (1 Raider) dispatched to ${target.name}! Awaiting response...`);
                     }
                   }}
-                  disabled={isTurnLocked || isDiplomacyLocked}
+                  disabled={isTurnLocked || isDiplomacyLocked || !hasRaider}
                   style={{
                     backgroundColor: '#111',
-                    color: isDiplomacyLocked ? '#ff3333' : '#00ffff',
-                    border: `1px solid ${isDiplomacyLocked ? '#ff3333' : '#00ffff'}`,
+                    color: isDiplomacyLocked ? '#ff3333' : (!hasRaider ? '#555' : '#00ffff'),
+                    border: `1px solid ${isDiplomacyLocked ? '#ff3333' : (!hasRaider ? '#333' : '#00ffff')}`,
                     padding: '6px 12px',
                     fontSize: '12px',
-                    cursor: isDiplomacyLocked ? 'not-allowed' : 'pointer',
+                    cursor: (isDiplomacyLocked || !hasRaider) ? 'not-allowed' : 'pointer',
                     fontFamily: 'monospace',
-                    opacity: isDiplomacyLocked ? 0.6 : 1,
                   }}
                 >
-                  {isDiplomacyLocked ? ((t as any).diplomacyLockedBtn || "🚫 Diplomacy Locked") : t.sendPeaceBtn}
+                  {isDiplomacyLocked ? ((t as any).diplomacyLockedBtn || "🚫 Diplomacy Locked") : `🕊️ Send Peace Envoy (1 Raider)`}
                 </button>
               );
             })()}
@@ -2695,6 +2720,31 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
                 style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 28px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
               >
                 ✅ UNDERSTOOD
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🩸 ENVOY MURDERED / HOLY VENGEANCE MODAL */}
+        {murderedEnvoyNotice && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 170 }}>
+            <div style={{ backgroundColor: '#111', border: '3px solid #ff3333', borderRadius: '12px', padding: '24px', maxWidth: '480px', width: '90%', color: '#ff3333', fontFamily: 'monospace', textAlign: 'center' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '20px', color: '#ff3333' }}>🩸 ENVOY MURDERED!</h3>
+              
+              <p style={{ color: '#fff', fontSize: '14px', lineHeight: '1.5', marginBottom: '20px' }}>
+                <strong style={{ color: '#ff3333' }}>{murderedEnvoyNotice.attackerName}</strong> has brutally executed your Peace Envoy! You have lost <strong style={{ color: '#ff3333' }}>1 Raider</strong>.
+              </p>
+
+              <div style={{ backgroundColor: '#050505', border: '1px dashed #ff3333', padding: '12px', marginBottom: '20px', textAlign: 'left', fontSize: '13px', color: '#ff0' }}>
+                ⚡ <strong>HOLY VENGEANCE GRANTED:</strong><br/>
+                Your army is enraged! You now deal <strong>+20% Combat Damage</strong> against this treacherous rival!
+              </div>
+
+              <button
+                onClick={() => setMurderedEnvoyNotice(null)}
+                style={{ backgroundColor: '#ff3333', color: '#fff', border: 'none', padding: '10px 28px', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+              >
+                ⚔️ I WILL HAVE MY REVENGE
               </button>
             </div>
           </div>
