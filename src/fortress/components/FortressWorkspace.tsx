@@ -149,6 +149,9 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
   const [difficulty, setDifficulty] = useState<number>(2);
   const [isReady, setIsReady] = useState<boolean>(false);
 
+  // 🔒 Fixed Grid Size State (Prevents map seed morphing when players join late)
+  const [activeGridSize, setActiveGridSize] = useState<number>(12);
+
   const [syncedPlayerList, setSyncedPlayerList] = useState<string[]>([]);
   const [showManualModal, setShowManualModal] = useState<boolean>(false);
 
@@ -287,7 +290,8 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
 
   const sortedRoster = [playerId, ...Object.keys(otherPlayers)].sort();
   const totalPlayersCount = Math.max(1, sortedRoster.length);
-  const calculatedGridSize = totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : totalPlayersCount <= 6 ? 28 : totalPlayersCount <= 8 ? 34 : 40;
+  // Default sizing fallback for fresh lobby setup
+  const calculatedGridSize = activeGridSize || (totalPlayersCount <= 2 ? 12 : totalPlayersCount <= 4 ? 20 : 28);
 
   const guestPlayers = Object.values(otherPlayers);
   const allGuestsReady = guestPlayers.length === 0 || guestPlayers.every((p) => p.isReady);
@@ -341,15 +345,11 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       if (sessionData) {
         setRoomSeed(sessionData.seed);
         setDifficulty(sessionData.difficulty);
+        if (sessionData.grid_size) setActiveGridSize(sessionData.grid_size);
 
-        // 🚪 Mid-Game Late Joiner Fix: Force screen to GAME_STARTED & load difficulty package!
+        // 🚪 Mid-Game Late Joiner & Rejoin Fix: Force screen directly into active game!
         if (sessionData.status === 'GAME_STARTED') {
           setLobbyStep('GAME_STARTED');
-          
-          // Apply difficulty package if new player joining late
-          const pkg = getStartingDifficultyPackage(sessionData.difficulty);
-          setTroops((prev) => (prev.warriors === 0 ? pkg.troops : prev));
-          setInventory((prev) => (prev.rations === 0 ? pkg.inventory : prev));
         }
       }
 
@@ -615,14 +615,17 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setInventory(pkg.inventory);
     setMaxWarriors(pkg.maxWarriors);
 
+    const initialGrid = 12; // Standard 12x12 board size
+    setActiveGridSize(initialGrid);
+
     await supabase.from('game_sessions').upsert({
       room_code: code,
       seed: newSeed,
       difficulty: difficulty,
-      grid_size: calculatedGridSize,
+      grid_size: initialGrid,
       status: 'LOBBY',
       host_id: playerId,
-    });
+    }, { onConflict: 'room_code' });
 
     savePlayerToCloud({ x: 0, y: 0 }, false, false);
   };
@@ -655,6 +658,7 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
       if (sessionData) {
         setRoomSeed(sessionData.seed);
         setDifficulty(sessionData.difficulty);
+        if (sessionData.grid_size) setActiveGridSize(sessionData.grid_size);
       }
 
       // 📲 CASE A: Reconnecting to Existing Hero from a New Device/Browser!
@@ -870,7 +874,15 @@ export const FortressWorkspace: React.FC<FortressWorkspaceProps> = ({ locale = '
     setSyncedPlayerList(fullRoster);
     setLobbyStep('GAME_STARTED');
 
-    await supabase.from('game_sessions').update({ status: 'GAME_STARTED' }).eq('room_code', activeRoomCode);
+    // 🔒 Lock session as GAME_STARTED in Supabase Postgres
+    await supabase.from('game_sessions').upsert({
+      room_code: activeRoomCode,
+      seed: roomSeed,
+      difficulty: difficulty,
+      grid_size: activeGridSize,
+      status: 'GAME_STARTED',
+      host_id: playerId,
+    }, { onConflict: 'room_code' });
 
     if (channelRef.current) {
       channelRef.current.send({
