@@ -72,15 +72,15 @@ export function DungeonArena() {
 
       {/* Hero Registration & Avatar Preview Panel */}
       {!player && (
-        <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '20px', borderRadius: '8px', maxWidth: '650px', margin: '0 auto 30px auto' }}>
-          <h2 style={{ marginTop: 0, color: '#fff', textAlign: 'center' }}>⚔️ Select Character & Avatar</h2>
+        <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '24px', borderRadius: '8px', maxWidth: '780px', margin: '0 auto 30px auto' }}>
+          <h2 style={{ marginTop: 0, color: '#fff', textAlign: 'center', marginBottom: '20px' }}>⚔️ Select Character & Avatar</h2>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: '20px', alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 250px', gap: '24px', alignItems: 'center' }}>
             
             {/* Form Inputs */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px' }}>Player Name:</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>Player Name:</label>
                 <input 
                   type="text" 
                   value={playerNameInput} 
@@ -91,7 +91,7 @@ export function DungeonArena() {
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px' }}>4-Letter Room Code:</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>4-Letter Room Code:</label>
                 <input 
                   type="text" 
                   maxLength={4}
@@ -102,7 +102,7 @@ export function DungeonArena() {
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px' }}>Choose Hero Class:</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>Choose Hero Class:</label>
                 <select 
                   value={selectedClass} 
                   onChange={(e) => setSelectedClass(e.target.value)}
@@ -118,14 +118,14 @@ export function DungeonArena() {
 
               {/* Gender Selector Buttons */}
               <div>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px' }}>Select Avatar Gender:</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>Select Avatar Gender:</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     type="button"
                     onClick={() => setSelectedGender('male')}
                     style={{
                       flex: 1,
-                      padding: '8px',
+                      padding: '10px',
                       backgroundColor: selectedGender === 'male' ? '#00ffcc' : '#000',
                       color: selectedGender === 'male' ? '#000' : '#00ffcc',
                       border: '1px solid #00ffcc',
@@ -141,7 +141,7 @@ export function DungeonArena() {
                     onClick={() => setSelectedGender('female')}
                     style={{
                       flex: 1,
-                      padding: '8px',
+                      padding: '10px',
                       backgroundColor: selectedGender === 'female' ? '#00ffcc' : '#000',
                       color: selectedGender === 'female' ? '#000' : '#00ffcc',
                       border: '1px solid #00ffcc',
@@ -156,27 +156,26 @@ export function DungeonArena() {
               </div>
             </div>
 
-            {/* Live Character Avatar Preview Box */}
-            <div style={{ textAlign: 'center', border: '1px dashed #00ffcc', padding: '15px', backgroundColor: '#030811', borderRadius: '6px' }}>
-              <span style={{ fontSize: '11px', color: '#88aaff', display: 'block', marginBottom: '8px' }}>AVATAR PREVIEW</span>
+            {/* Enlarged Character Avatar Preview Box (210px x 210px Image) */}
+            <div style={{ textAlign: 'center', border: '1px dashed #00ffcc', padding: '15px', backgroundColor: '#030811', borderRadius: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#88aaff', display: 'block', marginBottom: '10px', letterSpacing: '1px' }}>AVATAR PREVIEW</span>
               <img 
                 src={getHeroAvatarUrl(selectedClass, selectedGender)} 
                 alt={`${selectedGender} ${selectedClass}`}
-                style={{ width: '120px', height: '120px', objectFit: 'cover', border: '2px solid #00ffcc', backgroundColor: '#000', borderRadius: '4px' }}
+                style={{ width: '210px', height: '210px', objectFit: 'cover', border: '2px solid #00ffcc', backgroundColor: '#000', borderRadius: '6px' }}
                 onError={(e) => {
-                  // Fallback preview if gender asset hasn't uploaded yet
-                  (e.target as HTMLImageElement).src = `https://placehold.co/120x120/000000/00ffcc?text=${selectedGender}+${selectedClass}`;
+                  (e.target as HTMLImageElement).src = `https://placehold.co/210x210/000000/00ffcc?text=${selectedGender}+${selectedClass}`;
                 }}
               />
-              <div style={{ marginTop: '8px', fontWeight: 'bold', color: '#fff', fontSize: '14px' }}>{selectedClass}</div>
-              <div style={{ fontSize: '11px', color: '#ffcc00' }}>Goal: {CLASS_CONFIG[selectedClass]?.targetGold.toLocaleString()} GP</div>
+              <div style={{ marginTop: '10px', fontWeight: 'bold', color: '#fff', fontSize: '16px' }}>{selectedClass}</div>
+              <div style={{ fontSize: '12px', color: '#ffcc00', marginTop: '2px' }}>Goal: {CLASS_CONFIG[selectedClass]?.targetGold.toLocaleString()} GP</div>
             </div>
 
           </div>
 
           <button 
             onClick={handleJoinOrCreateRoom}
-            style={{ width: '100%', backgroundColor: '#00ffcc', color: '#000', fontWeight: 'bold', border: 'none', padding: '14px', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', marginTop: '20px' }}
+            style={{ width: '100%', backgroundColor: '#00ffcc', color: '#000', fontWeight: 'bold', border: 'none', padding: '14px', fontSize: '16px', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px', marginTop: '24px' }}
           >
             🚀 ENTER DUNGEON LOBBY
           </button>
@@ -189,9 +188,9 @@ export function DungeonArena() {
           <img 
             src={getHeroAvatarUrl(player.hero_class, player.hero_gender || 'male')} 
             alt={player.hero_class}
-            style={{ width: '90px', height: '90px', objectFit: 'cover', border: '2px solid #00ffcc', borderRadius: '4px' }}
+            style={{ width: '100px', height: '100px', objectFit: 'cover', border: '2px solid #00ffcc', borderRadius: '6px' }}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://placehold.co/90x90/000000/00ffcc?text=${player.hero_class}`;
+              (e.target as HTMLImageElement).src = `https://placehold.co/100x100/000000/00ffcc?text=${player.hero_class}`;
             }}
           />
           <div style={{ flex: 1 }}>
@@ -222,9 +221,9 @@ export function DungeonArena() {
                 <img 
                   src={getHeroAvatarUrl(p.hero_class, p.hero_gender || 'male')} 
                   alt={p.hero_class}
-                  style={{ width: '45px', height: '45px', objectFit: 'cover', border: '1px solid #00ffcc', borderRadius: '4px' }}
+                  style={{ width: '50px', height: '50px', objectFit: 'cover', border: '1px solid #00ffcc', borderRadius: '4px' }}
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://placehold.co/45x45/000000/00ffcc?text=${p.hero_class}`;
+                    (e.target as HTMLImageElement).src = `https://placehold.co/50x50/000000/00ffcc?text=${p.hero_class}`;
                   }}
                 />
                 <div>
