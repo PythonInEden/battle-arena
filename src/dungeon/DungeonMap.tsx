@@ -6,7 +6,7 @@ export interface TileData {
   x: number;
   y: number;
   type: 'GREAT_HALL' | 'CORRIDOR' | 'CHAMBER' | 'WALL' | 'SECRET_DOOR';
-  level: number; // 0 = Great Hall, 1 to 6 = Dungeon levels
+  level: number;
   isCleared?: boolean;
 }
 
@@ -25,7 +25,16 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
-  // 1. Calculate Grid Size based on Player Count (2p = 20x20, up to 10p = 40x40)
+  // ⚡ Optimistic Local Position State for 0ms instant input response
+  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 10, y: player.pos_y ?? 10 });
+
+  // Sync with prop if updated externally
+  useEffect(() => {
+    if (player.pos_x !== undefined && player.pos_y !== undefined) {
+      setLocalPos({ x: player.pos_x, y: player.pos_y });
+    }
+  }, [player.pos_x, player.pos_y]);
+
   const gridSize = useMemo(() => {
     const pCount = Math.max(2, allPlayers.length);
     return Math.min(40, Math.max(20, 16 + pCount * 2));
@@ -37,10 +46,9 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
   const [searchProgress, setSearchProgress] = useState<number>(0);
   const [lastMoveTime, setLastMoveTime] = useState<number>(0);
 
-  // Movement tick cooldown: Rogue = 600ms, Others = 800ms
   const moveCooldownMs = player.hero_class.toLowerCase() === 'rogue' ? 600 : 800;
 
-  // 2. Generate Concentric Map Layout (Great Hall center -> Levels 1..6 outwards)
+  // Concentric Map Layout
   const mapGrid = useMemo(() => {
     const grid: TileData[][] = [];
     const center = Math.floor(gridSize / 2);
@@ -50,14 +58,11 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
       for (let x = 0; x < gridSize; x++) {
         const distFromCenter = Math.hypot(x - center, y - center);
         
-        // Center 2x2 area = Great Hall
         if (Math.abs(x - center) <= 1 && Math.abs(y - center) <= 1) {
           row.push({ x, y, type: 'GREAT_HALL', level: 0, isCleared: true });
         } else {
-          // Concentric Level Zones
           let lvl = Math.min(6, Math.max(1, Math.floor((distFromCenter / (gridSize / 2)) * 6)));
           
-          // Patterned Room vs Corridor vs Secret Door generation
           const isRoom = (x % 3 === 0 && y % 3 === 0);
           const isSecret = (x % 7 === 0 && y % 7 === 0);
           const isWall = (x % 4 === 0 && y % 2 === 0 && !isRoom && !isSecret);
@@ -78,7 +83,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     return grid;
   }, [gridSize]);
 
-  // 3. Fog of War Vision Calculation (5-Tile Vision Radius)
+  // Dynamic 5-Tile Vision Fog of War
   const visibleTiles = useMemo(() => {
     const visible = new Set<string>();
     const radius = 5;
@@ -86,8 +91,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         if (Math.hypot(dx, dy) <= radius) {
-          const vx = player.pos_x + dx;
-          const vy = player.pos_y + dy;
+          const vx = localPos.x + dx;
+          const vy = localPos.y + dy;
           if (vx >= 0 && vx < gridSize && vy >= 0 && vy < gridSize) {
             visible.add(`${vx},${vy}`);
           }
@@ -95,9 +100,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
       }
     }
     return visible;
-  }, [player.pos_x, player.pos_y, gridSize]);
+  }, [localPos.x, localPos.y, gridSize]);
 
-  // Update Visited (Remembered) Tiles
   useEffect(() => {
     setVisitedTiles(prev => {
       const next = new Set(prev);
@@ -106,16 +110,40 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     });
   }, [visibleTiles]);
 
-  // 4. Movement Handler with Cooldown Ticks
-  const handleMove = useCallback(async (newX: number, newY: number) => {
+  // Execute Position Change
+  const executeMove = async (newX: number, newY: number) => {
+    setLastMoveTime(Date.now());
+    
+    // 1. Instant local update
+    setLocalPos({ x: newX, y: newY });
+
+    // 2. Background DB Sync
+    await supabase
+      .from('dungeon_players')
+      .update({ pos_x: newX, pos_y: newY })
+      .eq('client_session_id', player.client_session_id);
+  };
+
+  // Smart Directional Movement Handler
+  const handleMove = useCallback(async (targetX: number, targetY: number) => {
     const now = Date.now();
-    if (now - lastMoveTime < moveCooldownMs) return; // Cooldown limit check
+    if (now - lastMoveTime < moveCooldownMs) return;
 
-    if (newX < 0 || newX >= gridSize || newY < 0 || newY >= gridSize) return;
-    const targetTile = mapGrid[newY]?.[newX];
-    if (!targetTile || targetTile.type === 'WALL') return; // Wall collision
+    if (targetX < 0 || targetX >= gridSize || targetY < 0 || targetY >= gridSize) return;
 
-    // Handle Secret Door Search Check
+    // Calculate 1-step direction towards target
+    const dx = Math.sign(targetX - localPos.x);
+    const dy = Math.sign(targetY - localPos.y);
+
+    if (dx === 0 && dy === 0) return;
+
+    const stepX = localPos.x + dx;
+    const stepY = localPos.y + dy;
+
+    const targetTile = mapGrid[stepY]?.[stepX];
+    if (!targetTile || targetTile.type === 'WALL') return; // Wall collision check
+
+    // Secret Door Search Channeling
     if (targetTile.type === 'SECRET_DOOR' && player.hero_class.toLowerCase() !== 'rogue') {
       if (!isSearchingDoor) {
         setIsSearchingDoor(true);
@@ -128,40 +156,41 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
           if (progress >= 100) {
             clearInterval(interval);
             setIsSearchingDoor(false);
-            executeMove(newX, newY);
+            executeMove(stepX, stepY);
           }
-        }, 400); // 2 second total channel
+        }, 400);
         return;
       }
     } else {
-      executeMove(newX, newY);
+      executeMove(stepX, stepY);
     }
-  }, [lastMoveTime, moveCooldownMs, gridSize, mapGrid, player.hero_class, isSearchingDoor]);
+  }, [localPos, lastMoveTime, moveCooldownMs, gridSize, mapGrid, player.hero_class, isSearchingDoor]);
 
-  const executeMove = async (newX: number, newY: number) => {
-    setLastMoveTime(Date.now());
-    await supabase.from('dungeon_players').update({ pos_x: newX, pos_y: newY }).eq('id', player.id);
-  };
-
-  // Keyboard Movement Listener (WASD / Arrow Keys)
+  // Keyboard Movement Listener (WASD & Arrow Keys)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') handleMove(player.pos_x, player.pos_y - 1);
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') handleMove(player.pos_x, player.pos_y + 1);
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') handleMove(player.pos_x - 1, player.pos_y);
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') handleMove(player.pos_x + 1, player.pos_y);
+      const key = e.key.toLowerCase();
+      
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
+        e.preventDefault(); // Prevent page scrolling
+      }
+
+      if (key === 'arrowup' || key === 'w') handleMove(localPos.x, localPos.y - 1);
+      if (key === 'arrowdown' || key === 's') handleMove(localPos.x, localPos.y + 1);
+      if (key === 'arrowleft' || key === 'a') handleMove(localPos.x - 1, localPos.y);
+      if (key === 'arrowright' || key === 'd') handleMove(localPos.x + 1, localPos.y);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleMove, player.pos_x, player.pos_y]);
+  }, [handleMove, localPos]);
 
-  // 5. Emit Spatial Audio Ping (Broadcast to nearby players within 10 tiles)
+  // Spatial Sound Ping
   const triggerSoundPing = async (label: string = '⚔️ COMBAT') => {
     const pingPayload: SoundPing = {
       id: crypto.randomUUID(),
-      x: player.pos_x,
-      y: player.pos_y,
+      x: localPos.x,
+      y: localPos.y,
       timestamp: Date.now(),
       label
     };
@@ -174,18 +203,16 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     });
   };
 
-  // Listen for Realtime Sound Pings
   useEffect(() => {
     const channel = supabase.channel(`dungeon_room_${roomCode}`);
     channel
       .on('broadcast', { event: 'sound_ping' }, ({ payload }: { payload: SoundPing }) => {
-        // Only register sound ping if within 10-tile radius
-        const distance = Math.hypot(payload.x - player.pos_x, payload.y - player.pos_y);
+        const distance = Math.hypot(payload.x - localPos.x, payload.y - localPos.y);
         if (distance <= 10) {
           setSoundPings(prev => [...prev, payload]);
           setTimeout(() => {
             setSoundPings(prev => prev.filter(p => p.id !== payload.id));
-          }, 2500); // Ping dissipates after 2.5 seconds
+          }, 2500);
         }
       })
       .subscribe();
@@ -193,17 +220,17 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomCode, player.pos_x, player.pos_y]);
+  }, [roomCode, localPos.x, localPos.y]);
 
   const getLevelColor = (level: number) => {
     switch (level) {
-      case 0: return '#00ffcc'; // Great Hall
-      case 1: return '#ffffff'; // White
-      case 2: return '#3b82f6'; // Blue
-      case 3: return '#22c55e'; // Green
-      case 4: return '#eab308'; // Yellow
-      case 5: return '#ef4444'; // Red
-      case 6: return '#a855f7'; // Purple
+      case 0: return '#00ffcc';
+      case 1: return '#ffffff';
+      case 2: return '#3b82f6';
+      case 3: return '#22c55e';
+      case 4: return '#eab308';
+      case 5: return '#ef4444';
+      case 6: return '#a855f7';
       default: return '#333333';
     }
   };
@@ -220,7 +247,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
           🔊 Test Spell Sound Ping
         </button>
         <div style={{ color: '#88aaff', fontSize: '13px' }}>
-          Grid: <strong>{gridSize}x{gridSize}</strong> | Position: <strong>({player.pos_x}, {player.pos_y})</strong> | Sight: <strong>5 Tiles</strong>
+          Grid: <strong>{gridSize}x{gridSize}</strong> | Position: <strong>({localPos.x}, {localPos.y})</strong> | Sight: <strong>5 Tiles</strong>
         </div>
       </div>
 
@@ -236,11 +263,11 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
       <div 
         style={{ 
           display: 'grid', 
-          gridTemplateColumns: `repeat(${gridSize}, 18px)`, 
-          gridTemplateRows: `repeat(${gridSize}, 18px)`, 
+          gridTemplateColumns: `repeat(${gridSize}, 22px)`, 
+          gridTemplateRows: `repeat(${gridSize}, 22px)`, 
           gap: '2px', 
           backgroundColor: '#000', 
-          padding: '10px', 
+          padding: '12px', 
           border: '2px solid #00ffcc', 
           borderRadius: '8px',
           boxShadow: '0 0 20px rgba(0,255,204,0.15)',
@@ -254,16 +281,12 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
             const isVisible = visibleTiles.has(tileKey);
             const isVisited = visitedTiles.has(tileKey);
             
-            // Active Players on this tile (only visible if within Fog of War sight)
             const playersOnTile = allPlayers.filter(p => p.pos_x === x && p.pos_y === y && isVisible);
-            const isLocalPlayerHere = player.pos_x === x && player.pos_y === y;
-
-            // Active Sound Ping on this tile
+            const isLocalPlayerHere = localPos.x === x && localPos.y === y;
             const activePing = soundPings.find(p => p.x === x && p.y === y);
 
             if (!isVisible && !isVisited) {
-              // PITCH BLACK FOG OF WAR
-              return <div key={tileKey} style={{ width: '18px', height: '18px', backgroundColor: '#020408' }} />;
+              return <div key={tileKey} style={{ width: '22px', height: '22px', backgroundColor: '#020408' }} />;
             }
 
             let tileBg = tile.type === 'WALL' ? '#111b27' : '#070f1e';
@@ -275,11 +298,11 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                 key={tileKey}
                 onClick={() => handleMove(x, y)}
                 style={{
-                  width: '18px',
-                  height: '18px',
+                  width: '22px',
+                  height: '22px',
                   backgroundColor: tileBg,
                   border: isVisible ? `1px solid ${getLevelColor(tile.level)}` : '1px solid #112233',
-                  opacity: isVisible ? 1 : 0.35, // Dim brightness for visited/remembered tiles
+                  opacity: isVisible ? 1 : 0.35,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -288,22 +311,22 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                   boxSizing: 'border-box'
                 }}
               >
-                {/* Local Player Marker */}
+                {/* Local Player Avatar Marker */}
                 {isLocalPlayerHere && (
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#00ffcc', borderRadius: '50%', boxShadow: '0 0 8px #00ffcc' }} />
+                  <div style={{ width: '12px', height: '12px', backgroundColor: '#00ffcc', borderRadius: '50%', boxShadow: '0 0 8px #00ffcc' }} />
                 )}
 
-                {/* Other Players (Visible) */}
+                {/* Other Visible Players */}
                 {!isLocalPlayerHere && playersOnTile.length > 0 && (
-                  <div style={{ width: '8px', height: '8px', backgroundColor: '#ff3366', borderRadius: '50%' }} />
+                  <div style={{ width: '10px', height: '10px', backgroundColor: '#ff3366', borderRadius: '50%' }} />
                 )}
 
                 {/* Sound Wave Ripple Effect */}
                 {activePing && isVisible && (
                   <div style={{
                     position: 'absolute',
-                    width: '24px',
-                    height: '24px',
+                    width: '28px',
+                    height: '28px',
                     border: '2px solid #ffcc00',
                     borderRadius: '50%',
                     animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite'

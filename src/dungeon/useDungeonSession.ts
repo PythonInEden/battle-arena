@@ -32,6 +32,25 @@ export function useDungeonSession(roomCode: string) {
   const [isReconnecting, setIsReconnecting] = useState<boolean>(true);
   const channelRef = useRef<any>(null);
 
+  // 1. Fetch full room roster and keep local player in sync
+  const fetchRoster = useCallback(async () => {
+    if (!roomCode) return;
+    const { data } = await supabase
+      .from('dungeon_players')
+      .select('*')
+      .eq('room_code', roomCode);
+
+    if (data) {
+      const roster = data as DungeonPlayerState[];
+      setLobbyPlayers(roster);
+      
+      // 🛠️ CRITICAL FIX: Keep active player state in sync with latest DB roster
+      const me = roster.find(p => p.client_session_id === clientSessionId);
+      if (me) setPlayer(me);
+    }
+  }, [roomCode, clientSessionId]);
+
+  // 2. Reconnect / Restore player session
   const restoreSession = useCallback(async () => {
     if (!roomCode) {
       setIsReconnecting(false);
@@ -47,28 +66,17 @@ export function useDungeonSession(roomCode: string) {
 
     if (!error && data && data.length > 0) {
       setPlayer(data[0] as DungeonPlayerState);
-    } else {
-      setPlayer(null);
     }
 
+    await fetchRoster();
     setIsReconnecting(false);
-  }, [roomCode, clientSessionId]);
+  }, [roomCode, clientSessionId, fetchRoster]);
 
-  const fetchRoster = useCallback(async () => {
-    if (!roomCode) return;
-    const { data } = await supabase
-      .from('dungeon_players')
-      .select('*')
-      .eq('room_code', roomCode);
-
-    if (data) setLobbyPlayers(data as DungeonPlayerState[]);
-  }, [roomCode]);
-
+  // 3. Realtime Listener
   useEffect(() => {
     if (!roomCode) return;
 
     restoreSession();
-    fetchRoster();
 
     const roomChannel = supabase.channel(`dungeon_room_${roomCode}`, {
       config: { presence: { key: clientSessionId } }
