@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-// 🔗 Relative import pointing to src/supabaseClient.ts
 import { supabase } from '../supabaseClient';
 
 const getOrCreateClientSessionId = (): string => {
@@ -16,6 +15,7 @@ export interface DungeonPlayerState {
   room_code: string;
   player_name: string;
   hero_class: string;
+  hero_gender?: 'male' | 'female';
   target_gold: number;
   current_gold: number;
   pos_x: number;
@@ -32,7 +32,6 @@ export function useDungeonSession(roomCode: string) {
   const [isReconnecting, setIsReconnecting] = useState<boolean>(true);
   const channelRef = useRef<any>(null);
 
-  // 1. Reconnect / Restore player session from Postgres RPC
   const restoreSession = useCallback(async () => {
     if (!roomCode) {
       setIsReconnecting(false);
@@ -55,7 +54,6 @@ export function useDungeonSession(roomCode: string) {
     setIsReconnecting(false);
   }, [roomCode, clientSessionId]);
 
-  // 2. Fetch full room roster
   const fetchRoster = useCallback(async () => {
     if (!roomCode) return;
     const { data } = await supabase
@@ -66,7 +64,6 @@ export function useDungeonSession(roomCode: string) {
     if (data) setLobbyPlayers(data as DungeonPlayerState[]);
   }, [roomCode]);
 
-  // 3. Setup Supabase Realtime Channel & Presence Tracking
   useEffect(() => {
     if (!roomCode) return;
 
