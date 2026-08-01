@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { supabase, supabaseUrl } from '../supabaseClient';
 import { useDungeonSession } from './useDungeonSession';
+import { DungeonMap } from './DungeonMap';
 
-// 🖼️ Dynamic Avatar Image URL Generator
 const getHeroAvatarUrl = (heroClass: string, gender: 'male' | 'female' = 'male') => {
   const cleanClass = heroClass.toLowerCase().trim();
   const filename = gender === 'female' ? `female_${cleanClass}_avatar.webp` : `${cleanClass}_avatar.webp`;
@@ -35,12 +35,10 @@ export function DungeonArena() {
     const code = roomCodeInput.trim().toUpperCase();
     setActiveRoomCode(code);
 
-    // 1. Ensure room session exists
     await supabase
       .from('dungeon_sessions')
       .upsert({ room_code: code, host_id: playerNameInput });
 
-    // 2. Register or update player entry
     const targetGold = CLASS_CONFIG[selectedClass].targetGold;
     await supabase.from('dungeon_players').upsert({
       room_code: code,
@@ -49,7 +47,9 @@ export function DungeonArena() {
       hero_gender: selectedGender,
       target_gold: targetGold,
       client_session_id: clientSessionId,
-      connection_status: 'ONLINE'
+      connection_status: 'ONLINE',
+      pos_x: 10,
+      pos_y: 10
     });
 
     reconnect();
@@ -70,14 +70,12 @@ export function DungeonArena() {
         </div>
       </header>
 
-      {/* Hero Registration & Avatar Preview Panel */}
+      {/* Hero Registration Panel */}
       {!player && (
         <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '24px', borderRadius: '8px', maxWidth: '780px', margin: '0 auto 30px auto' }}>
           <h2 style={{ marginTop: 0, color: '#fff', textAlign: 'center', marginBottom: '20px' }}>⚔️ Select Character & Avatar</h2>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 250px', gap: '24px', alignItems: 'center' }}>
-            
-            {/* Form Inputs */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>Player Name:</label>
@@ -116,7 +114,6 @@ export function DungeonArena() {
                 </select>
               </div>
 
-              {/* Gender Selector Buttons */}
               <div>
                 <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px' }}>Select Avatar Gender:</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -156,7 +153,6 @@ export function DungeonArena() {
               </div>
             </div>
 
-            {/* Enlarged Character Avatar Preview Box (210px x 210px Image) */}
             <div style={{ textAlign: 'center', border: '1px dashed #00ffcc', padding: '15px', backgroundColor: '#030811', borderRadius: '8px' }}>
               <span style={{ fontSize: '11px', color: '#88aaff', display: 'block', marginBottom: '10px', letterSpacing: '1px' }}>AVATAR PREVIEW</span>
               <img 
@@ -170,7 +166,6 @@ export function DungeonArena() {
               <div style={{ marginTop: '10px', fontWeight: 'bold', color: '#fff', fontSize: '16px' }}>{selectedClass}</div>
               <div style={{ fontSize: '12px', color: '#ffcc00', marginTop: '2px' }}>Goal: {CLASS_CONFIG[selectedClass]?.targetGold.toLocaleString()} GP</div>
             </div>
-
           </div>
 
           <button 
@@ -182,64 +177,37 @@ export function DungeonArena() {
         </section>
       )}
 
-      {/* Active Player Card */}
+      {/* Active Game Board & Map View */}
       {player && (
-        <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '20px', borderRadius: '8px', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <img 
-            src={getHeroAvatarUrl(player.hero_class, player.hero_gender || 'male')} 
-            alt={player.hero_class}
-            style={{ width: '100px', height: '100px', objectFit: 'cover', border: '2px solid #00ffcc', borderRadius: '6px' }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://placehold.co/100x100/000000/00ffcc?text=${player.hero_class}`;
-            }}
-          />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ color: '#fff', margin: '0 0 5px 0' }}>👑 Active Hero: {player.player_name}</h2>
-            <p style={{ margin: '5px 0', fontSize: '14px' }}>
-              Class: <strong>{player.hero_class} ({player.hero_gender || 'male'})</strong> | Victory Goal: <strong style={{ color: '#ffcc00' }}>{player.target_gold.toLocaleString()} GP</strong> | Speed: <strong>{CLASS_CONFIG[player.hero_class]?.speed || 5} tiles/tick</strong>
-            </p>
-
-            <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button onClick={() => window.location.reload()} style={{ padding: '6px 12px', backgroundColor: '#00ffcc', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '12px' }}>
-                🔄 Test Page Refresh
-              </button>
-              <button onClick={reconnect} style={{ padding: '6px 12px', backgroundColor: '#ffcc00', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', fontSize: '12px' }}>
-                ⚡ Force RPC Re-Sync
-              </button>
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', alignItems: 'start' }}>
+          <div>
+            <DungeonMap player={player} allPlayers={lobbyPlayers} roomCode={activeRoomCode} />
           </div>
-        </section>
-      )}
 
-      {/* Live Lobby Roster With Avatars */}
-      <section style={{ backgroundColor: '#02060d', border: '1px dashed #00ffcc', padding: '20px', borderRadius: '8px' }}>
-        <h3 style={{ marginTop: 0, color: '#fff' }}>👥 Live Room Roster ({lobbyPlayers.length})</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {lobbyPlayers.map(p => (
-            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#09111e', padding: '10px 15px', border: '1px solid #112233', borderRadius: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <img 
-                  src={getHeroAvatarUrl(p.hero_class, p.hero_gender || 'male')} 
-                  alt={p.hero_class}
-                  style={{ width: '50px', height: '50px', objectFit: 'cover', border: '1px solid #00ffcc', borderRadius: '4px' }}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = `https://placehold.co/50x50/000000/00ffcc?text=${p.hero_class}`;
-                  }}
-                />
-                <div>
-                  <strong style={{ color: '#fff', fontSize: '15px' }}>{p.player_name}</strong> <span style={{ color: '#88aaff', fontSize: '13px' }}>({p.hero_class})</span>
-                  <div style={{ fontSize: '11px', color: '#888' }}>Target Goal: {p.target_gold.toLocaleString()} GP</div>
-                </div>
+          {/* Right Sidebar: Active Stats & Roster */}
+          <div>
+            <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>👑 Hero Status</h3>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}>Player: <strong>{player.player_name}</strong></p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}>Class: <strong>{player.hero_class}</strong></p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}>Goal: <strong style={{ color: '#ffcc00' }}>{player.target_gold.toLocaleString()} GP</strong></p>
+              <p style={{ margin: '5px 0', fontSize: '13px' }}>Current Loot: <strong style={{ color: '#00ffcc' }}>{player.current_gold || 0} GP</strong></p>
+            </section>
+
+            <section style={{ backgroundColor: '#02060d', border: '1px dashed #00ffcc', padding: '15px', borderRadius: '8px' }}>
+              <h3 style={{ marginTop: 0, color: '#fff' }}>👥 Roster ({lobbyPlayers.length})</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {lobbyPlayers.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#09111e', padding: '8px', border: '1px solid #112233', borderRadius: '4px', fontSize: '12px' }}>
+                    <span>{p.player_name} ({p.hero_class})</span>
+                    <span style={{ color: p.connection_status === 'ONLINE' ? '#00ff00' : '#ff3366' }}>[{p.connection_status}]</span>
+                  </div>
+                ))}
               </div>
-              <div>
-                <span style={{ color: p.connection_status === 'ONLINE' ? '#00ff00' : '#ff3366', fontWeight: 'bold', fontSize: '12px' }}>
-                  [{p.connection_status}]
-                </span>
-              </div>
-            </div>
-          ))}
+            </section>
+          </div>
         </div>
-      </section>
+      )}
 
     </div>
   );
