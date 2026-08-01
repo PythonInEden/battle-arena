@@ -1,17 +1,19 @@
-// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { BattleArena } from './BattleArena';
 import { FortressWorkspace } from './fortress/components/FortressWorkspace';
 import MathArena from './MathArena'; 
+import { DungeonArena } from './dungeon/DungeonArena';
 import { supabase } from './supabaseClient'; 
 
-type AppMode = 'menu' | 'battle' | 'math' | 'fortress';
+type AppMode = 'menu' | 'battle' | 'math' | 'fortress' | 'dungeon';
 
 const HUB_LANG = {
   en: {
     backBtn: "← Main Hub Menu Selection",
     title: "ARCADE PLATFORM CORE HUB",
     sub: "Select an engine instance simulation deck target",
+    dungeonTitle: "Dungeon! Classic Remake Deck",
+    dungeonSub: "Explore the 6-tier dungeon, battle monsters, collect treasure & extract live.",
     battleTitle: "Battle Arena Engine Deck",
     battleSub: "Load real-time combat simulation tracking loop systems.",
     mathTitle: "Math Arena Engine Deck",
@@ -24,6 +26,8 @@ const HUB_LANG = {
     backBtn: "← Quay Lại Menu Trung Tâm",
     title: "TRUNG TÂM GAME ARCADE",
     sub: "Chọn chế độ trò chơi để bắt đầu trải nghiệm",
+    dungeonTitle: "Đấu Trường Dungeon! Remake",
+    dungeonSub: "Khám phá ngục tối 6 tầng, săn quái vật, thu thập vàng & rút lui an toàn.",
     battleTitle: "Đấu Trường Đối Kháng (RPG)",
     battleSub: "Hệ thống mô phỏng trận chiến theo lượt trực tuyến.",
     mathTitle: "Đấu Trường Toán Học",
@@ -45,14 +49,15 @@ export default function App() {
       const queryParams = new URLSearchParams(window.location.search);
       const modeParam = queryParams.get('mode');
 
-      if (modeParam === 'math') {
+      if (modeParam === 'dungeon') {
+        setCurrentMode('dungeon');
+      } else if (modeParam === 'math') {
         setCurrentMode('math');
       } else if (modeParam === 'fortress') {
         setCurrentMode('fortress');
       } else if (modeParam === 'battle') {
         setCurrentMode('battle');
       } else {
-        // 📱 Mobile Chrome Auto-Resume: Re-enter active Fortress game session automatically!
         const activeFortressStep = localStorage.getItem('fortress_lobby_step');
         if (activeFortressStep === 'GAME_STARTED' || activeFortressStep === 'IN_LOBBY') {
           setCurrentMode('fortress');
@@ -88,6 +93,17 @@ export default function App() {
         }
       `}</style>
 
+      {/* 🏰 DUNGEON REMAKE VIEW */}
+      {currentMode === 'dungeon' && (
+        <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#050b14', padding: '12px', boxSizing: 'border-box' }}>
+          <button onClick={() => navigateToMode('menu')} style={{ ...backButtonStyle, backgroundColor: '#000', color: '#00ffcc', border: '1px solid #00ffcc' }}>
+            {t.backBtn}
+          </button>
+          <DungeonArena />
+        </div>
+      )}
+
+      {/* ⚔️ BATTLE ARENA VIEW */}
       {currentMode === 'battle' && (
         <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#121212', padding: '15px', boxSizing: 'border-box' }}>
           <button onClick={() => navigateToMode('menu')} style={backButtonStyle}>{t.backBtn}</button>
@@ -95,6 +111,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 🧮 MATH ARENA VIEW */}
       {currentMode === 'math' && (
         <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000', padding: '15px', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
@@ -113,9 +130,9 @@ export default function App() {
         </div>
       )}
 
+      {/* 🏰 FORTRESS VIEW */}
       {currentMode === 'fortress' && (
         <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#000000', padding: '12px', boxSizing: 'border-box' }}>
-          {/* Top Navigation Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', maxWidth: '1200px', margin: '0 auto 16px auto', flexWrap: 'wrap', gap: '8px' }}>
             <button 
               onClick={() => navigateToMode('menu')} 
@@ -148,6 +165,7 @@ export default function App() {
         </div>
       )}
 
+      {/* 🏠 MAIN MENU HUB */}
       {currentMode === 'menu' && (
         <div style={{ minHeight: '100vh', width: '100%', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', boxSizing: 'border-box' }}>
           
@@ -168,6 +186,16 @@ export default function App() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', width: '100%', maxWidth: '500px', boxSizing: 'border-box' }}>
+            
+            {/* NEW DUNGEON REMAKE CARD */}
+            <div onClick={() => navigateToMode('dungeon')} style={menuCardStyle('#00ffcc')}>
+              <div style={{ fontSize: '32px' }}>🏰</div>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', color: '#fff' }}>{t.dungeonTitle}</h3>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.dungeonSub}</p>
+              </div>
+            </div>
+
             <div onClick={() => navigateToMode('battle')} style={menuCardStyle('#ef4444')}>
               <div style={{ fontSize: '32px' }}>⚔️</div>
               <div>
@@ -191,6 +219,7 @@ export default function App() {
                 <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>{t.fortressSub}</p>
               </div>
             </div>
+
           </div>
 
           <footer style={{ marginTop: '40px', fontSize: '11px', color: '#475569', textAlign: 'center', maxWidth: '500px' }}>
