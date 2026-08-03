@@ -11,53 +11,72 @@ export interface TileData {
   x: number;
   y: number;
   type: TileType;
-  level: number; // 0: Great Hall, 1-6: Dungeon Levels
+  level: number;
   roomId?: string;
   doorId?: string;
-  isDiscoveredSecret?: boolean;
-}
-
-export interface RoomMetadata {
-  id: string;
-  name: string;
-  level: number;
-  type: 'ROOM' | 'CHAMBER';
-  clearedTokensRequired: number;
 }
 
 export const BOARD_SIZE = 30;
 
-/**
- * Color scheme matching the physical board game zones[cite: 1]
- */
 export const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; label: string }> = {
   0: { bg: '#032e27', border: '#00ffcc', text: '#00ffcc', label: 'Great Hall (Center)' },
   1: { bg: '#3a2e00', border: '#eab308', text: '#fef08a', label: 'Level 1 (Yellow)' },
-  2: { bg: '#06371c', border: '#22c55e', text: '#86efac', label: 'Level 2 (Green - West)' },
+  2: { bg: '#3b1c00', border: '#f97316', text: '#fdba74', label: 'Level 2 (Orange - West)' },
   3: { bg: '#0f2942', border: '#3b82f6', text: '#93c5fd', label: 'Level 3 (Blue - West)' },
   4: { bg: '#2e104a', border: '#a855f7', text: '#e9d5ff', label: 'Level 4 (Purple - North)' },
   5: { bg: '#3f0c0c', border: '#ef4444', text: '#fca5a5', label: 'Level 5 (Red - East)' },
-  6: { bg: '#1f0033', border: '#d8b4fe', text: '#f5d0fe', label: 'Level 6 (Deep Purple - East Lair)' },
+  6: { bg: '#1f0033', border: '#d8b4fe', text: '#f5d0fe', label: 'Level 6 (Deep Purple)' },
 };
 
 /**
- * Master Registry of authentic Board Locations[cite: 1]
+ * 🗺️ ASCII MAP BLUEPRINT
+ * This allows us to draw exact 1-tile winding paths and discrete small rooms.
+ * 
+ * Key:
+ * # = WALL (Solid Rock)
+ * H = GREAT HALL
+ * S = SECRET DOOR
+ * 
+ * Rooms/Chambers:     Corridors:     Doors:
+ * 1 = Level 1         c = L1 Path    d = L1 Door
+ * 2 = Level 2         e = L2 Path    f = L2 Door
+ * 3 = Level 3         g = L3 Path    h = L3 Door
+ * 4 = Level 4         i = L4 Path    j = L4 Door
+ * 5 = Level 5         k = L5 Path    l = L5 Door
+ * 6 = Level 6         m = L6 Path    n = L6 Door
  */
-export const ROOM_REGISTRY: Record<string, RoomMetadata> = {
-  // Center (Level 1)
-  room_l1_01: { id: 'room_l1_01', name: 'Guard Room Entrance', level: 1, type: 'ROOM', clearedTokensRequired: 1 },
-  chamber_l1_01: { id: 'chamber_l1_01', name: 'Great Hall Foyer', level: 1, type: 'CHAMBER', clearedTokensRequired: 3 },
-
-  // West Wing (Levels 2 & 3)
-  room_l2_kitchen: { id: 'room_l2_kitchen', name: 'Dungeon Kitchen', level: 2, type: 'ROOM', clearedTokensRequired: 1 },
-  room_l2_pantry: { id: 'room_l2_pantry', name: 'Food Storage Pantry', level: 2, type: 'ROOM', clearedTokensRequired: 1 },
-  chamber_l3_armory: { id: 'chamber_l3_armory', name: 'The Armory Chamber', level: 3, type: 'CHAMBER', clearedTokensRequired: 3 },
-
-  // East Wing (Levels 5 & 6)
-  chamber_l5_torture: { id: 'chamber_l5_torture', name: 'Torture Chamber', level: 5, type: 'CHAMBER', clearedTokensRequired: 3 },
-  chamber_l6_lair: { id: 'chamber_l6_lair', name: 'THE LAIR (Dragon Den)', level: 6, type: 'CHAMBER', clearedTokensRequired: 3 },
-  chamber_l6_burrow: { id: 'chamber_l6_burrow', name: 'The Burrow Vault', level: 6, type: 'CHAMBER', clearedTokensRequired: 3 },
-};
+const ASCII_MAP = [
+  "##############################",
+  "###22##22####44#44######55####",
+  "###22f#22f###44j44#k####55####",
+  "####e##e#######i###k#l5555####",
+  "##22e##e22###44i44#k##5555####",
+  "##22f##f22###44j44#k##########",
+  "####e##e#######i###k##5555####",
+  "##22e##e11#c#11i###k#l5555####",
+  "##22f##d11c#c11d###k####55####",
+  "####e###c###c#######k###l#k###",
+  "###e#c11c###c11c#k##k5555#k###",
+  "###e#d11c#S#c11d#k##l5555#k###",
+  "###e##c#######c##k########k###",
+  "##22##c11#HHHH#11ck#######k###",
+  "##22f#d11dHHHHd11dkk##666#k###",
+  "####e##c##HHHH##c##k##666n66##",
+  "###33##c##HHHH##c##m##666#66##",
+  "###33h#d11dHHHHd11dm#######m##",
+  "####g##c11#HHHH#11cm#######m##",
+  "##33g##c#######c###m#6666##m##",
+  "##33h#d11c#S#c11d#nm#6666##m##",
+  "####g#c11c###c11c##m#6666##m##",
+  "##33g###c###c######m#######m##",
+  "##33h##d11c#c11d###m#6666n66##",
+  "####g##e11#c#11m###m#6666#66##",
+  "###g##g########m###m#6666#####",
+  "##33g33h#######m###m##########",
+  "##33#33########m###m#66666####",
+  "###############m###n#66666####",
+  "##############################"
+];
 
 export function generateStaticDungeonBoard(): TileData[][] {
   const grid: TileData[][] = [];
@@ -65,116 +84,47 @@ export function generateStaticDungeonBoard(): TileData[][] {
   for (let y = 0; y < BOARD_SIZE; y++) {
     const row: TileData[] = [];
     for (let x = 0; x < BOARD_SIZE; x++) {
+      const char = ASCII_MAP[y][x];
       
-      // 1. Outer Solid Perimeter Wall
-      if (x === 0 || x === BOARD_SIZE - 1 || y === 0 || y === BOARD_SIZE - 1) {
-        row.push({ x, y, type: 'WALL', level: 0 });
-        continue;
+      let type: TileType = 'WALL';
+      let level = 0;
+
+      // 1. Map Characters to Types
+      switch (char) {
+        case '#': type = 'WALL'; level = 0; break;
+        case 'H': type = 'GREAT_HALL'; level = 0; break;
+        case 'S': type = 'SECRET_DOOR'; level = 0; break;
+        
+        case 'c': type = 'CORRIDOR'; level = 1; break;
+        case 'e': type = 'CORRIDOR'; level = 2; break;
+        case 'g': type = 'CORRIDOR'; level = 3; break;
+        case 'i': type = 'CORRIDOR'; level = 4; break;
+        case 'k': type = 'CORRIDOR'; level = 5; break;
+        case 'm': type = 'CORRIDOR'; level = 6; break;
+        
+        case 'd': type = 'DOOR'; level = 1; break;
+        case 'f': type = 'DOOR'; level = 2; break;
+        case 'h': type = 'DOOR'; level = 3; break;
+        case 'j': type = 'DOOR'; level = 4; break;
+        case 'l': type = 'DOOR'; level = 5; break;
+        case 'n': type = 'DOOR'; level = 6; break;
+        
+        case '1': type = 'ROOM'; level = 1; break;
+        case '2': type = 'ROOM'; level = 2; break;
+        case '3': type = 'ROOM'; level = 3; break;
+        case '4': type = 'ROOM'; level = 4; break;
+        case '5': type = 'CHAMBER'; level = 5; break; 
+        case '6': type = 'CHAMBER'; level = 6; break;
       }
 
-      // 2. Center Hub: Great Hall (13,13 to 16,16)[cite: 1]
-      if (x >= 13 && x <= 16 && y >= 13 && y <= 16) {
-        row.push({ x, y, type: 'GREAT_HALL', level: 0 });
-        continue;
+      // 2. Generate a Room ID based on rough proximity blocks so the engine can lock them
+      let roomId = undefined;
+      if (['ROOM', 'CHAMBER', 'DOOR'].includes(type)) {
+        // Groups adjacent room tiles into logical blocks
+        roomId = `room_${level}_${Math.floor(x / 4)}_${Math.floor(y / 4)}`;
       }
 
-      // 3. Level 1 Yellow Ring around Great Hall (X: 11-18, Y: 11-18)
-      if (x >= 11 && x <= 18 && y >= 11 && y <= 18) {
-        // North & South Entrance Doors
-        if ((x === 14 || x === 15) && (y === 11 || y === 18)) {
-          row.push({ x, y, type: 'DOOR', level: 1, roomId: 'room_l1_01' });
-          continue;
-        }
-        // Room Tiles
-        if (x === 11 || x === 18 || y === 11 || y === 18) {
-          row.push({ x, y, type: 'ROOM', level: 1, roomId: 'room_l1_01' });
-          continue;
-        }
-        row.push({ x, y, type: 'CORRIDOR', level: 1 });
-        continue;
-      }
-
-      // 4. WEST WING: Level 2 (Green) & Level 3 (Blue)[cite: 1]
-      if (x >= 2 && x <= 9) {
-        // Kitchen (Level 2 Room)
-        if (x >= 3 && x <= 5 && y >= 3 && y <= 5) {
-          row.push({ x, y, type: 'ROOM', level: 2, roomId: 'room_l2_kitchen' });
-          continue;
-        }
-        if (x === 6 && y === 4) {
-          row.push({ x, y, type: 'DOOR', level: 2, roomId: 'room_l2_kitchen' });
-          continue;
-        }
-
-        // Armory (Level 3 Multi-tile Chamber)
-        if (x >= 3 && x <= 6 && y >= 20 && y <= 23) {
-          row.push({ x, y, type: 'CHAMBER', level: 3, roomId: 'chamber_l3_armory' });
-          continue;
-        }
-        if (x === 7 && y === 21) {
-          row.push({ x, y, type: 'DOOR', level: 3, roomId: 'chamber_l3_armory' });
-          continue;
-        }
-
-        // Secret Door Shortcut to Central Corridor[cite: 1]
-        if (x === 9 && y === 15) {
-          row.push({ x, y, type: 'SECRET_DOOR', level: 3 });
-          continue;
-        }
-      }
-
-      // 5. EAST WING: Level 5 (Red) & Level 6 (Deep Purple)[cite: 1]
-      if (x >= 20 && x <= 27) {
-        // The Lair (Level 6 Major 3x3 Chamber)
-        if (x >= 23 && x <= 26 && y >= 20 && y <= 23) {
-          row.push({ x, y, type: 'CHAMBER', level: 6, roomId: 'chamber_l6_lair' });
-          continue;
-        }
-        if (x === 22 && y === 21) {
-          row.push({ x, y, type: 'DOOR', level: 6, roomId: 'chamber_l6_lair' });
-          continue;
-        }
-
-        // Torture Chamber (Level 5 Chamber)
-        if (x >= 22 && x <= 25 && y >= 4 && y <= 7) {
-          row.push({ x, y, type: 'CHAMBER', level: 5, roomId: 'chamber_l5_torture' });
-          continue;
-        }
-        if (x === 21 && y === 5) {
-          row.push({ x, y, type: 'DOOR', level: 5, roomId: 'chamber_l5_torture' });
-          continue;
-        }
-
-        // Secret Passage from Lair to South Corridor[cite: 1]
-        if (x === 25 && y === 24) {
-          row.push({ x, y, type: 'SECRET_DOOR', level: 6 });
-          continue;
-        }
-      }
-
-      // 6. INTERNAL WALL STRUCTURES
-      if (
-        (x === 10 && (y < 12 || y > 17)) ||
-        (x === 19 && (y < 12 || y > 17)) ||
-        (y === 10 && (x < 12 || x > 17)) ||
-        (y === 19 && (x < 12 || x > 17))
-      ) {
-        // Doorway gaps in main corridor walls
-        if (y === 5 || y === 24 || x === 5 || x === 24) {
-          row.push({ x, y, type: 'CORRIDOR', level: x < 10 ? 2 : x > 19 ? 5 : 4 });
-          continue;
-        }
-        row.push({ x, y, type: 'WALL', level: 0 });
-        continue;
-      }
-
-      // 7. DEFAULT OPEN CORRIDORS (Color-coded by region)
-      let corridorLevel = 1;
-      if (x < 10) corridorLevel = y < 15 ? 2 : 3;
-      else if (x > 19) corridorLevel = y < 15 ? 5 : 6;
-      else if (y < 10 || y > 19) corridorLevel = 4;
-
-      row.push({ x, y, type: 'CORRIDOR', level: corridorLevel });
+      row.push({ x, y, type, level, roomId });
     }
     grid.push(row);
   }
