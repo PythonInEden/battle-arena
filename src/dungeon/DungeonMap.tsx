@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { DungeonPlayerState } from './useDungeonSession';
-
-export interface TileData {
-  x: number;
-  y: number;
-  type: 'GREAT_HALL' | 'CORRIDOR' | 'CHAMBER' | 'WALL' | 'SECRET_DOOR';
-  level: number;
-  isCleared?: boolean;
-}
+import {
+  STATIC_DUNGEON_BOARD,
+  BOARD_SIZE,
+  LEVEL_COLORS,
+  isTilePassable,
+  TileData
+} from './dungeonBoardMap';
 
 export interface SoundPing {
   id: string;
@@ -25,63 +24,28 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
-  // ⚡ Optimistic Local Position State for 0ms instant input response
+  // 1. Optimistic Local Position State
   const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 10, y: player.pos_y ?? 10 });
 
-  // Sync with prop if updated externally
+  // 2. 5-Step Movement Budget System[cite: 1]
+  const [stepsRemaining, setStepsRemaining] = useState<number>(5);
+
+  // Track discovered secret doors locally per session[cite: 1]
+  const [discoveredSecrets, setDiscoveredSecrets] = useState<Set<string>>(new Set());
+
+  // Secret Door Roll Modal state[cite: 1]
+  const [secretDoorTarget, setSecretDoorTarget] = useState<{ x: number; y: number } | null>(null);
+
+  // Sound Pings & Fog of War
+  const [soundPings, setSoundPings] = useState<SoundPing[]>([]);
+  const [visitedTiles, setVisitedTiles] = useState<Set<string>>(new Set());
+
+  // Keep local position in sync with incoming server state
   useEffect(() => {
     if (player.pos_x !== undefined && player.pos_y !== undefined) {
       setLocalPos({ x: player.pos_x, y: player.pos_y });
     }
   }, [player.pos_x, player.pos_y]);
-
-  const gridSize = useMemo(() => {
-    const pCount = Math.max(2, allPlayers.length);
-    return Math.min(40, Math.max(20, 16 + pCount * 2));
-  }, [allPlayers.length]);
-
-  const [soundPings, setSoundPings] = useState<SoundPing[]>([]);
-  const [visitedTiles, setVisitedTiles] = useState<Set<string>>(new Set());
-  const [isSearchingDoor, setIsSearchingDoor] = useState<boolean>(false);
-  const [searchProgress, setSearchProgress] = useState<number>(0);
-  const [lastMoveTime, setLastMoveTime] = useState<number>(0);
-
-  const moveCooldownMs = player.hero_class.toLowerCase() === 'rogue' ? 600 : 800;
-
-  // Concentric Map Layout
-  const mapGrid = useMemo(() => {
-    const grid: TileData[][] = [];
-    const center = Math.floor(gridSize / 2);
-
-    for (let y = 0; y < gridSize; y++) {
-      const row: TileData[] = [];
-      for (let x = 0; x < gridSize; x++) {
-        const distFromCenter = Math.hypot(x - center, y - center);
-        
-        if (Math.abs(x - center) <= 1 && Math.abs(y - center) <= 1) {
-          row.push({ x, y, type: 'GREAT_HALL', level: 0, isCleared: true });
-        } else {
-          let lvl = Math.min(6, Math.max(1, Math.floor((distFromCenter / (gridSize / 2)) * 6)));
-          
-          const isRoom = (x % 3 === 0 && y % 3 === 0);
-          const isSecret = (x % 7 === 0 && y % 7 === 0);
-          const isWall = (x % 4 === 0 && y % 2 === 0 && !isRoom && !isSecret);
-
-          if (isSecret) {
-            row.push({ x, y, type: 'SECRET_DOOR', level: lvl });
-          } else if (isRoom) {
-            row.push({ x, y, type: 'CHAMBER', level: lvl, isCleared: false });
-          } else if (isWall) {
-            row.push({ x, y, type: 'WALL', level: lvl });
-          } else {
-            row.push({ x, y, type: 'CORRIDOR', level: lvl, isCleared: true });
-          }
-        }
-      }
-      grid.push(row);
-    }
-    return grid;
-  }, [gridSize]);
 
   // Dynamic 5-Tile Vision Fog of War
   const visibleTiles = useMemo(() => {
@@ -93,14 +57,14 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
         if (Math.hypot(dx, dy) <= radius) {
           const vx = localPos.x + dx;
           const vy = localPos.y + dy;
-          if (vx >= 0 && vx < gridSize && vy >= 0 && vy < gridSize) {
+          if (vx >= 0 && vx < BOARD_SIZE && vy >= 0 && vy < BOARD_SIZE) {
             visible.add(`${vx},${vy}`);
           }
         }
       }
     }
     return visible;
-  }, [localPos.x, localPos.y, gridSize]);
+  }, [localPos.x, localPos.y]);
 
   useEffect(() => {
     setVisitedTiles(prev => {
@@ -110,69 +74,83 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     });
   }, [visibleTiles]);
 
-  // Execute Position Change
-  const executeMove = async (newX: number, newY: number) => {
-    setLastMoveTime(Date.now());
-    
-    // 1. Instant local update
+  // Execute Position Change & Step Deduction
+  const executeMove = async (newX: number, newY: number, targetTile: TileData) => {
     setLocalPos({ x: newX, y: newY });
 
-    // 2. Background DB Sync
+    // Deduct steps remaining. Stop immediately if entering an uncleared room/chamber or door[cite: 1]
+    setStepsRemaining(prev => {
+      if (['ROOM', 'CHAMBER', 'DOOR'].includes(targetTile.type)) {
+        return 0; // Forced turn stop upon entering room threshold[cite: 1]
+      }
+      return Math.max(0, prev - 1);
+    });
+
+    // Background DB Sync
     await supabase
       .from('dungeon_players')
       .update({ pos_x: newX, pos_y: newY })
       .eq('client_session_id', player.client_session_id);
   };
 
-  // Smart Directional Movement Handler
-  const handleMove = useCallback(async (targetX: number, targetY: number) => {
-    const now = Date.now();
-    if (now - lastMoveTime < moveCooldownMs) return;
+  // Recharge Movement Points
+  const handleRechargeMovement = () => {
+    setStepsRemaining(5);
+  };
 
-    if (targetX < 0 || targetX >= gridSize || targetY < 0 || targetY >= gridSize) return;
+  // Secret Door 1d6 Roll Resolution (3-6 Rogue sub-classes, 5-6 Standard)[cite: 1]
+  const handleAttemptSecretDoor = (targetX: number, targetY: number) => {
+    const roll = Math.floor(Math.random() * 6) + 1;
+    const isRogueClass = ['rogue', 'ranger', 'bard'].includes(player.hero_class.toLowerCase());
+    const requiredRoll = isRogueClass ? 3 : 5;
 
-    // Calculate 1-step direction towards target
-    const dx = Math.sign(targetX - localPos.x);
-    const dy = Math.sign(targetY - localPos.y);
-
-    if (dx === 0 && dy === 0) return;
-
-    const stepX = localPos.x + dx;
-    const stepY = localPos.y + dy;
-
-    const targetTile = mapGrid[stepY]?.[stepX];
-    if (!targetTile || targetTile.type === 'WALL') return; // Wall collision check
-
-    // Secret Door Search Channeling
-    if (targetTile.type === 'SECRET_DOOR' && player.hero_class.toLowerCase() !== 'rogue') {
-      if (!isSearchingDoor) {
-        setIsSearchingDoor(true);
-        setSearchProgress(0);
-        
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 20;
-          setSearchProgress(progress);
-          if (progress >= 100) {
-            clearInterval(interval);
-            setIsSearchingDoor(false);
-            executeMove(stepX, stepY);
-          }
-        }, 400);
-        return;
-      }
+    if (roll >= requiredRoll) {
+      alert(`🎲 Rolled ${roll}! Secret Door Discovered!`);
+      const tileKey = `${targetX},${targetY}`;
+      setDiscoveredSecrets(prev => new Set(prev).add(tileKey));
+      const targetTile = STATIC_DUNGEON_BOARD[targetY][targetX];
+      executeMove(targetX, targetY, targetTile);
     } else {
-      executeMove(stepX, stepY);
+      alert(`🎲 Rolled ${roll}. Failed to open Secret Door (Needed ${requiredRoll}+). Movement point spent!`);
+      setStepsRemaining(prev => Math.max(0, prev - 1));
     }
-  }, [localPos, lastMoveTime, moveCooldownMs, gridSize, mapGrid, player.hero_class, isSearchingDoor]);
+    setSecretDoorTarget(null);
+  };
 
-  // Keyboard Movement Listener (WASD & Arrow Keys)
+  // Directional Movement Handler
+  const handleMove = useCallback(async (targetX: number, targetY: number) => {
+    if (stepsRemaining <= 0) return;
+    if (targetX < 0 || targetX >= BOARD_SIZE || targetY < 0 || targetY >= BOARD_SIZE) return;
+
+    // Must be 1 cardinal step away
+    const dx = Math.abs(targetX - localPos.x);
+    const dy = Math.abs(targetY - localPos.y);
+    if (dx + dy !== 1) return;
+
+    const targetTile = STATIC_DUNGEON_BOARD[targetY]?.[targetX];
+    if (!targetTile) return;
+
+    const tileKey = `${targetX},${targetY}`;
+    const isSecretDiscovered = discoveredSecrets.has(tileKey);
+
+    // Passability Check
+    if (!isTilePassable(targetTile, isSecretDiscovered)) {
+      if (targetTile.type === 'SECRET_DOOR' && !isSecretDiscovered) {
+        setSecretDoorTarget({ x: targetX, y: targetY });
+      }
+      return;
+    }
+
+    executeMove(targetX, targetY, targetTile);
+  }, [localPos, stepsRemaining, discoveredSecrets]);
+
+  // Keyboard Movement Listener (WASD & Arrows)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-      
+
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
-        e.preventDefault(); // Prevent page scrolling
+        e.preventDefault();
       }
 
       if (key === 'arrowup' || key === 'w') handleMove(localPos.x, localPos.y - 1);
@@ -185,7 +163,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMove, localPos]);
 
-  // Spatial Sound Ping
+  // Spatial Sound Ping Broadcast
   const triggerSoundPing = async (label: string = '⚔️ COMBAT') => {
     const pingPayload: SoundPing = {
       id: crypto.randomUUID(),
@@ -222,120 +200,196 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     };
   }, [roomCode, localPos.x, localPos.y]);
 
-  const getLevelColor = (level: number) => {
-    switch (level) {
-      case 0: return '#00ffcc';
-      case 1: return '#ffffff';
-      case 2: return '#3b82f6';
-      case 3: return '#22c55e';
-      case 4: return '#eab308';
-      case 5: return '#ef4444';
-      case 6: return '#a855f7';
-      default: return '#333333';
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
-      
-      {/* Map Controls & Status HUD */}
+
+      {/* Movement HUD & Actions */}
       <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button 
-          onClick={() => triggerSoundPing('💥 SPELL CAST')} 
+        <div style={{ padding: '8px 16px', backgroundColor: '#0f172a', border: '1px solid #00ffcc', borderRadius: '6px', color: '#fff', fontSize: '14px' }}>
+          👟 Movement Steps: <strong style={{ color: stepsRemaining > 0 ? '#00ffcc' : '#ff3366', fontSize: '16px' }}>{stepsRemaining} / 5</strong>
+        </div>
+
+        {stepsRemaining === 0 ? (
+          <button
+            onClick={handleRechargeMovement}
+            style={{ padding: '8px 16px', backgroundColor: '#eab308', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+          >
+            🔄 Recharge Movement (End Turn Step)
+          </button>
+        ) : (
+          <button
+            onClick={() => setStepsRemaining(0)}
+            style={{ padding: '8px 16px', backgroundColor: '#334155', color: '#aaa', border: '1px solid #555', fontFamily: 'monospace', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            🛑 End Movement Early
+          </button>
+        )}
+
+        <button
+          onClick={() => triggerSoundPing('💥 SPELL CAST')}
           style={{ padding: '8px 16px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
         >
-          🔊 Test Spell Sound Ping
+          🔊 Sound Ping
         </button>
-        <div style={{ color: '#88aaff', fontSize: '13px' }}>
-          Grid: <strong>{gridSize}x{gridSize}</strong> | Position: <strong>({localPos.x}, {localPos.y})</strong> | Sight: <strong>5 Tiles</strong>
-        </div>
       </div>
 
-      {/* Secret Door Search Channel Progress Bar */}
-      {isSearchingDoor && (
-        <div style={{ width: '100%', maxWidth: '300px', backgroundColor: '#111', border: '1px solid #00ffcc', borderRadius: '4px', padding: '4px', textAlign: 'center' }}>
-          <div style={{ fontSize: '12px', color: '#00ffcc', marginBottom: '4px' }}>🔍 Searching Secret Door ({searchProgress}%)</div>
-          <div style={{ height: '8px', backgroundColor: '#00ffcc', width: `${searchProgress}%`, transition: 'width 0.4s' }} />
+      {/* Secret Door Search Modal */}
+      {secretDoorTarget && (
+        <div style={{ backgroundColor: '#1e1b4b', border: '2px solid #a855f7', padding: '12px 20px', borderRadius: '8px', color: '#fff', textAlign: 'center' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: '14px' }}>
+            🚪 Found Secret Door at ({secretDoorTarget.x}, {secretDoorTarget.y})!
+            <br />
+            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+              Req Roll: <strong>{['rogue', 'ranger', 'bard'].includes(player.hero_class.toLowerCase()) ? '3–6 (Rogue Bonus)' : '5–6 (Standard)'}</strong> on 1d6[cite: 1]
+            </span>
+          </p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              onClick={() => handleAttemptSecretDoor(secretDoorTarget.x, secretDoorTarget.y)}
+              style={{ padding: '6px 16px', backgroundColor: '#a855f7', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}
+            >
+              🎲 Roll 1d6
+            </button>
+            <button
+              onClick={() => setSecretDoorTarget(null)}
+              style={{ padding: '6px 16px', backgroundColor: '#334155', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: '4px' }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
-      {/* 2D Top-Down Tile Grid Viewport */}
-      <div 
-        style={{ 
-          display: 'grid', 
-          gridTemplateColumns: `repeat(${gridSize}, 22px)`, 
-          gridTemplateRows: `repeat(${gridSize}, 22px)`, 
-          gap: '2px', 
-          backgroundColor: '#000', 
-          padding: '12px', 
-          border: '2px solid #00ffcc', 
+      {/* 2D Top-Down Board Viewport */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${BOARD_SIZE}, 26px)`,
+          gridTemplateRows: `repeat(${BOARD_SIZE}, 26px)`,
+          gap: '2px',
+          backgroundColor: '#000',
+          padding: '12px',
+          border: '2px solid #00ffcc',
           borderRadius: '8px',
           boxShadow: '0 0 20px rgba(0,255,204,0.15)',
           overflow: 'auto',
           maxHeight: '80vh'
         }}
       >
-        {mapGrid.map((row, y) =>
+        {STATIC_DUNGEON_BOARD.map((row, y) =>
           row.map((tile, x) => {
             const tileKey = `${x},${y}`;
             const isVisible = visibleTiles.has(tileKey);
             const isVisited = visitedTiles.has(tileKey);
-            
+
             const playersOnTile = allPlayers.filter(p => p.pos_x === x && p.pos_y === y && isVisible);
             const isLocalPlayerHere = localPos.x === x && localPos.y === y;
             const activePing = soundPings.find(p => p.x === x && p.y === y);
 
             if (!isVisible && !isVisited) {
-              return <div key={tileKey} style={{ width: '22px', height: '22px', backgroundColor: '#020408' }} />;
+              return <div key={tileKey} style={{ width: '26px', height: '26px', backgroundColor: '#020408' }} />;
             }
 
-            let tileBg = tile.type === 'WALL' ? '#111b27' : '#070f1e';
-            if (tile.type === 'GREAT_HALL') tileBg = '#00332c';
-            if (tile.type === 'SECRET_DOOR') tileBg = '#331a00';
+            const levelConfig = LEVEL_COLORS[tile.level] || LEVEL_COLORS[1];
+            let tileBg = levelConfig.bg;
+            let tileBorder = levelConfig.border;
+            let tileContent = '';
+
+            if (tile.type === 'WALL') {
+              tileBg = '#0d131f';
+              tileBorder = '#1e293b';
+            } else if (tile.type === 'GREAT_HALL') {
+              tileBg = LEVEL_COLORS[0].bg;
+              tileBorder = LEVEL_COLORS[0].border;
+              tileContent = '🏛️';
+            } else if (tile.type === 'DOOR') {
+              tileContent = '🚪';
+            } else if (tile.type === 'SECRET_DOOR') {
+              const isDiscovered = discoveredSecrets.has(tileKey);
+              tileContent = isDiscovered ? '🔓' : '❓';
+              tileBg = isDiscovered ? '#312e81' : '#2e1065';
+            } else if (tile.type === 'ROOM') {
+              tileContent = '🕸️';
+            } else if (tile.type === 'CHAMBER') {
+              tileContent = '💀';
+            }
 
             return (
               <div
                 key={tileKey}
                 onClick={() => handleMove(x, y)}
+                title={`(${x}, ${y}) - Level ${tile.level} ${tile.type}`}
                 style={{
-                  width: '22px',
-                  height: '22px',
+                  width: '26px',
+                  height: '26px',
                   backgroundColor: tileBg,
-                  border: isVisible ? `1px solid ${getLevelColor(tile.level)}` : '1px solid #112233',
-                  opacity: isVisible ? 1 : 0.35,
+                  border: isVisible ? `1px solid ${tileBorder}` : '1px solid #1e293b',
+                  opacity: isVisible ? 1 : 0.3,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: 'pointer',
+                  cursor: stepsRemaining > 0 ? 'pointer' : 'not-allowed',
                   position: 'relative',
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  fontSize: '11px'
                 }}
               >
-                {/* Local Player Avatar Marker */}
+                {!isLocalPlayerHere && playersOnTile.length === 0 && tileContent}
+
+                {/* Local Player Marker */}
                 {isLocalPlayerHere && (
-                  <div style={{ width: '12px', height: '12px', backgroundColor: '#00ffcc', borderRadius: '50%', boxShadow: '0 0 8px #00ffcc' }} />
+                  <div
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      backgroundColor: '#00ffcc',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 10px #00ffcc',
+                      zIndex: 2
+                    }}
+                  />
                 )}
 
                 {/* Other Visible Players */}
                 {!isLocalPlayerHere && playersOnTile.length > 0 && (
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#ff3366', borderRadius: '50%' }} />
+                  <div
+                    style={{
+                      width: '12px',
+                      height: '12px',
+                      backgroundColor: '#ff3366',
+                      borderRadius: '50%',
+                      zIndex: 2
+                    }}
+                  />
                 )}
 
-                {/* Sound Wave Ripple Effect */}
+                {/* Sound Ping Effect */}
                 {activePing && isVisible && (
-                  <div style={{
-                    position: 'absolute',
-                    width: '28px',
-                    height: '28px',
-                    border: '2px solid #ffcc00',
-                    borderRadius: '50%',
-                    animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite'
-                  }} />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: '32px',
+                      height: '32px',
+                      border: '2px solid #eab308',
+                      borderRadius: '50%',
+                      animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite'
+                    }}
+                  />
                 )}
               </div>
             );
           })
         )}
+      </div>
+
+      {/* Board Tier Color Legend */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', fontSize: '11px' }}>
+        {Object.entries(LEVEL_COLORS).map(([lvl, cfg]) => (
+          <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#090d16', padding: '4px 8px', borderRadius: '4px', border: `1px solid ${cfg.border}` }}>
+            <div style={{ width: '10px', height: '10px', backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }} />
+            <span style={{ color: cfg.text }}>{cfg.label}</span>
+          </div>
+        ))}
       </div>
 
     </div>
