@@ -23,7 +23,7 @@ interface DungeonMapProps {
   roomCode: string;
 }
 
-export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
+export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonMapProps) {
   const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 14, y: player.pos_y ?? 14 });
   const [stepsRemaining, setStepsRemaining] = useState<number>(5);
 
@@ -37,7 +37,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
 
   const [discoveredSecrets, setDiscoveredSecrets] = useState<Set<string>>(new Set());
   const [secretDoorTarget, setSecretDoorTarget] = useState<{ x: number; y: number } | null>(null);
-  const [soundPings, setSoundPings] = useState<SoundPing[]>([]);
+  const [_soundPings, _setSoundPings] = useState<SoundPing[]>([]);
   const [visitedTiles, setVisitedTiles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
