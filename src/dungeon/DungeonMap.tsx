@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { DungeonPlayerState } from './useDungeonSession';
 import {
@@ -24,30 +24,47 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
-  // 1. Optimistic Local Position State
-  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 10, y: player.pos_y ?? 10 });
-
-  // 2. 5-Step Movement Budget System[cite: 1]
+  // 1. Position & Movement States
+  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 13, y: player.pos_y ?? 13 });
   const [stepsRemaining, setStepsRemaining] = useState<number>(5);
 
-  // Track discovered secret doors locally per session[cite: 1]
-  const [discoveredSecrets, setDiscoveredSecrets] = useState<Set<string>>(new Set());
+  // 2. Fortress-Style Camera & Zoom System Controls[cite: 7]
+  const [tileSize, setTileSize] = useState<number>(32); // Default 32px per tile[cite: 7]
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerTileRef = useRef<HTMLDivElement>(null);
 
-  // Secret Door Roll Modal state[cite: 1]
+  // Track discovered secret doors locally per session
+  const [discoveredSecrets, setDiscoveredSecrets] = useState<Set<string>>(new Set());
   const [secretDoorTarget, setSecretDoorTarget] = useState<{ x: number; y: number } | null>(null);
 
   // Sound Pings & Fog of War
   const [soundPings, setSoundPings] = useState<SoundPing[]>([]);
   const [visitedTiles, setVisitedTiles] = useState<Set<string>>(new Set());
 
-  // Keep local position in sync with incoming server state
+  // Sync position from server prop updates
   useEffect(() => {
     if (player.pos_x !== undefined && player.pos_y !== undefined) {
       setLocalPos({ x: player.pos_x, y: player.pos_y });
     }
   }, [player.pos_x, player.pos_y]);
 
-  // Dynamic 5-Tile Vision Fog of War
+  // 🎥 Fortress Camera Centering Logic[cite: 7]
+  const centerCamera = useCallback(() => {
+    if (playerTileRef.current && containerRef.current) {
+      playerTileRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+        inline: 'center',
+      });
+    }
+  }, []);
+
+  // Auto-center camera whenever hero moves or zoom level changes[cite: 7]
+  useEffect(() => {
+    centerCamera();
+  }, [localPos.x, localPos.y, tileSize, centerCamera]);
+
+  // Dynamic Vision Fog of War (5-Tile Sight Radius)
   const visibleTiles = useMemo(() => {
     const visible = new Set<string>();
     const radius = 5;
@@ -74,31 +91,28 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     });
   }, [visibleTiles]);
 
-  // Execute Position Change & Step Deduction
+  // Execute Movement Steps
   const executeMove = async (newX: number, newY: number, targetTile: TileData) => {
     setLocalPos({ x: newX, y: newY });
 
-    // Deduct steps remaining. Stop immediately if entering an uncleared room/chamber or door[cite: 1]
     setStepsRemaining(prev => {
       if (['ROOM', 'CHAMBER', 'DOOR'].includes(targetTile.type)) {
-        return 0; // Forced turn stop upon entering room threshold[cite: 1]
+        return 0; // Forced turn stop upon entering room threshold
       }
       return Math.max(0, prev - 1);
     });
 
-    // Background DB Sync
     await supabase
       .from('dungeon_players')
       .update({ pos_x: newX, pos_y: newY })
       .eq('client_session_id', player.client_session_id);
   };
 
-  // Recharge Movement Points
   const handleRechargeMovement = () => {
     setStepsRemaining(5);
   };
 
-  // Secret Door 1d6 Roll Resolution (3-6 Rogue sub-classes, 5-6 Standard)[cite: 1]
+  // Secret Door Roll Resolution
   const handleAttemptSecretDoor = (targetX: number, targetY: number) => {
     const roll = Math.floor(Math.random() * 6) + 1;
     const isRogueClass = ['rogue', 'ranger', 'bard'].includes(player.hero_class.toLowerCase());
@@ -111,18 +125,17 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
       const targetTile = STATIC_DUNGEON_BOARD[targetY][targetX];
       executeMove(targetX, targetY, targetTile);
     } else {
-      alert(`🎲 Rolled ${roll}. Failed to open Secret Door (Needed ${requiredRoll}+). Movement point spent!`);
+      alert(`🎲 Rolled ${roll}. Failed to open Secret Door (Needed ${requiredRoll}+). Step spent!`);
       setStepsRemaining(prev => Math.max(0, prev - 1));
     }
     setSecretDoorTarget(null);
   };
 
-  // Directional Movement Handler
+  // Directional Step Movement
   const handleMove = useCallback(async (targetX: number, targetY: number) => {
     if (stepsRemaining <= 0) return;
     if (targetX < 0 || targetX >= BOARD_SIZE || targetY < 0 || targetY >= BOARD_SIZE) return;
 
-    // Must be 1 cardinal step away
     const dx = Math.abs(targetX - localPos.x);
     const dy = Math.abs(targetY - localPos.y);
     if (dx + dy !== 1) return;
@@ -133,7 +146,6 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     const tileKey = `${targetX},${targetY}`;
     const isSecretDiscovered = discoveredSecrets.has(tileKey);
 
-    // Passability Check
     if (!isTilePassable(targetTile, isSecretDiscovered)) {
       if (targetTile.type === 'SECRET_DOOR' && !isSecretDiscovered) {
         setSecretDoorTarget({ x: targetX, y: targetY });
@@ -148,7 +160,6 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
         e.preventDefault();
       }
@@ -163,7 +174,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMove, localPos]);
 
-  // Spatial Sound Ping Broadcast
+  // Spatial Sound Ping
   const triggerSoundPing = async (label: string = '⚔️ COMBAT') => {
     const pingPayload: SoundPing = {
       id: crypto.randomUUID(),
@@ -200,47 +211,79 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
     };
   }, [roomCode, localPos.x, localPos.y]);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+  const fontSize = Math.max(10, Math.floor(tileSize * 0.45));
 
-      {/* Movement HUD & Actions */}
-      <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <div style={{ padding: '8px 16px', backgroundColor: '#0f172a', border: '1px solid #00ffcc', borderRadius: '6px', color: '#fff', fontSize: '14px' }}>
-          👟 Movement Steps: <strong style={{ color: stepsRemaining > 0 ? '#00ffcc' : '#ff3366', fontSize: '16px' }}>{stepsRemaining} / 5</strong>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
+
+      {/* Movement HUD & Actions Bar */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <div style={{ padding: '6px 14px', backgroundColor: '#0f172a', border: '1px solid #00ffcc', borderRadius: '6px', color: '#fff', fontSize: '13px' }}>
+          👟 Steps Left: <strong style={{ color: stepsRemaining > 0 ? '#00ffcc' : '#ff3366', fontSize: '15px' }}>{stepsRemaining} / 5</strong>
         </div>
 
         {stepsRemaining === 0 ? (
           <button
             onClick={handleRechargeMovement}
-            style={{ padding: '8px 16px', backgroundColor: '#eab308', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+            style={{ padding: '6px 14px', backgroundColor: '#eab308', color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
           >
-            🔄 Recharge Movement (End Turn Step)
+            🔄 Recharge Turn
           </button>
         ) : (
           <button
             onClick={() => setStepsRemaining(0)}
-            style={{ padding: '8px 16px', backgroundColor: '#334155', color: '#aaa', border: '1px solid #555', fontFamily: 'monospace', borderRadius: '4px', cursor: 'pointer' }}
+            style={{ padding: '6px 14px', backgroundColor: '#334155', color: '#aaa', border: '1px solid #555', fontFamily: 'monospace', borderRadius: '4px', cursor: 'pointer' }}
           >
-            🛑 End Movement Early
+            🛑 End Movement
           </button>
         )}
 
         <button
           onClick={() => triggerSoundPing('💥 SPELL CAST')}
-          style={{ padding: '8px 16px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
+          style={{ padding: '6px 14px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontFamily: 'monospace', borderRadius: '4px' }}
         >
           🔊 Sound Ping
+        </button>
+      </div>
+
+      {/* 🔍 Fortress-Style Zoom & Camera Control Bar[cite: 7] */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button
+          onClick={() => setTileSize(prev => Math.max(18, prev - 4))}
+          style={{ backgroundColor: '#111', color: '#00ffcc', border: '1px solid #00ffcc', padding: '4px 10px', fontFamily: 'monospace', cursor: 'pointer', borderRadius: '4px' }}
+          title="Zoom Out"
+        >
+          🔍 -
+        </button>
+
+        <span style={{ fontSize: '12px', color: '#888', minWidth: '45px', textAlign: 'center' }}>
+          {Math.round((tileSize / 32) * 100)}%
+        </span>
+
+        <button
+          onClick={() => setTileSize(prev => Math.min(56, prev + 4))}
+          style={{ backgroundColor: '#111', color: '#00ffcc', border: '1px solid #00ffcc', padding: '4px 10px', fontFamily: 'monospace', cursor: 'pointer', borderRadius: '4px' }}
+          title="Zoom In"
+        >
+          🔍 +
+        </button>
+
+        <button
+          onClick={centerCamera}
+          style={{ backgroundColor: '#00ffcc', color: '#000', border: 'none', padding: '4px 12px', fontWeight: 'bold', fontFamily: 'monospace', cursor: 'pointer', borderRadius: '4px', marginLeft: '6px' }}
+        >
+          🎯 Center Cam
         </button>
       </div>
 
       {/* Secret Door Search Modal */}
       {secretDoorTarget && (
         <div style={{ backgroundColor: '#1e1b4b', border: '2px solid #a855f7', padding: '12px 20px', borderRadius: '8px', color: '#fff', textAlign: 'center' }}>
-          <p style={{ margin: '0 0 10px 0', fontSize: '14px' }}>
-            🚪 Found Secret Door at ({secretDoorTarget.x}, {secretDoorTarget.y})!
+          <p style={{ margin: '0 0 10px 0', fontSize: '13px' }}>
+            🚪 Secret Door at ({secretDoorTarget.x}, {secretDoorTarget.y})!
             <br />
-            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-              Req Roll: <strong>{['rogue', 'ranger', 'bard'].includes(player.hero_class.toLowerCase()) ? '3–6 (Rogue Bonus)' : '5–6 (Standard)'}</strong> on 1d6[cite: 1]
+            <span style={{ fontSize: '11px', color: '#cbd5e1' }}>
+              Requires <strong>{['rogue', 'ranger', 'bard'].includes(player.hero_class.toLowerCase()) ? '3–6 (Rogue)' : '5–6 (Standard)'}</strong> on 1d6
             </span>
           </p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
@@ -260,20 +303,26 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
         </div>
       )}
 
-      {/* 2D Top-Down Board Viewport */}
+      {/* 🖼️ Fortress-Style Scrollable Viewport Frame[cite: 7] */}
       <div
+        ref={containerRef}
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${BOARD_SIZE}, 26px)`,
-          gridTemplateRows: `repeat(${BOARD_SIZE}, 26px)`,
+          gridTemplateColumns: `repeat(${BOARD_SIZE}, ${tileSize}px)`,
+          gridTemplateRows: `repeat(${BOARD_SIZE}, ${tileSize}px)`,
           gap: '2px',
           backgroundColor: '#000',
-          padding: '12px',
+          padding: '8px',
           border: '2px solid #00ffcc',
           borderRadius: '8px',
           boxShadow: '0 0 20px rgba(0,255,204,0.15)',
+          maxHeight: '58vh',
+          maxWidth: '100%',
           overflow: 'auto',
-          maxHeight: '80vh'
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'manipulation',
+          boxSizing: 'border-box',
+          margin: '0 auto',
         }}
       >
         {STATIC_DUNGEON_BOARD.map((row, y) =>
@@ -287,7 +336,7 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
             const activePing = soundPings.find(p => p.x === x && p.y === y);
 
             if (!isVisible && !isVisited) {
-              return <div key={tileKey} style={{ width: '26px', height: '26px', backgroundColor: '#020408' }} />;
+              return <div key={tileKey} style={{ width: `${tileSize}px`, height: `${tileSize}px`, backgroundColor: '#020408' }} />;
             }
 
             const levelConfig = LEVEL_COLORS[tile.level] || LEVEL_COLORS[1];
@@ -317,13 +366,18 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
             return (
               <div
                 key={tileKey}
+                ref={isLocalPlayerHere ? playerTileRef : null} // 👈 Anchor for Fortress auto-camera centering[cite: 7]
                 onClick={() => handleMove(x, y)}
                 title={`(${x}, ${y}) - Level ${tile.level} ${tile.type}`}
                 style={{
-                  width: '26px',
-                  height: '26px',
+                  width: `${tileSize}px`,
+                  height: `${tileSize}px`,
                   backgroundColor: tileBg,
-                  border: isVisible ? `1px solid ${tileBorder}` : '1px solid #1e293b',
+                  border: isLocalPlayerHere
+                    ? '2px solid #ffffff'
+                    : isVisible
+                    ? `1px solid ${tileBorder}`
+                    : '1px solid #1e293b',
                   opacity: isVisible ? 1 : 0.3,
                   display: 'flex',
                   alignItems: 'center',
@@ -331,7 +385,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                   cursor: stepsRemaining > 0 ? 'pointer' : 'not-allowed',
                   position: 'relative',
                   boxSizing: 'border-box',
-                  fontSize: '11px'
+                  fontSize: `${fontSize}px`,
+                  userSelect: 'none',
                 }}
               >
                 {!isLocalPlayerHere && playersOnTile.length === 0 && tileContent}
@@ -340,8 +395,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                 {isLocalPlayerHere && (
                   <div
                     style={{
-                      width: '14px',
-                      height: '14px',
+                      width: `${Math.floor(tileSize * 0.45)}px`,
+                      height: `${Math.floor(tileSize * 0.45)}px`,
                       backgroundColor: '#00ffcc',
                       borderRadius: '50%',
                       boxShadow: '0 0 10px #00ffcc',
@@ -354,8 +409,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                 {!isLocalPlayerHere && playersOnTile.length > 0 && (
                   <div
                     style={{
-                      width: '12px',
-                      height: '12px',
+                      width: `${Math.floor(tileSize * 0.4)}px`,
+                      height: `${Math.floor(tileSize * 0.4)}px`,
                       backgroundColor: '#ff3366',
                       borderRadius: '50%',
                       zIndex: 2
@@ -368,8 +423,8 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
                   <div
                     style={{
                       position: 'absolute',
-                      width: '32px',
-                      height: '32px',
+                      width: `${tileSize + 4}px`,
+                      height: `${tileSize + 4}px`,
                       border: '2px solid #eab308',
                       borderRadius: '50%',
                       animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite'
@@ -383,10 +438,10 @@ export function DungeonMap({ player, allPlayers, roomCode }: DungeonMapProps) {
       </div>
 
       {/* Board Tier Color Legend */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', fontSize: '11px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', fontSize: '11px' }}>
         {Object.entries(LEVEL_COLORS).map(([lvl, cfg]) => (
-          <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#090d16', padding: '4px 8px', borderRadius: '4px', border: `1px solid ${cfg.border}` }}>
-            <div style={{ width: '10px', height: '10px', backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }} />
+          <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#090d16', padding: '3px 8px', borderRadius: '4px', border: `1px solid ${cfg.border}` }}>
+            <div style={{ width: '8px', height: '8px', backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }} />
             <span style={{ color: cfg.text }}>{cfg.label}</span>
           </div>
         ))}
