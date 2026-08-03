@@ -16,7 +16,7 @@ export interface TileData {
   doorId?: string;
 }
 
-export const BOARD_SIZE = 30;
+export const BOARD_SIZE = 36;
 
 export const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; label: string }> = {
   0: { bg: '#032e27', border: '#00ffcc', text: '#00ffcc', label: 'Great Hall (Center)' },
@@ -25,109 +25,211 @@ export const LEVEL_COLORS: Record<number, { bg: string; border: string; text: st
   3: { bg: '#0f2942', border: '#3b82f6', text: '#93c5fd', label: 'Level 3 (Blue - West)' },
   4: { bg: '#2e104a', border: '#a855f7', text: '#e9d5ff', label: 'Level 4 (Purple - North)' },
   5: { bg: '#3f0c0c', border: '#ef4444', text: '#fca5a5', label: 'Level 5 (Red - East)' },
-  6: { bg: '#1f0033', border: '#d8b4fe', text: '#f5d0fe', label: 'Level 6 (Deep Purple)' },
+  6: { bg: '#1f0033', border: '#d8b4fe', text: '#f5d0fe', label: 'Level 6 (Deep Purple - East Lair)' },
 };
 
-/**
- * 🗺️ ASCII MAP BLUEPRINT
- * This allows us to draw exact 1-tile winding paths and discrete small rooms.
- * 
- * Key:
- * # = WALL (Solid Rock)
- * H = GREAT HALL
- * S = SECRET DOOR
- * 
- * Rooms/Chambers:     Corridors:     Doors:
- * 1 = Level 1         c = L1 Path    d = L1 Door
- * 2 = Level 2         e = L2 Path    f = L2 Door
- * 3 = Level 3         g = L3 Path    h = L3 Door
- * 4 = Level 4         i = L4 Path    j = L4 Door
- * 5 = Level 5         k = L5 Path    l = L5 Door
- * 6 = Level 6         m = L6 Path    n = L6 Door
- */
-const ASCII_MAP = [
-  "##############################",
-  "###22##22####44#44######55####",
-  "###22f#22f###44j44#k####55####",
-  "####e##e#######i###k#l5555####",
-  "##22e##e22###44i44#k##5555####",
-  "##22f##f22###44j44#k##########",
-  "####e##e#######i###k##5555####",
-  "##22e##e11#c#11i###k#l5555####",
-  "##22f##d11c#c11d###k####55####",
-  "####e###c###c#######k###l#k###",
-  "###e#c11c###c11c#k##k5555#k###",
-  "###e#d11c#S#c11d#k##l5555#k###",
-  "###e##c#######c##k########k###",
-  "##22##c11#HHHH#11ck#######k###",
-  "##22f#d11dHHHHd11dkk##666#k###",
-  "####e##c##HHHH##c##k##666n66##",
-  "###33##c##HHHH##c##m##666#66##",
-  "###33h#d11dHHHHd11dm#######m##",
-  "####g##c11#HHHH#11cm#######m##",
-  "##33g##c#######c###m#6666##m##",
-  "##33h#d11c#S#c11d#nm#6666##m##",
-  "####g#c11c###c11c##m#6666##m##",
-  "##33g###c###c######m#######m##",
-  "##33h##d11c#c11d###m#6666n66##",
-  "####g##e11#c#11m###m#6666#66##",
-  "###g##g########m###m#6666#####",
-  "##33g33h#######m###m##########",
-  "##33#33########m###m#66666####",
-  "###############m###n#66666####",
-  "##############################"
-];
-
 export function generateStaticDungeonBoard(): TileData[][] {
+  // 1. Fill entire 36x36 board with solid cavern rock (WALL)
   const grid: TileData[][] = [];
-
   for (let y = 0; y < BOARD_SIZE; y++) {
     const row: TileData[] = [];
     for (let x = 0; x < BOARD_SIZE; x++) {
-      const char = ASCII_MAP[y][x];
-      
-      let type: TileType = 'WALL';
-      let level = 0;
-
-      // 1. Map Characters to Types
-      switch (char) {
-        case '#': type = 'WALL'; level = 0; break;
-        case 'H': type = 'GREAT_HALL'; level = 0; break;
-        case 'S': type = 'SECRET_DOOR'; level = 0; break;
-        
-        case 'c': type = 'CORRIDOR'; level = 1; break;
-        case 'e': type = 'CORRIDOR'; level = 2; break;
-        case 'g': type = 'CORRIDOR'; level = 3; break;
-        case 'i': type = 'CORRIDOR'; level = 4; break;
-        case 'k': type = 'CORRIDOR'; level = 5; break;
-        case 'm': type = 'CORRIDOR'; level = 6; break;
-        
-        case 'd': type = 'DOOR'; level = 1; break;
-        case 'f': type = 'DOOR'; level = 2; break;
-        case 'h': type = 'DOOR'; level = 3; break;
-        case 'j': type = 'DOOR'; level = 4; break;
-        case 'l': type = 'DOOR'; level = 5; break;
-        case 'n': type = 'DOOR'; level = 6; break;
-        
-        case '1': type = 'ROOM'; level = 1; break;
-        case '2': type = 'ROOM'; level = 2; break;
-        case '3': type = 'ROOM'; level = 3; break;
-        case '4': type = 'ROOM'; level = 4; break;
-        case '5': type = 'CHAMBER'; level = 5; break; 
-        case '6': type = 'CHAMBER'; level = 6; break;
-      }
-
-      // 2. Generate a Room ID based on rough proximity blocks so the engine can lock them
-      let roomId = undefined;
-      if (['ROOM', 'CHAMBER', 'DOOR'].includes(type)) {
-        // Groups adjacent room tiles into logical blocks
-        roomId = `room_${level}_${Math.floor(x / 4)}_${Math.floor(y / 4)}`;
-      }
-
-      row.push({ x, y, type, level, roomId });
+      row.push({ x, y, type: 'WALL', level: 0 });
     }
     grid.push(row);
   }
+
+  const setTile = (x: number, y: number, type: TileType, level: number, roomId?: string) => {
+    if (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) {
+      grid[y][x] = { x, y, type, level, roomId };
+    }
+  };
+
+  // 🧱 Helper A: Stamp discrete room blocks with single door
+  const stampRoom = (
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    level: number,
+    roomId: string,
+    doorPos: { x: number; y: number },
+    isChamber: boolean = false
+  ) => {
+    const tileType: TileType = isChamber ? 'CHAMBER' : 'ROOM';
+    for (let ry = y; ry < y + h; ry++) {
+      for (let rx = x; rx < x + w; rx++) {
+        setTile(rx, ry, tileType, level, roomId);
+      }
+    }
+    // Stamp entrance door
+    setTile(doorPos.x, doorPos.y, 'DOOR', level, roomId);
+  };
+
+  // 🛣️ Helper B: Stamp 1-tile wide corridor streets
+  const stampPath = (x1: number, y1: number, x2: number, y2: number, level: number) => {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+
+    for (let cy = minY; cy <= maxY; cy++) {
+      for (let cx = minX; cx <= maxX; cx++) {
+        if (grid[cy][cx].type === 'WALL' || grid[cy][cx].type === 'CORRIDOR') {
+          setTile(cx, cy, 'CORRIDOR', level);
+        }
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 🏛️ CENTRAL HUB: Great Hall (Level 0) & 8 Encircled Level 1 Rooms
+  // --------------------------------------------------------------------------
+  // Great Hall 4x4 Center
+  for (let gy = 16; gy <= 19; gy++) {
+    for (let gx = 16; gx <= 19; gx++) {
+      setTile(gx, gy, 'GREAT_HALL', 0);
+    }
+  }
+
+  // 8 Level 1 Yellow Room Blocks around Great Hall
+  stampRoom(13, 12, 2, 2, 1, 'room_l1_01', { x: 14, y: 14 }); // NW
+  stampRoom(17, 12, 2, 2, 1, 'room_l1_02', { x: 17, y: 14 }); // N
+  stampRoom(21, 12, 2, 2, 1, 'room_l1_03', { x: 21, y: 14 }); // NE
+  stampRoom(12, 17, 2, 2, 1, 'room_l1_04', { x: 14, y: 17 }); // W
+  stampRoom(22, 17, 2, 2, 1, 'room_l1_05', { x: 21, y: 17 }); // E
+  stampRoom(13, 22, 2, 2, 1, 'room_l1_06', { x: 14, y: 21 }); // SW
+  stampRoom(17, 22, 2, 2, 1, 'room_l1_07', { x: 17, y: 21 }); // S
+  stampRoom(21, 22, 2, 2, 1, 'room_l1_08', { x: 21, y: 21 }); // SE
+
+  // Central Ring Streets
+  stampPath(15, 15, 20, 15, 1);
+  stampPath(15, 20, 20, 20, 1);
+  stampPath(15, 15, 15, 20, 1);
+  stampPath(20, 15, 20, 20, 1);
+
+  // --------------------------------------------------------------------------
+  // 🟠 WEST WING: Level 2 (Orange - 11 Rooms)
+  // --------------------------------------------------------------------------
+  stampPath(8, 17, 15, 17, 2); // West Main Trunk
+  stampPath(8, 3, 8, 17, 2);   // North-West Street
+
+  // 11 Orange Rooms
+  stampRoom(2, 2, 2, 2, 2, 'room_l2_01', { x: 4, y: 3 });
+  stampRoom(5, 2, 2, 2, 2, 'room_l2_02', { x: 6, y: 4 });
+  stampRoom(10, 2, 2, 2, 2, 'room_l2_03', { x: 10, y: 4 });
+  stampRoom(13, 2, 2, 2, 2, 'room_l2_04', { x: 13, y: 4 });
+
+  stampRoom(2, 6, 2, 2, 2, 'room_l2_05', { x: 4, y: 7 });
+  stampRoom(10, 6, 2, 2, 2, 'room_l2_06', { x: 10, y: 7 });
+
+  stampRoom(2, 10, 2, 2, 2, 'room_l2_07', { x: 4, y: 11 });
+  stampRoom(5, 10, 2, 2, 2, 'room_l2_08', { x: 6, y: 11 });
+  stampRoom(10, 10, 2, 2, 2, 'room_l2_09', { x: 10, y: 11 });
+
+  stampRoom(2, 14, 2, 2, 2, 'room_l2_10', { x: 4, y: 15 });
+  stampRoom(5, 14, 2, 2, 2, 'room_l2_11', { x: 6, y: 15 });
+
+  // Corridor connections
+  stampPath(4, 3, 13, 3, 2);
+  stampPath(4, 7, 10, 7, 2);
+  stampPath(4, 11, 10, 11, 2);
+  stampPath(4, 15, 8, 15, 2);
+
+  // --------------------------------------------------------------------------
+  // 🔵 SOUTH-WEST WING: Level 3 (Blue - 9 Rooms + Armory Chamber)
+  // --------------------------------------------------------------------------
+  stampPath(8, 17, 8, 33, 3); // South-West Street
+
+  // 9 Blue Rooms
+  stampRoom(2, 19, 2, 2, 3, 'room_l3_01', { x: 4, y: 20 });
+  stampRoom(5, 19, 2, 2, 3, 'room_l3_02', { x: 6, y: 20 });
+  stampRoom(10, 19, 2, 2, 3, 'room_l3_03', { x: 10, y: 20 });
+
+  stampRoom(2, 23, 2, 2, 3, 'room_l3_04', { x: 4, y: 24 });
+  stampRoom(10, 23, 2, 2, 3, 'room_l3_05', { x: 10, y: 24 });
+
+  stampRoom(2, 27, 2, 2, 3, 'room_l3_06', { x: 4, y: 28 });
+  stampRoom(5, 27, 2, 2, 3, 'room_l3_07', { x: 6, y: 28 });
+
+  stampRoom(2, 31, 2, 2, 3, 'room_l3_08', { x: 4, y: 32 });
+  stampRoom(5, 31, 2, 2, 3, 'room_l3_09', { x: 6, y: 32 });
+
+  // Armory Chamber (3x3)
+  stampRoom(10, 27, 3, 3, 3, 'chamber_l3_armory', { x: 10, y: 28 }, true);
+
+  // Corridor connections
+  stampPath(4, 20, 10, 20, 3);
+  stampPath(4, 24, 10, 24, 3);
+  stampPath(4, 28, 8, 28, 3);
+  stampPath(4, 32, 8, 32, 3);
+
+  // --------------------------------------------------------------------------
+  // 🟣 NORTH-EAST WING: Level 4 (Purple - 8 Rooms)
+  // --------------------------------------------------------------------------
+  stampPath(17, 8, 17, 15, 4);  // North Street
+  stampPath(17, 8, 33, 8, 4);   // North-East Main Highway
+
+  stampRoom(19, 2, 2, 2, 4, 'room_l4_01', { x: 20, y: 4 });
+  stampRoom(23, 2, 2, 2, 4, 'room_l4_02', { x: 24, y: 4 });
+  stampRoom(27, 2, 2, 2, 4, 'room_l4_03', { x: 28, y: 4 });
+  stampRoom(31, 2, 2, 2, 4, 'room_l4_04', { x: 32, y: 4 });
+
+  stampRoom(19, 10, 2, 2, 4, 'room_l4_05', { x: 20, y: 10 });
+  stampRoom(23, 10, 2, 2, 4, 'room_l4_06', { x: 24, y: 10 });
+  stampRoom(27, 10, 2, 2, 4, 'room_l4_07', { x: 28, y: 10 });
+  stampRoom(31, 10, 2, 2, 4, 'room_l4_08', { x: 32, y: 10 });
+
+  stampPath(20, 4, 32, 4, 4);
+  stampPath(20, 10, 32, 10, 4);
+
+  // --------------------------------------------------------------------------
+  // 🔴 SOUTH-EAST MID: Level 5 (Red - 7 Rooms + Torture Chamber)
+  // --------------------------------------------------------------------------
+  stampPath(20, 17, 28, 17, 5); // East Main Trunk
+  stampPath(28, 14, 28, 22, 5); // Red Street
+
+  stampRoom(23, 13, 2, 2, 5, 'room_l5_01', { x: 24, y: 15 });
+  stampRoom(31, 13, 2, 2, 5, 'room_l5_02', { x: 31, y: 15 });
+
+  stampRoom(23, 18, 2, 2, 5, 'room_l5_03', { x: 24, y: 18 });
+  stampRoom(31, 18, 2, 2, 5, 'room_l5_04', { x: 31, y: 18 });
+
+  stampRoom(23, 21, 2, 2, 5, 'room_l5_05', { x: 24, y: 21 });
+  stampRoom(31, 21, 2, 2, 5, 'room_l5_06', { x: 31, y: 21 });
+
+  // Torture Chamber (3x3)
+  stampRoom(25, 21, 3, 3, 5, 'chamber_l5_torture', { x: 28, y: 21 }, true);
+
+  stampPath(24, 15, 31, 15, 5);
+  stampPath(24, 18, 31, 18, 5);
+
+  // --------------------------------------------------------------------------
+  // 🟣 DEEP SOUTH-EAST: Level 6 (Deep Purple - 6 Rooms + The Lair & Burrow)
+  // --------------------------------------------------------------------------
+  stampPath(28, 22, 28, 33, 6); // Lair Deep Street
+
+  stampRoom(23, 26, 2, 2, 6, 'room_l6_01', { x: 24, y: 26 });
+  stampRoom(32, 26, 2, 2, 6, 'room_l6_02', { x: 32, y: 26 });
+
+  stampRoom(23, 30, 2, 2, 6, 'room_l6_03', { x: 24, y: 30 });
+  stampRoom(32, 30, 2, 2, 6, 'room_l6_04', { x: 32, y: 30 });
+
+  // THE LAIR (3x3 Major Chamber)
+  stampRoom(25, 25, 3, 3, 6, 'chamber_l6_lair', { x: 28, y: 26 }, true);
+
+  // THE BURROW (3x3 Major Chamber)
+  stampRoom(25, 29, 3, 3, 6, 'chamber_l6_burrow', { x: 28, y: 30 }, true);
+
+  stampPath(24, 26, 32, 26, 6);
+  stampPath(24, 30, 32, 30, 6);
+
+  // --------------------------------------------------------------------------
+  // 🔓 SECRET DOOR PASSAGES
+  // --------------------------------------------------------------------------
+  setTile(8, 11, 'SECRET_DOOR', 2);  // L2 -> West Trunk shortcut
+  setTile(28, 12, 'SECRET_DOOR', 5); // L5 -> L4 shortcut
+  setTile(28, 24, 'SECRET_DOOR', 6); // L6 -> L5 shortcut
 
   return grid;
 }
