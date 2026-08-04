@@ -25,7 +25,8 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonMapProps) {
-  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 18, y: player.pos_y ?? 21 });
+  // Start player inside Great Hall (x: 24, y: 22)
+  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 24, y: player.pos_y ?? 22 });
   const [stepsRemaining, setStepsRemaining] = useState<number>(5);
 
   // 🔓 DEBUG MODE: Reveal entire map toggle
