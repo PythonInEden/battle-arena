@@ -3,7 +3,8 @@ import { supabase } from '../supabaseClient';
 import { DungeonPlayerState } from './useDungeonSession';
 import {
   STATIC_DUNGEON_BOARD,
-  BOARD_SIZE,
+  BOARD_WIDTH,
+  BOARD_HEIGHT,
   LEVEL_COLORS,
   isTilePassable,
   TileData
@@ -24,7 +25,7 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonMapProps) {
-  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 14, y: player.pos_y ?? 14 });
+  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 18, y: player.pos_y ?? 21 });
   const [stepsRemaining, setStepsRemaining] = useState<number>(5);
 
   // 🔓 DEBUG MODE: Reveal entire map toggle
@@ -69,7 +70,7 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
         if (Math.hypot(dx, dy) <= radius) {
           const vx = localPos.x + dx;
           const vy = localPos.y + dy;
-          if (vx >= 0 && vx < BOARD_SIZE && vy >= 0 && vy < BOARD_SIZE) {
+          if (vx >= 0 && vx < BOARD_WIDTH && vy >= 0 && vy < BOARD_HEIGHT) {
             visible.add(`${vx},${vy}`);
           }
         }
@@ -124,7 +125,7 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
 
   const handleMove = useCallback(async (targetX: number, targetY: number) => {
     if (stepsRemaining <= 0) return;
-    if (targetX < 0 || targetX >= BOARD_SIZE || targetY < 0 || targetY >= BOARD_SIZE) return;
+    if (targetX < 0 || targetX >= BOARD_WIDTH || targetY < 0 || targetY >= BOARD_HEIGHT) return;
 
     const dx = Math.abs(targetX - localPos.x);
     const dy = Math.abs(targetY - localPos.y);
@@ -264,20 +265,16 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
         ref={containerRef}
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${BOARD_SIZE}, ${tileSize}px)`,
-          gridTemplateRows: `repeat(${BOARD_SIZE}, ${tileSize}px)`,
+          gridTemplateColumns: `repeat(${BOARD_WIDTH}, ${tileSize}px)`,
+          gridTemplateRows: `repeat(${BOARD_HEIGHT}, ${tileSize}px)`,
           gap: '2px',
           backgroundColor: '#020408',
           padding: '8px',
           border: '2px solid #00ffcc',
           borderRadius: '8px',
-          maxHeight: '62vh',
+          maxHeight: '65vh',
           maxWidth: '100%',
           overflow: 'auto',
-          WebkitOverflowScrolling: 'touch',
-          touchAction: 'manipulation',
-          boxSizing: 'border-box',
-          margin: '0 auto',
         }}
       >
         {STATIC_DUNGEON_BOARD.map((row, y) =>
@@ -299,7 +296,7 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
             let tileContent = '';
 
             if (tile.type === 'WALL') {
-              tileBg = '#050a12'; // Dark cavern wall fill
+              tileBg = '#050a12';
               tileBorder = '#0d1829';
             } else if (tile.type === 'GREAT_HALL') {
               tileBg = LEVEL_COLORS[0].bg;
@@ -323,7 +320,7 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
                 key={tileKey}
                 ref={isLocalPlayerHere ? playerTileRef : null}
                 onClick={() => handleMove(x, y)}
-                title={`(${x}, ${y}) - Level ${tile.level} ${tile.type}`}
+                title={`(${x}, ${y}) - ${tile.roomName || `Level ${tile.level} ${tile.type}`}`}
                 style={{
                   width: `${tileSize}px`,
                   height: `${tileSize}px`,
