@@ -15,7 +15,7 @@ export interface TileData {
   roomId?: string;
   roomName?: string;
   doorId?: string;
-  clearedTokensRequired?: number;
+  clearedTokensRequired?: number; // 1 for Rooms, 3 for Chambers
 }
 
 export const BOARD_WIDTH = 100;
@@ -159,6 +159,7 @@ export const OFFICIAL_NAMED_LOCATIONS: Record<string, { name: string; level: num
 export function generateStaticDungeonBoard(): TileData[][] {
   const grid: TileData[][] = [];
 
+  // Step 1: Initial tile type parsing
   for (let y = 0; y < BOARD_HEIGHT; y++) {
     const row: TileData[] = [];
     for (let x = 0; x < BOARD_WIDTH; x++) {
@@ -206,31 +207,76 @@ export function generateStaticDungeonBoard(): TileData[][] {
         case 'F': type = 'CHAMBER'; level = 6; clearedTokensRequired = 3; break;
       }
 
-      let roomId = undefined;
-      let roomName = undefined;
+      row.push({ x, y, type, level, clearedTokensRequired });
+    }
+    grid.push(row);
+  }
 
-      if (['ROOM', 'CHAMBER', 'GREAT_HALL', 'DOOR'].includes(type)) {
-        for (const [key, loc] of Object.entries(OFFICIAL_NAMED_LOCATIONS)) {
+  // Step 2: Flood-fill BFS to group contiguous ROOM, CHAMBER, and GREAT_HALL tiles into single unified roomIds
+  const visited = new Set<string>();
+  let clusterCounter = 0;
+
+  for (let y = 0; y < BOARD_HEIGHT; y++) {
+    for (let x = 0; x < BOARD_WIDTH; x++) {
+      const tile = grid[y][x];
+      const key = `${x},${y}`;
+
+      if (['ROOM', 'CHAMBER', 'GREAT_HALL'].includes(tile.type) && !visited.has(key)) {
+        let roomId = undefined;
+        let roomName = undefined;
+
+        // Check if inside an official named location
+        for (const [namedKey, loc] of Object.entries(OFFICIAL_NAMED_LOCATIONS)) {
           if (x >= loc.x && x < loc.x + loc.w && y >= loc.y && y < loc.y + loc.h) {
-            roomId = key;
+            roomId = namedKey;
             roomName = loc.name;
-            if (type === 'ROOM' && key !== 'great_hall') {
-              type = 'CHAMBER';
-              clearedTokensRequired = 3;
+            if (tile.type === 'ROOM' && namedKey !== 'great_hall') {
+              tile.type = 'CHAMBER';
+              tile.clearedTokensRequired = 3;
             }
             break;
           }
         }
+
         if (!roomId) {
-          const prefix = type === 'CHAMBER' ? 'chamber' : 'room';
-          roomId = `${prefix}_l${level}_${Math.floor(x / 3)}_${Math.floor(y / 3)}`;
-          roomName = `Level ${level} ${type === 'CHAMBER' ? 'Chamber' : 'Room'} (${x}, ${y})`;
+          clusterCounter++;
+          const prefix = tile.type.toLowerCase();
+          roomId = `${prefix}_l${tile.level}_cluster_${clusterCounter}`;
+          roomName = `Level ${tile.level} ${tile.type === 'CHAMBER' ? 'Chamber' : 'Room'}`;
+        }
+
+        // Flood fill adjacent contiguous tiles of same type & level
+        const queue: { x: number; y: number }[] = [{ x, y }];
+        visited.add(key);
+
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const currTile = grid[curr.y][curr.x];
+          currTile.roomId = roomId;
+          currTile.roomName = roomName;
+
+          const neighbors = [
+            { x: curr.x + 1, y: curr.y },
+            { x: curr.x - 1, y: curr.y },
+            { x: curr.x, y: curr.y + 1 },
+            { x: curr.x, y: curr.y - 1 },
+          ];
+
+          for (const n of neighbors) {
+            if (n.x >= 0 && n.x < BOARD_WIDTH && n.y >= 0 && n.y < BOARD_HEIGHT) {
+              const nKey = `${n.x},${n.y}`;
+              if (!visited.has(nKey)) {
+                const nTile = grid[n.y][n.x];
+                if (nTile.type === tile.type && nTile.level === tile.level) {
+                  visited.add(nKey);
+                  queue.push(n);
+                }
+              }
+            }
+          }
         }
       }
-
-      row.push({ x, y, type, level, roomId, roomName, clearedTokensRequired });
     }
-    grid.push(row);
   }
 
   return grid;

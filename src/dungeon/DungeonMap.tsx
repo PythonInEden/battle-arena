@@ -85,7 +85,7 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
     // Always reveal player standing position
     visible.add(`${localPos.x},${localPos.y}`);
 
-    // 1. IF IN A ROOM OR CHAMBER: Reveal room tiles + doors/entrances touching the room
+    // 1. IF IN A ROOM OR CHAMBER: Reveal ALL tiles sharing this roomId + doors/entrances touching the room
     if ((currentTile.type === 'ROOM' || currentTile.type === 'CHAMBER') && currentTile.roomId) {
       const roomTileCoords: { x: number; y: number }[] = [];
 
@@ -175,8 +175,10 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
     setLocalPos({ x: newX, y: newY });
 
     setStepsRemaining(prev => {
-      if (['ROOM', 'CHAMBER', 'DOOR'].includes(targetTile.type)) {
-        return 0;
+      // Entering an uncleared ROOM or CHAMBER stops movement immediately (ends movement phase)
+      // Stepping onto a DOOR or CORRIDOR tile costs 1 step (prev - 1)
+      if (['ROOM', 'CHAMBER'].includes(targetTile.type)) {
+        return 0; // Triggers combat / encounter
       }
       return Math.max(0, prev - 1);
     });
