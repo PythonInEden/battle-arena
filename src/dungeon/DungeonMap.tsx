@@ -85,20 +85,48 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
     // Always reveal player standing position
     visible.add(`${localPos.x},${localPos.y}`);
 
-    // 1. IF IN A ROOM OR CHAMBER: Reveal ONLY this room container
+    // 1. IF IN A ROOM OR CHAMBER: Reveal room tiles + doors/entrances touching the room
     if ((currentTile.type === 'ROOM' || currentTile.type === 'CHAMBER') && currentTile.roomId) {
+      const roomTileCoords: { x: number; y: number }[] = [];
+
+      // Collect all tiles belonging to this room container
       for (let y = 0; y < BOARD_HEIGHT; y++) {
         for (let x = 0; x < BOARD_WIDTH; x++) {
           const tile = STATIC_DUNGEON_BOARD[y][x];
           if (tile.roomId === currentTile.roomId) {
             visible.add(`${x},${y}`);
+            roomTileCoords.push({ x, y });
           }
         }
       }
+
+      // Reveal doors, secret doors, and corridor thresholds touching this room
+      for (const rTile of roomTileCoords) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const vx = rTile.x + dx;
+            const vy = rTile.y + dy;
+            if (vx >= 0 && vx < BOARD_WIDTH && vy >= 0 && vy < BOARD_HEIGHT) {
+              const tile = STATIC_DUNGEON_BOARD[vy][vx];
+              const tileKey = `${vx},${vy}`;
+
+              if (tile.type === 'DOOR' || tile.type === 'SECRET_DOOR' || tile.type === 'CORRIDOR') {
+                const isSecretDiscovered = discoveredSecrets.has(tileKey);
+                // Keep undiscovered secret doors blacked out unless debug mode is active
+                if (tile.type === 'SECRET_DOOR' && !isSecretDiscovered && !isDebugRevealMap) {
+                  continue;
+                }
+                visible.add(tileKey);
+              }
+            }
+          }
+        }
+      }
+
       return visible;
     }
 
-    // 2. IF IN CORRIDOR OR DOOR: Reveal only immediate adjacent 1-tile surroundings (3x3 area)
+    // 2. IF IN CORRIDOR OR DOOR: Reveal immediate adjacent 1-tile surroundings (3x3 area)
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const vx = localPos.x + dx;
@@ -108,12 +136,11 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
           const tileKey = `${vx},${vy}`;
           const isSecretDiscovered = discoveredSecrets.has(tileKey);
 
-          // Hide undiscovered secret doors completely from corridor vision
           if (tile.type === 'SECRET_DOOR' && !isSecretDiscovered && !isDebugRevealMap) {
             continue;
           }
 
-          // Don't peek into adjacent room floors from corridors unless on a door tile
+          // Don't peek into adjacent room floors from corridors unless standing on a door tile
           if (currentTile.type !== 'DOOR' && (tile.type === 'ROOM' || tile.type === 'CHAMBER')) {
             continue;
           }
