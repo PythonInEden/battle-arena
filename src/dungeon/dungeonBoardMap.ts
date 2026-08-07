@@ -21,6 +21,19 @@ export const BOARD_WIDTH = 100;
 export const BOARD_HEIGHT = 100;
 export const BOARD_SIZE = BOARD_WIDTH;
 
+/**
+ * 2014 Official Dungeon! Board Tier Colors
+ */
+export const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; label: string }> = {
+  0: { bg: '#032e27', border: '#00ffcc', text: '#00ffcc', label: 'Great Hall (Level 1 Center)' },
+  1: { bg: '#3a2e00', border: '#eab308', text: '#fef08a', label: 'Level 1 (Yellow)' },
+  2: { bg: '#3b1c00', border: '#f97316', text: '#fdba74', label: 'Level 2 (Orange - North)' },
+  3: { bg: '#3f0c0c', border: '#ef4444', text: '#fca5a5', label: 'Level 3 (Red - Top Wings)' },
+  4: { bg: '#2e104a', border: '#c084fc', text: '#f0abfc', label: 'Level 4 (Purple - Mid Wings)' },
+  5: { bg: '#0f2942', border: '#3b82f6', text: '#93c5fd', label: 'Level 5 (Blue - Lower Wings)' },
+  6: { bg: '#042f2e', border: '#14b8a6', text: '#99f6e4', label: 'Level 6 (Teal - Deep Lair)' },
+};
+
 const ASCII_MAP = [
   "####################################################################################################",
   "####################################################################################################",
@@ -128,18 +141,15 @@ const ASCII_MAP = [
  * Registry of Official Named Locations
  */
 export const OFFICIAL_NAMED_LOCATIONS: Record<string, { name: string; level: number; x: number; y: number; w: number; h: number }> = {
-  great_hall: { name: 'Great Hall', level: 0, x: 23, y: 21, w: 4, h: 4 },
-  kitchen: { name: 'Kitchen', level: 2, x: 17, y: 1, w: 4, h: 3 },
-  guard_room: { name: 'Guard Room', level: 2, x: 15, y: 7, w: 3, h: 3 },
-  armory: { name: 'Armory', level: 3, x: 7, y: 5, w: 2, h: 2 },
-  pantry: { name: 'Pantry', level: 3, x: 31, y: 5, w: 2, h: 2 },
-  cells: { name: 'Cells', level: 4, x: 3, y: 15, w: 3, h: 2 },
-  chapel: { name: 'Chapel', level: 4, x: 31, y: 15, w: 2, h: 2 },
-  the_hole: { name: 'The Hole', level: 5, x: 9, y: 29, w: 2, h: 2 },
-  torture_chamber: { name: 'Torture Chamber', level: 5, x: 23, y: 29, w: 2, h: 2 },
-  laboratory: { name: 'Laboratory', level: 5, x: 31, y: 29, w: 2, h: 2 },
-  the_lair: { name: 'THE LAIR', level: 6, x: 9, y: 34, w: 2, h: 2 },
-  the_burrow: { name: 'THE BURROW', level: 6, x: 23, y: 34, w: 2, h: 2 },
+  great_hall: { name: 'Great Hall', level: 0, x: 30, y: 30, w: 6, h: 6 },
+  kitchen: { name: 'Kitchen', level: 2, x: 20, y: 32, w: 2, h: 2 },
+  guard_room: { name: 'Guard Room', level: 2, x: 22, y: 37, w: 2, h: 2 },
+  armory: { name: 'Armory', level: 3, x: 22, y: 28, w: 2, h: 2 },
+  cells: { name: 'Cells', level: 4, x: 22, y: 42, w: 2, h: 2 },
+  the_hole: { name: 'The Hole', level: 5, x: 22, y: 60, w: 2, h: 2 },
+  torture_chamber: { name: 'Torture Chamber', level: 5, x: 22, y: 73, w: 2, h: 2 },
+  the_lair: { name: 'THE LAIR', level: 6, x: 25, y: 61, w: 2, h: 2 },
+  the_burrow: { name: 'THE BURROW', level: 6, x: 25, y: 75, w: 2, h: 2 },
 };
 
 export function generateStaticDungeonBoard(): TileData[][] {
@@ -158,6 +168,7 @@ export function generateStaticDungeonBoard(): TileData[][] {
         case 'H': type = 'GREAT_HALL'; level = 0; break;
         case 'S': type = 'SECRET_DOOR'; level = 0; break;
 
+        case '.':
         case 'c':
         case 'C': type = 'CORRIDOR'; level = 1; break;
         case 'e': type = 'CORRIDOR'; level = 2; break;
