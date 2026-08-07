@@ -7,6 +7,7 @@ import {
   BOARD_HEIGHT,
   LEVEL_COLORS,
   isTilePassable,
+  getGreatHallSpawnPosition,
   TileData
 } from './dungeonBoardMap';
 
@@ -25,15 +26,23 @@ interface DungeonMapProps {
 }
 
 export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonMapProps) {
-  // Start player inside Great Hall (x: 24, y: 22)
-  const [localPos, setLocalPos] = useState({ x: player.pos_x ?? 24, y: player.pos_y ?? 22 });
+  // Safe Great Hall center spawn calculation
+  const defaultSpawn = useMemo(() => getGreatHallSpawnPosition(STATIC_DUNGEON_BOARD), []);
+
+  const [localPos, setLocalPos] = useState(() => {
+    const px = player.pos_x ?? defaultSpawn.x;
+    const py = player.pos_y ?? defaultSpawn.y;
+    // Auto-warp if position lands inside a WALL tile
+    if (STATIC_DUNGEON_BOARD[py]?.[px]?.type === 'WALL') {
+      return defaultSpawn;
+    }
+    return { x: px, y: py };
+  });
+
   const [stepsRemaining, setStepsRemaining] = useState<number>(5);
-
-  // 🔓 DEBUG MODE: Reveal entire map toggle
   const [isDebugRevealMap, setIsDebugRevealMap] = useState<boolean>(true);
-
-  // Zoom & Viewport state
   const [tileSize, setTileSize] = useState<number>(28);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const playerTileRef = useRef<HTMLDivElement>(null);
 
@@ -42,11 +51,16 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
   const [_soundPings, _setSoundPings] = useState<SoundPing[]>([]);
   const [visitedTiles, setVisitedTiles] = useState<Set<string>>(new Set());
 
+  // Auto-correct if incoming player coordinates land inside a WALL tile
   useEffect(() => {
     if (player.pos_x !== undefined && player.pos_y !== undefined) {
-      setLocalPos({ x: player.pos_x, y: player.pos_y });
+      if (STATIC_DUNGEON_BOARD[player.pos_y]?.[player.pos_x]?.type === 'WALL') {
+        setLocalPos(defaultSpawn);
+      } else {
+        setLocalPos({ x: player.pos_x, y: player.pos_y });
+      }
     }
-  }, [player.pos_x, player.pos_y]);
+  }, [player.pos_x, player.pos_y, defaultSpawn]);
 
   const centerCamera = useCallback(() => {
     if (playerTileRef.current && containerRef.current) {
@@ -192,7 +206,6 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
           </button>
         )}
 
-        {/* 🔓 MAP DEBUG TOGGLE */}
         <button
           onClick={() => setIsDebugRevealMap(prev => !prev)}
           style={{
@@ -378,12 +391,15 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
 
       {/* Legend */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', fontSize: '11px' }}>
-        {Object.entries(LEVEL_COLORS).map(([lvl, cfg]) => (
-          <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#090d16', padding: '3px 8px', borderRadius: '4px', border: `1px solid ${cfg.border}` }}>
-            <div style={{ width: '8px', height: '8px', backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }} />
-            <span style={{ color: cfg.text }}>{cfg.label}</span>
-          </div>
-        ))}
+        {Object.entries(LEVEL_COLORS).map(([lvl, cfg]) => {
+          const typedCfg = cfg as { bg: string; border: string; text: string; label: string };
+          return (
+            <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#090d16', padding: '3px 8px', borderRadius: '4px', border: `1px solid ${typedCfg.border}` }}>
+              <div style={{ width: '8px', height: '8px', backgroundColor: typedCfg.bg, border: `1px solid ${typedCfg.border}` }} />
+              <span style={{ color: typedCfg.text }}>{typedCfg.label}</span>
+            </div>
+          );
+        })}
       </div>
 
     </div>

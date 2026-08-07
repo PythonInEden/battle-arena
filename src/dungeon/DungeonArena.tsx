@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { supabase, supabaseUrl } from '../supabaseClient';
 import { useDungeonSession } from './useDungeonSession';
 import { DungeonMap } from './DungeonMap';
-import { DungeonMapBuilder } from './DungeonMapBuilder'; // 👈 Import Builder
+import { DungeonMapBuilder } from './DungeonMapBuilder';
+import { STATIC_DUNGEON_BOARD, getGreatHallSpawnPosition } from './dungeonBoardMap';
 
 const getHeroAvatarUrl = (heroClass: string, gender: 'male' | 'female' = 'male') => {
   const cleanClass = heroClass.toLowerCase().trim();
@@ -17,7 +18,6 @@ export function DungeonArena() {
   const [selectedClass, setSelectedClass] = useState<string>('Rogue');
   const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('male');
 
-  // 🛠️ Mode State: Toggle between Game Arena vs Map Creator Studio
   const [viewMode, setViewMode] = useState<'GAME' | 'BUILDER'>('GAME');
 
   const { clientSessionId, player, lobbyPlayers, isReconnecting: _isReconnecting, reconnect } = useDungeonSession(activeRoomCode);
@@ -44,6 +44,8 @@ export function DungeonArena() {
       .upsert({ room_code: code, host_id: playerNameInput });
 
     const targetGold = CLASS_CONFIG[selectedClass].targetGold;
+    const safeSpawn = getGreatHallSpawnPosition(STATIC_DUNGEON_BOARD);
+
     await supabase.from('dungeon_players').upsert({
       room_code: code,
       player_name: playerNameInput,
@@ -52,8 +54,8 @@ export function DungeonArena() {
       target_gold: targetGold,
       client_session_id: clientSessionId,
       connection_status: 'ONLINE',
-      pos_x: 24,
-      pos_y: 22
+      pos_x: safeSpawn.x,
+      pos_y: safeSpawn.y
     });
 
     reconnect();
@@ -69,7 +71,7 @@ export function DungeonArena() {
           <p style={{ color: '#88aaff', margin: '5px 0 0 0' }}>Room Code: <strong style={{ color: '#fff' }}>{activeRoomCode}</strong></p>
         </div>
 
-        {/* View Mode Toggle Buttons */}
+        {/* View Mode Toggle */}
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             onClick={() => setViewMode('GAME')}
@@ -86,13 +88,12 @@ export function DungeonArena() {
         </div>
       </header>
 
-      {/* MODE A: MAP BUILDER STUDIO */}
+      {/* Mode A: Map Builder Studio */}
       {viewMode === 'BUILDER' && <DungeonMapBuilder />}
 
-      {/* MODE B: PLAY ARENA MODE */}
+      {/* Mode B: Play Arena Mode */}
       {viewMode === 'GAME' && (
         <>
-          {/* Hero Registration Panel */}
           {!player && (
             <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '24px', borderRadius: '8px', maxWidth: '780px', margin: '0 auto 30px auto' }}>
               <h2 style={{ marginTop: 0, color: '#fff', textAlign: 'center', marginBottom: '20px' }}>⚔️ Select Character & Avatar</h2>
@@ -199,14 +200,12 @@ export function DungeonArena() {
             </section>
           )}
 
-          {/* Active Game Board & Map View */}
           {player && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', alignItems: 'start' }}>
               <div>
                 <DungeonMap player={player} allPlayers={lobbyPlayers} roomCode={activeRoomCode} />
               </div>
 
-              {/* Right Sidebar */}
               <div>
                 <section style={{ backgroundColor: '#0a1424', border: '1px solid #00ffcc', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', margin: '0 0 10px 0' }}>👑 Hero Status</h3>

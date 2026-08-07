@@ -5,7 +5,8 @@ export type BrushType =
   | '#'  // Wall / Rock
   | '.'  // Corridor Path
   | 'H'  // Great Hall
-  | '1' | '2' | '3' | '4' | '5' | '6' // Rooms (Levels 1-6)
+  | '1' | '2' | '3' | '4' | '5' | '6' // Rooms (1 Fight)
+  | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' // Chambers (3 Fights)
   | 'd'  // Door
   | 'S'; // Secret Door
 
@@ -14,30 +15,40 @@ interface BrushTool {
   label: string;
   icon: string;
   color: string;
-  category: 'Terrain' | 'Rooms' | 'Special';
+  category: 'Terrain' | 'Rooms (1 Fight)' | 'Chambers (3 Fights)' | 'Special';
 }
 
 const BRUSH_TOOLS: BrushTool[] = [
+  // Terrain & Special
   { id: '#', label: 'Solid Wall', icon: '⬛', color: '#0d1829', category: 'Terrain' },
   { id: '.', label: 'Corridor Path', icon: '🪨', color: '#1e293b', category: 'Terrain' },
-  { id: 'H', label: 'Great Hall', icon: '🏛️', color: LEVEL_COLORS[0].bg, category: 'Special' },
+  { id: 'H', label: 'Great Hall (Hub)', icon: '🏛️', color: LEVEL_COLORS[0].bg, category: 'Special' },
   { id: 'd', label: 'Door Threshold', icon: '🚪', color: '#2e1800', category: 'Special' },
   { id: 'S', label: 'Secret Door', icon: '❓', color: '#2e1065', category: 'Special' },
-  { id: '1', label: 'L1 Room (Yellow)', icon: '🕸️', color: LEVEL_COLORS[1].bg, category: 'Rooms' },
-  { id: '2', label: 'L2 Room (Orange)', icon: '🕸️', color: LEVEL_COLORS[2].bg, category: 'Rooms' },
-  { id: '3', label: 'L3 Room (Blue)', icon: '🕸️', color: LEVEL_COLORS[3].bg, category: 'Rooms' },
-  { id: '4', label: 'L4 Room (Purple)', icon: '🕸️', color: LEVEL_COLORS[4].bg, category: 'Rooms' },
-  { id: '5', label: 'L5 Room (Red)', icon: '💀', color: LEVEL_COLORS[5].bg, category: 'Rooms' },
-  { id: '6', label: 'L6 Chamber (Teal)', icon: '💀', color: LEVEL_COLORS[6].bg, category: 'Rooms' },
+
+  // Rooms (1 Fight / 1 Token)
+  { id: '1', label: 'L1 Room (Yellow)', icon: '🕸️', color: LEVEL_COLORS[1].bg, category: 'Rooms (1 Fight)' },
+  { id: '2', label: 'L2 Room (Orange)', icon: '🕸️', color: LEVEL_COLORS[2].bg, category: 'Rooms (1 Fight)' },
+  { id: '3', label: 'L3 Room (Blue)', icon: '🕸️', color: LEVEL_COLORS[3].bg, category: 'Rooms (1 Fight)' },
+  { id: '4', label: 'L4 Room (Purple)', icon: '🕸️', color: LEVEL_COLORS[4].bg, category: 'Rooms (1 Fight)' },
+  { id: '5', label: 'L5 Room (Red)', icon: '🕸️', color: LEVEL_COLORS[5].bg, category: 'Rooms (1 Fight)' },
+  { id: '6', label: 'L6 Room (Teal)', icon: '🕸️', color: LEVEL_COLORS[6].bg, category: 'Rooms (1 Fight)' },
+
+  // Chambers (3 Fights / 3 Tokens - Direct Access)
+  { id: 'A', label: 'L1 Chamber (Yellow)', icon: '💀', color: LEVEL_COLORS[1].bg, category: 'Chambers (3 Fights)' },
+  { id: 'B', label: 'L2 Chamber (Orange)', icon: '💀', color: LEVEL_COLORS[2].bg, category: 'Chambers (3 Fights)' },
+  { id: 'C', label: 'L3 Chamber (Blue)', icon: '💀', color: LEVEL_COLORS[3].bg, category: 'Chambers (3 Fights)' },
+  { id: 'D', label: 'L4 Chamber (Purple)', icon: '💀', color: LEVEL_COLORS[4].bg, category: 'Chambers (3 Fights)' },
+  { id: 'E', label: 'L5 Chamber (Red)', icon: '💀', color: LEVEL_COLORS[5].bg, category: 'Chambers (3 Fights)' },
+  { id: 'F', label: 'L6 Chamber (Teal)', icon: '💀', color: LEVEL_COLORS[6].bg, category: 'Chambers (3 Fights)' },
 ];
 
 export function DungeonMapBuilder() {
-  const [gridWidth, setGridWidth] = useState<number>(40);
-  const [gridHeight, setGridHeight] = useState<number>(40);
+  const [gridWidth, setGridWidth] = useState<number>(100);
+  const [gridHeight, setGridHeight] = useState<number>(100);
 
-  // Custom Dimensions Inputs
-  const [customWInput, setCustomWInput] = useState<string>('50');
-  const [customHInput, setCustomHInput] = useState<string>('50');
+  const [customWInput, setCustomWInput] = useState<string>('100');
+  const [customHInput, setCustomHInput] = useState<string>('100');
 
   const [selectedBrush, setSelectedBrush] = useState<BrushType>('.');
   const [isMouseDown, setIsMouseDown] = useState<boolean>(false);
@@ -46,12 +57,11 @@ export function DungeonMapBuilder() {
   const [importText, setImportText] = useState<string>('');
 
   const [grid, setGrid] = useState<string[][]>(() =>
-    Array.from({ length: 40 }, () => Array(40).fill('#'))
+    Array.from({ length: 100 }, () => Array(100).fill('#'))
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Resize Grid helper (preserves existing drawn cells)
   const handleResizeGrid = (newW: number, newH: number) => {
     const validW = Math.max(10, Math.min(100, newW));
     const validH = Math.max(10, Math.min(100, newH));
@@ -69,8 +79,8 @@ export function DungeonMapBuilder() {
   };
 
   const handleApplyCustomSize = () => {
-    const w = parseInt(customWInput, 10) || 40;
-    const h = parseInt(customHInput, 10) || 40;
+    const w = parseInt(customWInput, 10) || 100;
+    const h = parseInt(customHInput, 10) || 100;
     handleResizeGrid(w, h);
   };
 
@@ -83,7 +93,6 @@ export function DungeonMapBuilder() {
     });
   };
 
-  // Stamp Preset Templates
   const stampTemplate = (templateType: 'ROOM_2X2' | 'CHAMBER_3X3' | 'GREAT_HALL') => {
     setGrid(prev => {
       const next = prev.map(row => [...row]);
@@ -106,16 +115,14 @@ export function DungeonMapBuilder() {
       } else if (templateType === 'CHAMBER_3X3') {
         for (let y = centerY - 1; y <= centerY + 1; y++) {
           for (let x = centerX - 1; x <= centerX + 1; x++) {
-            if (next[y]?.[x] !== undefined) next[y][x] = selectedBrush === '#' ? '5' : selectedBrush;
+            if (next[y]?.[x] !== undefined) next[y][x] = selectedBrush === '#' ? 'B' : selectedBrush;
           }
         }
-        if (next[centerY + 2]?.[centerX] !== undefined) next[centerY + 2][centerX] = 'd';
       }
       return next;
     });
   };
 
-  // Export Map as TS Code
   const handleExport = () => {
     const formattedRows = grid.map(row => `  "${row.join('')}"`).join(',\n');
     const tsCode = `export const BOARD_WIDTH = ${gridWidth};\nexport const BOARD_HEIGHT = ${gridHeight};\nexport const BOARD_SIZE = BOARD_WIDTH;\n\nconst ASCII_MAP = [\n${formattedRows}\n];`;
@@ -123,13 +130,12 @@ export function DungeonMapBuilder() {
     setShowExportModal(true);
   };
 
-  // Import Map from ASCII String
   const handleImport = () => {
     try {
       const cleanedLines = importText
         .split('\n')
         .map(l => l.trim().replace(/^"|",?$|";?$/g, ''))
-        .filter(l => l.length > 0 && (l.includes('#') || l.includes('.') || l.includes('1') || l.includes('H')));
+        .filter(l => l.length > 0 && (l.includes('#') || l.includes('.') || l.includes('1') || l.includes('H') || l.includes('A')));
 
       if (cleanedLines.length === 0) return alert('No valid map rows found!');
 
@@ -152,16 +158,27 @@ export function DungeonMapBuilder() {
   const getCellVisuals = (char: string) => {
     switch (char) {
       case '#': return { bg: '#050a12', border: '#0d1829', icon: '' };
-      case '.': return { bg: '#1e293b', border: '#334155', icon: '▦' };
+      case '.': return { bg: '#1e293b', border: '#334155', icon: '🪨' };
       case 'H': return { bg: LEVEL_COLORS[0].bg, border: LEVEL_COLORS[0].border, icon: '🏛️' };
       case 'd': return { bg: '#2e1800', border: '#eab308', icon: '🚪' };
       case 'S': return { bg: '#2e1065', border: '#a855f7', icon: '❓' };
-      case '1': return { bg: LEVEL_COLORS[1].bg, border: LEVEL_COLORS[1].border, icon: '⓵' };
-      case '2': return { bg: LEVEL_COLORS[2].bg, border: LEVEL_COLORS[2].border, icon: '⓶' };
-      case '3': return { bg: LEVEL_COLORS[3].bg, border: LEVEL_COLORS[3].border, icon: '⓷' };
-      case '4': return { bg: LEVEL_COLORS[4].bg, border: LEVEL_COLORS[4].border, icon: '⓸' };
-      case '5': return { bg: LEVEL_COLORS[5].bg, border: LEVEL_COLORS[5].border, icon: '⓹' };
-      case '6': return { bg: LEVEL_COLORS[6].bg, border: LEVEL_COLORS[6].border, icon: '⓺' };
+      
+      // Rooms
+      case '1': return { bg: LEVEL_COLORS[1].bg, border: LEVEL_COLORS[1].border, icon: '🕸️' };
+      case '2': return { bg: LEVEL_COLORS[2].bg, border: LEVEL_COLORS[2].border, icon: '🕸️' };
+      case '3': return { bg: LEVEL_COLORS[3].bg, border: LEVEL_COLORS[3].border, icon: '🕸️' };
+      case '4': return { bg: LEVEL_COLORS[4].bg, border: LEVEL_COLORS[4].border, icon: '🕸️' };
+      case '5': return { bg: LEVEL_COLORS[5].bg, border: LEVEL_COLORS[5].border, icon: '🕸️' };
+      case '6': return { bg: LEVEL_COLORS[6].bg, border: LEVEL_COLORS[6].border, icon: '🕸️' };
+
+      // Chambers
+      case 'A': return { bg: LEVEL_COLORS[1].bg, border: LEVEL_COLORS[1].border, icon: '💀' };
+      case 'B': return { bg: LEVEL_COLORS[2].bg, border: LEVEL_COLORS[2].border, icon: '💀' };
+      case 'C': return { bg: LEVEL_COLORS[3].bg, border: LEVEL_COLORS[3].border, icon: '💀' };
+      case 'D': return { bg: LEVEL_COLORS[4].bg, border: LEVEL_COLORS[4].border, icon: '💀' };
+      case 'E': return { bg: LEVEL_COLORS[5].bg, border: LEVEL_COLORS[5].border, icon: '💀' };
+      case 'F': return { bg: LEVEL_COLORS[6].bg, border: LEVEL_COLORS[6].border, icon: '💀' };
+
       default: return { bg: '#000', border: '#222', icon: '' };
     }
   };
@@ -171,7 +188,6 @@ export function DungeonMapBuilder() {
       style={{ display: 'flex', flexDirection: 'column', gap: '16px', color: '#00ffcc', fontFamily: 'monospace' }}
       onMouseUp={() => setIsMouseDown(false)}
     >
-      {/* Header Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', backgroundColor: '#0a1424', padding: '12px 16px', borderRadius: '8px', border: '1px solid #00ffcc' }}>
         <div>
           <h2 style={{ margin: 0, color: '#fff' }}>🛠️ DUNGEON MAP CREATOR STUDIO</h2>
@@ -206,17 +222,12 @@ export function DungeonMapBuilder() {
         </div>
       </div>
 
-      {/* Main Studio Workspace */}
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '16px' }}>
-        
-        {/* Left Control Panel: Preset Sizes, Custom Sizing & Brush Palette */}
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '16px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', backgroundColor: '#070f1e', padding: '12px', borderRadius: '8px', border: '1px solid #112233' }}>
-          
-          {/* Preset Sizing Buttons */}
           <div>
             <label style={{ fontSize: '12px', color: '#88aaff', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Preset Grid Sizes:</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {[30, 40, 50, 60].map(sz => (
+              {[30, 40, 50, 60, 100].map(sz => (
                 <button 
                   key={sz}
                   onClick={() => handleResizeGrid(sz, sz)} 
@@ -236,7 +247,6 @@ export function DungeonMapBuilder() {
             </div>
           </div>
 
-          {/* Custom Size Configurator */}
           <div style={{ borderTop: '1px dashed #112233', paddingTop: '10px' }}>
             <label style={{ fontSize: '12px', color: '#88aaff', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Custom Map Size (W x H):</label>
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
@@ -264,10 +274,8 @@ export function DungeonMapBuilder() {
                 Apply
               </button>
             </div>
-            <span style={{ fontSize: '10px', color: '#666' }}>Range: 10x10 to 100x100</span>
           </div>
 
-          {/* Brush Tool Selection */}
           <div style={{ borderTop: '1px dashed #112233', paddingTop: '10px' }}>
             <label style={{ fontSize: '12px', color: '#88aaff', display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Active Brush Tool:</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '420px', overflowY: 'auto' }}>
@@ -299,7 +307,6 @@ export function DungeonMapBuilder() {
 
         </div>
 
-        {/* Right Interactive Map Painting Frame */}
         <div 
           ref={containerRef}
           style={{ 
@@ -353,7 +360,6 @@ export function DungeonMapBuilder() {
 
       </div>
 
-      {/* Export Modal */}
       {showExportModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ backgroundColor: '#0a1424', border: '2px solid #00ffcc', padding: '24px', borderRadius: '8px', width: '90%', maxWidth: '700px', color: '#fff' }}>
@@ -388,7 +394,6 @@ export function DungeonMapBuilder() {
         </div>
       )}
 
-      {/* Import Code Area */}
       <div style={{ backgroundColor: '#070f1e', border: '1px dashed #00ffcc', padding: '12px', borderRadius: '8px' }}>
         <h4 style={{ margin: '0 0 6px 0', color: '#fff' }}>📥 Import Existing Map Code</h4>
         <div style={{ display: 'flex', gap: '10px' }}>

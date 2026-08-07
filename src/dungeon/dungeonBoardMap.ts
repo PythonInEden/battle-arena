@@ -15,6 +15,7 @@ export interface TileData {
   roomId?: string;
   roomName?: string;
   doorId?: string;
+  clearedTokensRequired?: number;
 }
 
 export const BOARD_WIDTH = 100;
@@ -22,15 +23,15 @@ export const BOARD_HEIGHT = 100;
 export const BOARD_SIZE = BOARD_WIDTH;
 
 /**
- * 2014 Official Dungeon! Board Tier Colors
+ * 🎨 Corrected Official Dungeon! Board Tier Colors
  */
 export const LEVEL_COLORS: Record<number, { bg: string; border: string; text: string; label: string }> = {
   0: { bg: '#032e27', border: '#00ffcc', text: '#00ffcc', label: 'Great Hall (Level 1 Center)' },
-  1: { bg: '#3a2e00', border: '#eab308', text: '#fef08a', label: 'Level 1 (Yellow)' },
-  2: { bg: '#3b1c00', border: '#f97316', text: '#fdba74', label: 'Level 2 (Orange - North)' },
-  3: { bg: '#3f0c0c', border: '#ef4444', text: '#fca5a5', label: 'Level 3 (Red - Top Wings)' },
-  4: { bg: '#2e104a', border: '#c084fc', text: '#f0abfc', label: 'Level 4 (Purple - Mid Wings)' },
-  5: { bg: '#0f2942', border: '#3b82f6', text: '#93c5fd', label: 'Level 5 (Blue - Lower Wings)' },
+  1: { bg: '#3b2f00', border: '#facc15', text: '#fef08a', label: 'Level 1 (Yellow)' },
+  2: { bg: '#3b1c00', border: '#fb923c', text: '#fed7aa', label: 'Level 2 (Orange)' },
+  3: { bg: '#0f2942', border: '#3b82f6', text: '#93c5fd', label: 'Level 3 (Blue)' },
+  4: { bg: '#2e104a', border: '#c084fc', text: '#f0abfc', label: 'Level 4 (Purple)' },
+  5: { bg: '#3f0c0c', border: '#ef4444', text: '#fca5a5', label: 'Level 5 (Red)' },
   6: { bg: '#042f2e', border: '#14b8a6', text: '#99f6e4', label: 'Level 6 (Teal - Deep Lair)' },
 };
 
@@ -76,7 +77,7 @@ const ASCII_MAP = [
   "###################.#33SSd.##d#22#22#HHH##.........####33#33d.##d###################################",
   "###################.#33d##.##.##d#22###.#..##.####....#33####.##.###################################",
   "###################.###.##.......#d##.....##..d11####.####44#.##.###################################",
-  "####################..#..####.##......#.####.##11####...##44#....###################################",
+  "###################...#..####.##......#.####.##11####...##44#....###################################",
   "#####################.##.d44#.#########.####.#####44###.###d#.######################################",
   "#####################.##.#44#.######....####.S.###44###.###.#.######################################",
   "#####################.##.####.####.#.#######.#...##d###.#HHH#.######################################",
@@ -138,18 +139,21 @@ const ASCII_MAP = [
 ];
 
 /**
- * Registry of Official Named Locations
+ * Registry of Official Named Locations (Multi-Fight Chambers requiring 3 tokens)
  */
 export const OFFICIAL_NAMED_LOCATIONS: Record<string, { name: string; level: number; x: number; y: number; w: number; h: number }> = {
-  great_hall: { name: 'Great Hall', level: 0, x: 30, y: 30, w: 6, h: 6 },
-  kitchen: { name: 'Kitchen', level: 2, x: 20, y: 32, w: 2, h: 2 },
-  guard_room: { name: 'Guard Room', level: 2, x: 22, y: 37, w: 2, h: 2 },
-  armory: { name: 'Armory', level: 3, x: 22, y: 28, w: 2, h: 2 },
-  cells: { name: 'Cells', level: 4, x: 22, y: 42, w: 2, h: 2 },
-  the_hole: { name: 'The Hole', level: 5, x: 22, y: 60, w: 2, h: 2 },
-  torture_chamber: { name: 'Torture Chamber', level: 5, x: 22, y: 73, w: 2, h: 2 },
-  the_lair: { name: 'THE LAIR', level: 6, x: 25, y: 61, w: 2, h: 2 },
-  the_burrow: { name: 'THE BURROW', level: 6, x: 25, y: 75, w: 2, h: 2 },
+  great_hall: { name: 'Great Hall', level: 0, x: 41, y: 48, w: 5, h: 6 },
+  kitchen: { name: 'Kitchen', level: 2, x: 36, y: 29, w: 6, h: 4 },
+  guard_room: { name: 'Guard Room', level: 2, x: 37, y: 36, w: 4, h: 3 },
+  armory: { name: 'Armory', level: 3, x: 25, y: 33, w: 4, h: 2 },
+  pantry: { name: 'Pantry', level: 3, x: 54, y: 31, w: 5, h: 4 },
+  cells: { name: 'Cells', level: 4, x: 26, y: 45, w: 5, h: 5 },
+  chapel: { name: 'Chapel', level: 4, x: 57, y: 44, w: 4, h: 4 },
+  the_hole: { name: 'The Hole', level: 5, x: 22, y: 62, w: 4, h: 4 },
+  torture_chamber: { name: 'Torture Chamber', level: 5, x: 38, y: 65, w: 3, h: 4 },
+  laboratory: { name: 'Laboratory', level: 5, x: 55, y: 65, w: 3, h: 4 },
+  the_lair: { name: 'THE LAIR', level: 6, x: 28, y: 62, w: 4, h: 4 },
+  the_burrow: { name: 'THE BURROW', level: 6, x: 39, y: 72, w: 3, h: 4 },
 };
 
 export function generateStaticDungeonBoard(): TileData[][] {
@@ -162,10 +166,11 @@ export function generateStaticDungeonBoard(): TileData[][] {
 
       let type: TileType = 'WALL';
       let level = 0;
+      let clearedTokensRequired = 1;
 
       switch (char) {
         case '#': type = 'WALL'; level = 0; break;
-        case 'H': type = 'GREAT_HALL'; level = 0; break;
+        case 'H': type = 'GREAT_HALL'; level = 0; clearedTokensRequired = 0; break;
         case 'S': type = 'SECRET_DOOR'; level = 0; break;
 
         case '.':
@@ -184,12 +189,21 @@ export function generateStaticDungeonBoard(): TileData[][] {
         case 'l': type = 'DOOR'; level = 5; break;
         case 'n': type = 'DOOR'; level = 6; break;
 
-        case '1': type = 'ROOM'; level = 1; break;
-        case '2': type = 'ROOM'; level = 2; break;
-        case '3': type = 'ROOM'; level = 3; break;
-        case '4': type = 'ROOM'; level = 4; break;
-        case '5': type = 'ROOM'; level = 5; break;
-        case '6': type = 'ROOM'; level = 6; break;
+        // Standard Rooms (1 Fight / 1 Token)
+        case '1': type = 'ROOM'; level = 1; clearedTokensRequired = 1; break;
+        case '2': type = 'ROOM'; level = 2; clearedTokensRequired = 1; break;
+        case '3': type = 'ROOM'; level = 3; clearedTokensRequired = 1; break;
+        case '4': type = 'ROOM'; level = 4; clearedTokensRequired = 1; break;
+        case '5': type = 'ROOM'; level = 5; clearedTokensRequired = 1; break;
+        case '6': type = 'ROOM'; level = 6; clearedTokensRequired = 1; break;
+
+        // Open Chambers (3 Fights / 3 Tokens - Direct Access)
+        case 'A': type = 'CHAMBER'; level = 1; clearedTokensRequired = 3; break;
+        case 'B': type = 'CHAMBER'; level = 2; clearedTokensRequired = 3; break;
+        case 'C': type = 'CHAMBER'; level = 3; clearedTokensRequired = 3; break;
+        case 'D': type = 'CHAMBER'; level = 4; clearedTokensRequired = 3; break;
+        case 'E': type = 'CHAMBER'; level = 5; clearedTokensRequired = 3; break;
+        case 'F': type = 'CHAMBER'; level = 6; clearedTokensRequired = 3; break;
       }
 
       let roomId = undefined;
@@ -200,19 +214,21 @@ export function generateStaticDungeonBoard(): TileData[][] {
           if (x >= loc.x && x < loc.x + loc.w && y >= loc.y && y < loc.y + loc.h) {
             roomId = key;
             roomName = loc.name;
-            if (type === 'ROOM' && (key === 'the_lair' || key === 'the_burrow' || key === 'torture_chamber' || key === 'crypt')) {
+            if (type === 'ROOM' && key !== 'great_hall') {
               type = 'CHAMBER';
+              clearedTokensRequired = 3;
             }
             break;
           }
         }
         if (!roomId) {
-          roomId = `room_l${level}_${Math.floor(x / 3)}_${Math.floor(y / 3)}`;
-          roomName = `Level ${level} Chamber (${x}, ${y})`;
+          const prefix = type === 'CHAMBER' ? 'chamber' : 'room';
+          roomId = `${prefix}_l${level}_${Math.floor(x / 3)}_${Math.floor(y / 3)}`;
+          roomName = `Level ${level} ${type === 'CHAMBER' ? 'Chamber' : 'Room'} (${x}, ${y})`;
         }
       }
 
-      row.push({ x, y, type, level, roomId, roomName });
+      row.push({ x, y, type, level, roomId, roomName, clearedTokensRequired });
     }
     grid.push(row);
   }
@@ -224,6 +240,36 @@ export function isTilePassable(tile: TileData, isSecretDiscovered: boolean = fal
   if (tile.type === 'WALL') return false;
   if (tile.type === 'SECRET_DOOR' && !isSecretDiscovered) return false;
   return true;
+}
+
+/**
+ * 🎯 Dynamically calculates center tile of Great Hall cluster for initial spawn
+ */
+export function getGreatHallSpawnPosition(board: TileData[][]): { x: number; y: number } {
+  const hTiles: { x: number; y: number }[] = [];
+  const safeTiles: { x: number; y: number }[] = [];
+
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (board[y][x].type === 'GREAT_HALL') {
+        hTiles.push({ x, y });
+      } else if (board[y][x].type !== 'WALL') {
+        safeTiles.push({ x, y });
+      }
+    }
+  }
+
+  if (hTiles.length > 0) {
+    const avgX = Math.round(hTiles.reduce((acc, t) => acc + t.x, 0) / hTiles.length);
+    const avgY = Math.round(hTiles.reduce((acc, t) => acc + t.y, 0) / hTiles.length);
+    return hTiles.reduce((best, t) => {
+      const distBest = Math.hypot(best.x - avgX, best.y - avgY);
+      const distCurr = Math.hypot(t.x - avgX, t.y - avgY);
+      return distCurr < distBest ? t : best;
+    }, hTiles[0]);
+  }
+
+  return safeTiles.length > 0 ? safeTiles[0] : { x: 43, y: 50 };
 }
 
 export const STATIC_DUNGEON_BOARD = generateStaticDungeonBoard();
