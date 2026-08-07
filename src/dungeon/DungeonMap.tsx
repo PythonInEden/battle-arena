@@ -78,21 +78,53 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
 
   const visibleTiles = useMemo(() => {
     const visible = new Set<string>();
-    const radius = 5;
+    const currentTile = STATIC_DUNGEON_BOARD[localPos.y]?.[localPos.x];
 
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        if (Math.hypot(dx, dy) <= radius) {
-          const vx = localPos.x + dx;
-          const vy = localPos.y + dy;
-          if (vx >= 0 && vx < BOARD_WIDTH && vy >= 0 && vy < BOARD_HEIGHT) {
-            visible.add(`${vx},${vy}`);
+    if (!currentTile) return visible;
+
+    // Always reveal player standing position
+    visible.add(`${localPos.x},${localPos.y}`);
+
+    // 1. IF IN A ROOM OR CHAMBER: Reveal ONLY this room container
+    if ((currentTile.type === 'ROOM' || currentTile.type === 'CHAMBER') && currentTile.roomId) {
+      for (let y = 0; y < BOARD_HEIGHT; y++) {
+        for (let x = 0; x < BOARD_WIDTH; x++) {
+          const tile = STATIC_DUNGEON_BOARD[y][x];
+          if (tile.roomId === currentTile.roomId) {
+            visible.add(`${x},${y}`);
           }
         }
       }
+      return visible;
     }
+
+    // 2. IF IN CORRIDOR OR DOOR: Reveal only immediate adjacent 1-tile surroundings (3x3 area)
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const vx = localPos.x + dx;
+        const vy = localPos.y + dy;
+        if (vx >= 0 && vx < BOARD_WIDTH && vy >= 0 && vy < BOARD_HEIGHT) {
+          const tile = STATIC_DUNGEON_BOARD[vy][vx];
+          const tileKey = `${vx},${vy}`;
+          const isSecretDiscovered = discoveredSecrets.has(tileKey);
+
+          // Hide undiscovered secret doors completely from corridor vision
+          if (tile.type === 'SECRET_DOOR' && !isSecretDiscovered && !isDebugRevealMap) {
+            continue;
+          }
+
+          // Don't peek into adjacent room floors from corridors unless on a door tile
+          if (currentTile.type !== 'DOOR' && (tile.type === 'ROOM' || tile.type === 'CHAMBER')) {
+            continue;
+          }
+
+          visible.add(tileKey);
+        }
+      }
+    }
+
     return visible;
-  }, [localPos.x, localPos.y]);
+  }, [localPos.x, localPos.y, discoveredSecrets, isDebugRevealMap]);
 
   useEffect(() => {
     setVisitedTiles(prev => {
@@ -321,8 +353,16 @@ export function DungeonMap({ player, allPlayers, roomCode: _roomCode }: DungeonM
               tileBg = '#2e1800';
             } else if (tile.type === 'SECRET_DOOR') {
               const isDiscovered = discoveredSecrets.has(tileKey) || isDebugRevealMap;
-              tileContent = isDiscovered ? '🔓' : '❓';
-              tileBg = isDiscovered ? '#312e81' : '#2e1065';
+              if (isDiscovered) {
+                tileContent = '🔓';
+                tileBg = '#312e81';
+                tileBorder = '#a855f7';
+              } else {
+                // Blend in as a solid wall with no '❓' icon
+                tileBg = '#050a12';
+                tileBorder = '#0d1829';
+                tileContent = '';
+              }
             } else if (tile.type === 'ROOM') {
               tileContent = '🕸️';
             } else if (tile.type === 'CHAMBER') {
